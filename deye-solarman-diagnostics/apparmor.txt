@@ -1,0 +1,21 @@
+abi <abi/4.0>,
+include <tunables/global>
+
+profile hassio-addon-deye-solarman-diagnostics flags=(attach_disconnected,mediate_deleted) {
+	include <abstractions/base>
+	include <abstractions/nameservice>
+	include <abstractions/python>
+
+	network inet stream,
+	network inet6 stream,
+	network tcp,
+	network udp,
+
+	/file{,/**} r,
+	/usr/{,**} r,
+	/etc/{,**} r,
+	/tmp/{,**} rw,
+	/data/{,**} rw,
+	/config/{,**} rw,
+	/share/{,**} rw,
+}
