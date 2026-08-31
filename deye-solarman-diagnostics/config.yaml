@@ -1,6 +1,6 @@
 name: Deye Solarman Diagnostics
 description: Diagnostics add-on for Deye inverter battery data through a local Solarman logger
-version: "0.3.4"
+version: "0.3.5"
 slug: deye-solarman-diagnostics
 url: "https://github.com/Wilk33/deye-solarman-ha-addon"
 services:
@@ -30,10 +30,12 @@ options:
     timeout: 3
     reconnect_delay: 10
   mqtt:
+    use_supervisor: true
     host: core-mosquitto
     port: 1883
     username: ""
     password: ""
+    tls: false
     client_id: deye-solarman-diagnostics
     base_topic: deye_solarman
     discovery_prefix: homeassistant
@@ -75,10 +77,12 @@ schema:
     timeout: int(1,15)
     reconnect_delay: int(1,300)
   mqtt:
+    use_supervisor: bool
     host: str
     port: port
     username: str?
     password: password?
+    tls: bool
     client_id: str
     base_topic: str
     discovery_prefix: str

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import ssl
 import threading
 from typing import Any
 
@@ -24,6 +25,8 @@ class MqttPublisher:
 		self._client=mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=config.client_id)
 		self._client.on_connect=self._on_connect
 		self._client.on_disconnect=self._on_disconnect
+		if config.tls:
+			self._client.tls_set(cert_reqs=ssl.CERT_REQUIRED)
 		if config.username:
 			self._client.username_pw_set(config.username, config.password)
 
@@ -31,10 +34,12 @@ class MqttPublisher:
 		self._connected.clear()
 		self._connection_error=None
 		LOGGER.info(
-			"Connecting to MQTT host=%s port=%s client_id=%s",
+			"Connecting to MQTT host=%s port=%s client_id=%s source=%s tls=%s",
 			self._config.host,
 			self._config.port,
 			self._config.client_id,
+			self._config.source,
+			self._config.tls,
 		)
 		self._client.connect(self._config.host, self._config.port, 60)
 		self._client.loop_start()

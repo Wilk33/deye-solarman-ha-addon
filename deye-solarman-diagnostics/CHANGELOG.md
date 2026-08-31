@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.5
+
+- Use the Home Assistant Supervisor MQTT service credentials by default, matching the reference Sunsynk/Deye multi add-on behaviour on HAOS.
+- Keep an explicit manual MQTT fallback for external brokers and log the selected connection source without exposing secrets.
+
 ## 0.3.4
 
 - Log the number of enabled sensors, MQTT connection confirmation, every Discovery publish topic, and delivery failures to diagnose missing Home Assistant entities.

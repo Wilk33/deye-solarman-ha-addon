@@ -24,6 +24,8 @@ class MqttConfig:
 	base_topic: str
 	discovery_prefix: str
 	retain: bool
+	tls: bool=False
+	source: str="manual"
 
 
 @dataclass(slots=True)

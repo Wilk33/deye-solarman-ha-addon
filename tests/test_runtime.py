@@ -29,6 +29,7 @@ from deye_solarman_diagnostics.mqtt import MqttPublisher
 from deye_solarman_diagnostics.scheduler import group_sensors_for_read
 from deye_solarman_diagnostics.scan_catalog import ScanCandidate
 from deye_solarman_diagnostics.scan_catalog import load_scan_candidates
+from deye_solarman_diagnostics.supervisor import discover_mqtt_service
 from deye_solarman_diagnostics.scanner import load_monitored_definitions
 from deye_solarman_diagnostics.scanner import save_detected_sensors
 from deye_solarman_diagnostics.scanner import scan_candidates
@@ -73,6 +74,20 @@ class FailingSolarman:
 		raise RuntimeError("Modbus exception: illegal data address")
 
 
+class FakeSupervisorResponse:
+	def __init__(self, payload: dict[str, object]) -> None:
+		self._payload=json.dumps(payload).encode("utf-8")
+
+	def __enter__(self) -> "FakeSupervisorResponse":
+		return self
+
+	def __exit__(self, exception_type: object, exception: object, traceback: object) -> None:
+		return None
+
+	def read(self) -> bytes:
+		return self._payload
+
+
 def make_options(logger_serial_number: int=3556142832) -> dict[str, object]:
 	return {
 		"logger": {
@@ -84,6 +99,7 @@ def make_options(logger_serial_number: int=3556142832) -> dict[str, object]:
 			"reconnect_delay": 10,
 		},
 		"mqtt": {
+			"use_supervisor": False,
 			"host": "core-mosquitto",
 			"port": 1883,
 			"username": "",
@@ -162,6 +178,31 @@ class RuntimeTests(unittest.TestCase):
 
 		self.assertEqual(config.scan.mode, "scan_only")
 		self.assertEqual(config.scan.bms_pack_count, 6)
+
+	def test_config_uses_supervisor_mqtt_service_by_default(self) -> None:
+		options=make_options()
+		del options["mqtt"]["use_supervisor"]
+		service={
+			"host": "172.30.33.4",
+			"port": "1883",
+			"username": "supervisor-user",
+			"password": "supervisor-password",
+			"ssl": False,
+		}
+		with tempfile.TemporaryDirectory() as directory:
+			options_path=Path(directory) / "options.json"
+			options_path.write_text(json.dumps(options), encoding="utf-8")
+			with patch("deye_solarman_diagnostics.supervisor.urlopen",return_value=FakeSupervisorResponse(service)):
+				config=load_config(options_path)
+
+		self.assertEqual(config.mqtt.host, "172.30.33.4")
+		self.assertEqual(config.mqtt.username, "supervisor-user")
+		self.assertTrue(config.mqtt.password)
+		self.assertEqual(config.mqtt.source, "supervisor")
+
+	def test_supervisor_mqtt_failure_keeps_manual_configuration(self) -> None:
+		with patch("deye_solarman_diagnostics.supervisor.urlopen",side_effect=OSError("unavailable")):
+			self.assertIsNone(discover_mqtt_service())
 
 	def test_config_rejects_placeholder_logger_serial(self) -> None:
 		with tempfile.TemporaryDirectory() as directory:

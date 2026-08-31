@@ -12,6 +12,7 @@ from .models import MqttConfig
 from .models import PollingConfig
 from .models import ProfilesConfig
 from .models import ScanConfig
+from .supervisor import discover_mqtt_service
 
 
 OPTIONS_PATH=Path("/data/options.json")
@@ -27,6 +28,8 @@ def load_config(path: Path=OPTIONS_PATH) -> AppConfig:
 
 	logger=options["logger"]
 	mqtt=options["mqtt"]
+	supervisor_mqtt=discover_mqtt_service() if mqtt.get("use_supervisor",True) else None
+	mqtt_connection=supervisor_mqtt or mqtt
 	inverter=options["inverter"]
 	profiles=options["profiles"]
 	polling=options["polling"]
@@ -62,14 +65,16 @@ def load_config(path: Path=OPTIONS_PATH) -> AppConfig:
 			reconnect_delay=int(logger["reconnect_delay"]),
 		),
 		mqtt=MqttConfig(
-			host=mqtt["host"],
-			port=int(mqtt["port"]),
-			username=mqtt.get("username",""),
-			password=mqtt.get("password",""),
+			host=mqtt_connection["host"],
+			port=int(mqtt_connection["port"]),
+			username=mqtt_connection.get("username",""),
+			password=mqtt_connection.get("password",""),
 			client_id=mqtt["client_id"],
 			base_topic=mqtt["base_topic"].strip("/"),
 			discovery_prefix=mqtt["discovery_prefix"].strip("/"),
 			retain=bool(mqtt["retain"]),
+			tls=bool(mqtt_connection.get("tls",mqtt.get("tls",False))),
+			source="supervisor" if supervisor_mqtt else "manual",
 		),
 		inverter=InverterConfig(
 			serial_number=str(inverter["serial_number"]),

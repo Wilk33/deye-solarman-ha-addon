@@ -25,10 +25,12 @@ logger:
   reconnect_delay: 10
 
 mqtt:
+  use_supervisor: true
   host: core-mosquitto
   port: 1883
   username: ""
   password: ""
+  tls: false
   client_id: deye-solarman-diagnostics
   base_topic: deye_solarman
   discovery_prefix: homeassistant
@@ -71,6 +73,12 @@ scan:
 
 Parametry loggera musza wskazywac logger Solarman, nie adres IP samego falownika. `serial_number` w sekcji `logger` to numer loggera, a `inverter.serial_number` to numer seryjny falownika uzywany w nazwach MQTT.
 
+### MQTT i Supervisor
+
+Domyslnie `use_supervisor: true` pobiera host, port, TLS oraz dane logowania MQTT z uslugi `mqtt` Home Assistant Supervisor. Jest to zalecany tryb dla HAOS i nie wymaga wpisywania hasla Mosquitto w konfiguracji tego dodatku. Wymaga wlaczonego i poprawnie skonfigurowanego dodatku Mosquitto.
+
+Ustaw `use_supervisor: false` tylko wtedy, gdy broker MQTT znajduje sie poza Home Assistant lub swiadomie chcesz uzyc innych danych. W takim przypadku uzupelnij `host`, `port`, `username`, `password` oraz opcjonalnie `tls`. Hasla nie sa wyswietlane w logach.
+
 ## Panel konfiguracji Ingress
 
 Po aktualizacji do wersji `0.3.4` Home Assistant pokazuje w panelu bocznym pozycje `Deye Solarman`. Jest to lokalny panel Ingress dodatku, dostepny bez mapowania portu na siec domowa.
@@ -88,7 +96,7 @@ Panel umozliwia:
 
 Wersja `0.3.4` zapisuje kazde zadanie panelu w logu dodatku, na przyklad `Ingress request method=GET path=/api/sensors` albo `Ingress request method=POST path=/api/scan`. Dodatkowo konsola przegladarki zapisuje wpisy zaczynajace sie od `[Deye Solarman]` z adresem Ingress, metoda zadania i kodem odpowiedzi.
 
-Przy starcie MQTT log powinien zawierac `Sensor configuration loaded`, `MQTT connection confirmed`, `Publishing MQTT Discovery` i po jednym wpisie `MQTT discovery published` dla kazdej wybranej encji. Brak tych wpisow jednoznacznie wskazuje etap, na ktorym konfiguracja nie przechodzi do Home Assistant.
+Przy starcie MQTT log powinien zawierac `Using MQTT service credentials supplied by Home Assistant Supervisor`, `Sensor configuration loaded`, `MQTT connection confirmed`, `Publishing MQTT Discovery` i po jednym wpisie `MQTT discovery published` dla kazdej wybranej encji. Brak tych wpisow jednoznacznie wskazuje etap, na ktorym konfiguracja nie przechodzi do Home Assistant.
 
 Jesli panel nie reaguje, otworz narzedzia programistyczne przegladarki, wybierz `Console`, odswiez panel i skopiuj wszystkie wpisy `[Deye Solarman]` oraz ewentualne czerwone bledy. Rownoczesnie skopiuj log dodatku z chwili otwarcia panelu i klikniecia `Skanuj teraz`.
 
