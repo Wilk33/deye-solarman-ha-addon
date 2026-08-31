@@ -75,7 +75,7 @@ Parametry loggera musza wskazywac logger Solarman, nie adres IP samego falownika
 
 ### MQTT i Supervisor
 
-Domyslnie `use_supervisor: true` pobiera host, port, TLS oraz dane logowania MQTT z uslugi `mqtt` Home Assistant Supervisor. Jest to zalecany tryb dla HAOS i nie wymaga wpisywania hasla Mosquitto w konfiguracji tego dodatku. Wymaga wlaczonego i poprawnie skonfigurowanego dodatku Mosquitto.
+Domyslnie `use_supervisor: true` pobiera host, port, TLS oraz dane logowania MQTT z uslugi `mqtt` Home Assistant Supervisor. Jest to zalecany tryb dla HAOS i nie wymaga wpisywania hasla Mosquitto w konfiguracji tego dodatku. Wymaga wlaczonego i poprawnie skonfigurowanego dodatku Mosquitto. Wersja `0.3.6` obsluguje odpowiedz Supervisora opakowana w obiekt `data`.
 
 Ustaw `use_supervisor: false` tylko wtedy, gdy broker MQTT znajduje sie poza Home Assistant lub swiadomie chcesz uzyc innych danych. W takim przypadku uzupelnij `host`, `port`, `username`, `password` oraz opcjonalnie `tls`. Hasla nie sa wyswietlane w logach.
 

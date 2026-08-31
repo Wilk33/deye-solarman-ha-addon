@@ -20,10 +20,11 @@ def discover_mqtt_service(timeout: float=5.0) -> dict[str, Any] | None:
 	request=Request(SUPERVISOR_MQTT_URL,headers=headers)
 	try:
 		with urlopen(request,timeout=timeout) as response:
-			service=json.loads(response.read().decode("utf-8"))
+			response_data=json.loads(response.read().decode("utf-8"))
 	except (OSError,ValueError,json.JSONDecodeError) as error:
 		LOGGER.warning("Supervisor MQTT service is unavailable, using manual MQTT configuration: %s",error)
 		return None
+	service=response_data.get("data",response_data) if isinstance(response_data,dict) else response_data
 
 	try:
 		host=str(service["host"])

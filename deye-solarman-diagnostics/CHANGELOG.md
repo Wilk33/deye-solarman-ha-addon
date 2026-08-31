@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.6
+
+- Parse the MQTT service payload returned by the Home Assistant Supervisor API when it is wrapped in a `data` object.
+
 ## 0.3.5
 
 - Use the Home Assistant Supervisor MQTT service credentials by default, matching the reference Sunsynk/Deye multi add-on behaviour on HAOS.

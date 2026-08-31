@@ -183,11 +183,13 @@ class RuntimeTests(unittest.TestCase):
 		options=make_options()
 		del options["mqtt"]["use_supervisor"]
 		service={
-			"host": "172.30.33.4",
-			"port": "1883",
-			"username": "supervisor-user",
-			"password": "supervisor-password",
-			"ssl": False,
+			"data": {
+				"host": "172.30.33.4",
+				"port": "1883",
+				"username": "supervisor-user",
+				"password": "supervisor-password",
+				"ssl": False,
+			},
 		}
 		with tempfile.TemporaryDirectory() as directory:
 			options_path=Path(directory) / "options.json"
