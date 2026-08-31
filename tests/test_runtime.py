@@ -171,6 +171,12 @@ class RuntimeTests(unittest.TestCase):
 		with self.assertRaisesRegex(ValueError, "Unknown sensor profile"):
 			load_sensor_definitions(["not_a_profile"], "does-not-exist.yaml")
 
+	def test_default_profile_requires_explicit_sensor_selection(self) -> None:
+		sensors=load_sensor_definitions(["deye_battery_packs"], "does-not-exist.yaml")
+
+		self.assertTrue(sensors)
+		self.assertTrue(all(sensor.enabled is False for sensor in sensors))
+
 	def test_catalog_covers_live_telemetry_and_configured_bms_packs(self) -> None:
 		candidates=load_scan_candidates(4)
 		by_key={candidate.sensor.key: candidate.sensor for candidate in candidates}

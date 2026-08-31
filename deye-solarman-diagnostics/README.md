@@ -4,7 +4,7 @@ Dodatek Home Assistant OS do diagnostycznego, lokalnego odczytu falownika Deye p
 
 Dodatek jest przeznaczony jako wolniejsza sciezka diagnostyczna i uzupelnienie bezposredniej integracji RS485, na przyklad `Sunsynk or Deye Inverter add-on (multi)`. Nie zastepuje kanalu RS485.
 
-Wersja `0.2.0` dodaje reczny skan katalogu bezpiecznych, tylko do odczytu rejestrow telemetrycznych dla rodziny Deye SUN-*-SG04LP3 / SG05LP3. Wynik skanu nie tworzy automatycznie encji MQTT. Uzytkownik zaznacza wylacznie interesujace pozycje w `/config/detected_sensors.yaml`.
+Wersja `0.2.1` dodaje reczny skan katalogu bezpiecznych, tylko do odczytu rejestrow telemetrycznych dla rodziny Deye SUN-*-SG04LP3 / SG05LP3. Wynik skanu nie tworzy automatycznie encji MQTT. Uzytkownik zaznacza wylacznie interesujace pozycje w `/config/detected_sensors.yaml`.
 
 Pelna instrukcja konfiguracji i skanowania jest w [DOCS.md](DOCS.md).
 

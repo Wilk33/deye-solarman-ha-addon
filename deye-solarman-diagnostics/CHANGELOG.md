@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.1
+
+- Disable all default MQTT entities so normal monitoring publishes only sensors explicitly selected in `detected_sensors.yaml` or enabled in `user_sensors.yaml`.
+
 ## 0.2.0
 
 - Add manual, read-only candidate scanning for 68 documented SG04LP3 / SG05LP3 telemetry values and 14 diagnostic values per BMS pack.

@@ -117,7 +117,7 @@ available_sensors:
 
 Mozna zmienic miedzy innymi `type`, `multiplier`, `offset`, `unit`, `word_order`, `schedule`, `read_every`, `report_every`, `change_by`, `retain` i pola MQTT. Dla wartosci BMS nie zmieniaj przelicznika ani typu przed porownaniem z realnym odczytem urzadzenia.
 
-Domyslny profil zachowuje wczesniejsze cztery podstawowe odczyty pierwszego pakietu BMS. Mozna je wylaczyc przez `/config/user_sensors.yaml` lub pozostawic jako niezalezne od katalogu skanowania.
+Domyslny profil zawiera definicje BMS, ale wszystkie sa wylaczone. W normalnym trybie MQTT publikuje wiec wylacznie pozycje z `monitor: true` w `/config/detected_sensors.yaml` albo wpisy jawnie wlaczone w `/config/user_sensors.yaml`.
 
 ## Pliki i MQTT
 
