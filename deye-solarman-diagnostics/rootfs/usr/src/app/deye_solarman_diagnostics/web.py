@@ -323,7 +323,10 @@ summary { padding: 11px 0; color: var(--green); cursor: pointer; font-family: "C
 let sensors=[];
 let scanTimer=null;
 const editable=["name","multiplier","offset","unit","type","word_order","schedule","read_every","report_every","change_by","retain","device_class","state_class","icon","category","topic_suffix"];
-const esc=value=>String(value ?? "").replace(/[&<>'"]/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;","\"":"&quot;"}[char]));
+const esc=value=>String(value ?? "").replace(/[&<>'"]/g,char=>{
+  if (char.charCodeAt(0) === 34) return "&quot;";
+  return {"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;"}[char];
+});
 const numberValue=value=>Number.isFinite(Number(value)) ? Number(value) : "";
 const byId=id=>document.getElementById(id);
 

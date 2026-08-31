@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.3
+
+- Fix a browser JavaScript syntax error that prevented the Ingress panel from loading scan data or responding to button clicks.
+
 ## 0.3.2
 
 - Add browser console diagnostics and INFO-level Ingress request logging for the panel, API calls, and scan action.

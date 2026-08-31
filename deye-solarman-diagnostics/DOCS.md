@@ -73,7 +73,7 @@ Parametry loggera musza wskazywac logger Solarman, nie adres IP samego falownika
 
 ## Panel konfiguracji Ingress
 
-Po aktualizacji do wersji `0.3.2` Home Assistant pokazuje w panelu bocznym pozycje `Deye Solarman`. Jest to lokalny panel Ingress dodatku, dostepny bez mapowania portu na siec domowa.
+Po aktualizacji do wersji `0.3.3` Home Assistant pokazuje w panelu bocznym pozycje `Deye Solarman`. Jest to lokalny panel Ingress dodatku, dostepny bez mapowania portu na siec domowa.
 
 Panel umozliwia:
 
@@ -86,7 +86,7 @@ Panel umozliwia:
 
 ## Diagnostyka panelu
 
-Wersja `0.3.2` zapisuje kazde zadanie panelu w logu dodatku, na przyklad `Ingress request method=GET path=/api/sensors` albo `Ingress request method=POST path=/api/scan`. Dodatkowo konsola przegladarki zapisuje wpisy zaczynajace sie od `[Deye Solarman]` z adresem Ingress, metoda zadania i kodem odpowiedzi.
+Wersja `0.3.3` zapisuje kazde zadanie panelu w logu dodatku, na przyklad `Ingress request method=GET path=/api/sensors` albo `Ingress request method=POST path=/api/scan`. Dodatkowo konsola przegladarki zapisuje wpisy zaczynajace sie od `[Deye Solarman]` z adresem Ingress, metoda zadania i kodem odpowiedzi.
 
 Jesli panel nie reaguje, otworz narzedzia programistyczne przegladarki, wybierz `Console`, odswiez panel i skopiuj wszystkie wpisy `[Deye Solarman]` oraz ewentualne czerwone bledy. Rownoczesnie skopiuj log dodatku z chwili otwarcia panelu i klikniecia `Skanuj teraz`.
 

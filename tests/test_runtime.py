@@ -386,6 +386,8 @@ class RuntimeTests(unittest.TestCase):
 				) as response:
 					page=response.read().decode("utf-8")
 				self.assertIn('<base href="/api/hassio_ingress/example-token/">',page)
+				self.assertIn("char.charCodeAt(0) === 34",page)
+				self.assertNotIn('"""',page)
 				with urlopen(f"{address}/panel.js") as response:
 					diagnostics_script=response.read().decode("utf-8")
 				self.assertIn("external diagnostics script loaded",diagnostics_script)
