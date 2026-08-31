@@ -8,6 +8,7 @@ from html import escape
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler
 from http.server import ThreadingHTTPServer
+from pathlib import Path
 from typing import Any
 
 from .scanner import load_detected_sensors
@@ -16,6 +17,7 @@ from .scanner import update_detected_sensors
 
 LOGGER=logging.getLogger(__name__)
 MAX_REQUEST_BYTES=1_000_000
+PANEL_SCRIPT=Path(__file__).with_name("panel.js").read_text(encoding="utf-8")
 
 
 class IngressPanel:
@@ -66,8 +68,12 @@ class IngressPanel:
 		class PanelHandler(BaseHTTPRequestHandler):
 			def do_GET(self) -> None:
 				path=self.path.split("?",1)[0]
+				self._log_request(path)
 				if path in {"/","/index.html"}:
 					self._send_html(PANEL_HTML.replace("__INGRESS_BASE__",self._ingress_base()))
+					return
+				if path == "/panel.js":
+					self._send_script(PANEL_SCRIPT)
 					return
 				if path == "/api/sensors":
 					self._send_json(load_detected_sensors(panel._detected_sensors_file))
@@ -80,6 +86,7 @@ class IngressPanel:
 
 			def do_POST(self) -> None:
 				path=self.path.split("?",1)[0]
+				self._log_request(path)
 				try:
 					if path == "/api/scan":
 						if not panel._start_scan():
@@ -136,11 +143,28 @@ class IngressPanel:
 				self.end_headers()
 				self.wfile.write(content)
 
+			def _send_script(self, body: str) -> None:
+				content=body.encode("utf-8")
+				self.send_response(HTTPStatus.OK)
+				self.send_header("Content-Type","application/javascript; charset=utf-8")
+				self.send_header("Cache-Control","no-store")
+				self.send_header("Content-Length",str(len(content)))
+				self.end_headers()
+				self.wfile.write(content)
+
 			def _ingress_base(self) -> str:
 				path=self.headers.get("X-Ingress-Path","").strip().rstrip("/")
 				if not path.startswith("/api/hassio_ingress/"):
 					path=""
 				return escape(f"{path}/",quote=True)
+
+			def _log_request(self, path: str) -> None:
+				LOGGER.info(
+					"Ingress request method=%s path=%s ingress_path=%s",
+					self.command,
+					path,
+					self.headers.get("X-Ingress-Path","missing"),
+				)
 
 		return PanelHandler
 
@@ -294,6 +318,7 @@ summary { padding: 11px 0; color: var(--green); cursor: pointer; font-family: "C
   <section id="sensor-groups"></section>
   <p class="notice"><b>Zastosowanie zmian:</b> zapis aktualizuje trwaly plik wyboru. Po zapisie zrestartuj dodatek w Home Assistant, aby petla MQTT zaladowala wybrane czujniki. Poprawny odczyt BMS potwierdza dostep transportowy, ale niekoniecznie znaczenie rejestru.</p>
 </main>
+<script src="panel.js"></script>
 <script>
 let sensors=[];
 let scanTimer=null;
@@ -302,8 +327,15 @@ const esc=value=>String(value ?? "").replace(/[&<>'"]/g,char=>({"&":"&amp;","<":
 const numberValue=value=>Number.isFinite(Number(value)) ? Number(value) : "";
 const byId=id=>document.getElementById(id);
 
+console.info("[Deye Solarman] panel script started",{href:window.location.href,base:document.baseURI});
+window.addEventListener("error",event=>console.error("[Deye Solarman] browser error",event.error || event.message));
+window.addEventListener("unhandledrejection",event=>console.error("[Deye Solarman] unhandled promise rejection",event.reason));
+
 async function request(path,options={}) {
-  const response=await fetch(path,{headers:{"Content-Type":"application/json"},...options});
+  const url=new URL(path,document.baseURI).toString();
+  console.info("[Deye Solarman] API request",{path,url,method:options.method || "GET"});
+  const response=await fetch(url,{headers:{"Content-Type":"application/json"},...options});
+  console.info("[Deye Solarman] API response",{url,status:response.status});
   const data=await response.json();
   if (!response.ok) throw new Error(data.error || "Request failed");
   return data;
@@ -419,6 +451,7 @@ async function refreshScanStatus() {
 }
 
 byId("scan-button").addEventListener("click",async()=>{
+  console.info("[Deye Solarman] Scan now clicked");
   byId("save-message").textContent="";
   try { await request("api/scan",{method:"POST",body:"{}"}); await refreshScanStatus(); }
   catch (error) { byId("scan-message").textContent=error.message; }
@@ -426,7 +459,10 @@ byId("scan-button").addEventListener("click",async()=>{
 byId("save-button").addEventListener("click",save);
 byId("search").addEventListener("input",render);
 byId("status-filter").addEventListener("change",render);
-Promise.all([loadSensors(),refreshScanStatus()]).catch(error=>{ byId("scan-message").textContent=error.message; });
+Promise.all([loadSensors(),refreshScanStatus()]).catch(error=>{
+  console.error("[Deye Solarman] panel initialization failed",error);
+  byId("scan-message").textContent=error.message;
+});
 </script>
 </body>
 </html>

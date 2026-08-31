@@ -386,6 +386,9 @@ class RuntimeTests(unittest.TestCase):
 				) as response:
 					page=response.read().decode("utf-8")
 				self.assertIn('<base href="/api/hassio_ingress/example-token/">',page)
+				with urlopen(f"{address}/panel.js") as response:
+					diagnostics_script=response.read().decode("utf-8")
+				self.assertIn("external diagnostics script loaded",diagnostics_script)
 				with urlopen(f"{address}/api/sensors") as response:
 					listed=json.loads(response.read())
 				self.assertEqual(listed["available_sensors"][0]["key"],"grid_power_total")

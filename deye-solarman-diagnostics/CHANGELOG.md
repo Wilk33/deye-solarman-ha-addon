@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.2
+
+- Add browser console diagnostics and INFO-level Ingress request logging for the panel, API calls, and scan action.
+
 ## 0.3.1
 
 - Fix panel API paths under Home Assistant Ingress by generating the browser base URL from the Supervisor `X-Ingress-Path` header.
