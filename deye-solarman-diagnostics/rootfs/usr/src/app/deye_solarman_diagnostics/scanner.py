@@ -18,6 +18,26 @@ from .scheduler import group_sensors_for_read
 from .solarman import SolarmanClientProtocol
 
 
+EDITABLE_DEFINITION_FIELDS={
+	"name",
+	"type",
+	"multiplier",
+	"offset",
+	"unit",
+	"word_order",
+	"schedule",
+	"read_every",
+	"report_every",
+	"change_by",
+	"retain",
+	"device_class",
+	"state_class",
+	"icon",
+	"category",
+	"topic_suffix",
+}
+
+
 def scan_candidates(
 	candidates: list[ScanCandidate],
 	solarman: SolarmanClientProtocol,
@@ -145,6 +165,56 @@ def load_monitored_definitions(path: str) -> list[dict[str, Any]]:
 	return definitions
 
 
+def load_detected_sensors(path: str) -> dict[str, Any]:
+	target=Path(path)
+	if not target.exists():
+		return {
+			"version": 1,
+			"scanned_at": None,
+			"available_sensors": [],
+		}
+	return _load_yaml_mapping(target)
+
+
+def update_detected_sensors(path: str, updates: list[dict[str, Any]]) -> dict[str, Any]:
+	target=Path(path)
+	payload=load_detected_sensors(path)
+	entries=payload.get("available_sensors")
+	if not isinstance(entries, list):
+		raise ValueError("detected_sensors.yaml: available_sensors must be a list")
+	entries_by_key={
+		entry.get("key"): entry
+		for entry in entries
+		if isinstance(entry, dict) and isinstance(entry.get("key"), str)
+	}
+
+	for index, update in enumerate(updates):
+		if not isinstance(update, dict):
+			raise ValueError(f"Update {index} must be an object")
+		key=update.get("key")
+		if not isinstance(key, str) or key not in entries_by_key:
+			raise ValueError(f"Update {index} has an unknown sensor key")
+		entry=entries_by_key[key]
+		monitor=update.get("monitor")
+		if not isinstance(monitor, bool):
+			raise ValueError(f"Update {key}: monitor must be a boolean")
+		definition_update=update.get("definition",{})
+		if not isinstance(definition_update, dict):
+			raise ValueError(f"Update {key}: definition must be an object")
+		definition=entry.get("definition")
+		if not isinstance(definition, dict):
+			raise ValueError(f"detected_sensors.yaml: {key} has no definition")
+
+		entry["monitor"]=monitor
+		for field, value in definition_update.items():
+			if field not in EDITABLE_DEFINITION_FIELDS:
+				continue
+			definition[field]=_validate_definition_value(key, field, value)
+
+	_write_yaml(target, payload)
+	return payload
+
+
 def _scan_value(
 	candidate: ScanCandidate,
 	group_values: list[int],
@@ -199,6 +269,50 @@ def _sensor_to_payload(sensor: Any) -> dict[str, Any]:
 	payload=asdict(sensor)
 	payload["type"]=payload.pop("register_type")
 	return payload
+
+
+def _validate_definition_value(key: str, field: str, value: Any) -> Any:
+	if field in {"name","unit","device_class","state_class","icon","category","topic_suffix"}:
+		if not isinstance(value, str):
+			raise ValueError(f"Update {key}: {field} must be text")
+		return value.strip()
+	if field in {"multiplier","offset","change_by"}:
+		if isinstance(value, bool):
+			raise ValueError(f"Update {key}: {field} must be a number")
+		try:
+			parsed=float(value)
+		except (TypeError, ValueError) as error:
+			raise ValueError(f"Update {key}: {field} must be a number") from error
+		if field == "change_by" and parsed < 0:
+			raise ValueError(f"Update {key}: change_by cannot be negative")
+		return parsed
+	if field in {"read_every","report_every"}:
+		if isinstance(value, bool):
+			raise ValueError(f"Update {key}: {field} must be a positive integer")
+		try:
+			parsed=int(value)
+		except (TypeError, ValueError) as error:
+			raise ValueError(f"Update {key}: {field} must be a positive integer") from error
+		if parsed <= 0:
+			raise ValueError(f"Update {key}: {field} must be a positive integer")
+		return parsed
+	if field == "retain":
+		if not isinstance(value, bool):
+			raise ValueError(f"Update {key}: retain must be a boolean")
+		return value
+	if field == "type":
+		if value not in {"uint16","int16","uint32","int32","hex"}:
+			raise ValueError(f"Update {key}: unsupported type")
+		return value
+	if field == "word_order":
+		if value not in {"high_low","low_high"}:
+			raise ValueError(f"Update {key}: unsupported word order")
+		return value
+	if field == "schedule":
+		if value not in {"default","slow"}:
+			raise ValueError(f"Update {key}: unsupported schedule")
+		return value
+	raise ValueError(f"Update {key}: unsupported field {field}")
 
 
 def _load_yaml_mapping(path: Path) -> dict[str, Any]:

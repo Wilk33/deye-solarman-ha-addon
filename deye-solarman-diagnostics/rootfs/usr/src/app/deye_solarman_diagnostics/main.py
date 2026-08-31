@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from contextlib import nullcontext
 import logging
+import threading
 import time
 from typing import Any
 
@@ -21,6 +23,7 @@ from .solarman import SolarmanClient
 from .storage import load_state
 from .storage import save_scan_report
 from .storage import save_state
+from .web import IngressPanel
 
 
 LOGGER=logging.getLogger(__name__)
@@ -29,6 +32,19 @@ LOGGER=logging.getLogger(__name__)
 def main() -> None:
 	configure_logging()
 	config=load_config()
+	access_lock=threading.Lock()
+	panel=IngressPanel(
+		config.scan.detected_sensors_file,
+		lambda: _run_manual_scan(access_lock),
+	)
+	panel.start()
+	try:
+		_run_addon(config,access_lock)
+	finally:
+		panel.stop()
+
+
+def _run_addon(config: Any, access_lock: Any) -> None:
 	sensors=load_sensor_definitions(
 		config.profiles.default_profile,
 		config.profiles.overrides_file,
@@ -43,11 +59,12 @@ def main() -> None:
 		solarman=SolarmanClient(config.logger)
 		mqtt=MqttPublisher(config.mqtt, config.inverter)
 		try:
-			solarman.connect()
-			probe_values=solarman.probe(
-				config.polling.startup_probe_register,
-				config.polling.startup_probe_count,
-			)
+			with access_lock:
+				solarman.connect()
+				probe_values=solarman.probe(
+					config.polling.startup_probe_register,
+					config.polling.startup_probe_count,
+				)
 			LOGGER.info(
 				"Startup probe ok register=%s count=%s values=%s",
 				config.polling.startup_probe_register,
@@ -55,17 +72,18 @@ def main() -> None:
 				probe_values,
 			)
 			if config.scan.mode != "disabled":
-				scan_report=scan_candidates(
-					load_scan_candidates(config.scan.bms_pack_count),
-					solarman,
-					config.polling,
-				)
+				with access_lock:
+					scan_report=scan_candidates(
+						load_scan_candidates(config.scan.bms_pack_count),
+						solarman,
+						config.polling,
+					)
 				save_scan_report(config.scan.report_file, scan_report)
 				save_detected_sensors(config.scan.detected_sensors_file, scan_report)
 				_log_scan_summary(scan_report, config.scan.detected_sensors_file)
 				if config.scan.mode == "scan_only":
-					LOGGER.info("Scan complete. Add-on is stopping without MQTT publishing.")
-					return
+					LOGGER.info("Scan complete. MQTT publishing is disabled while the Ingress panel remains available.")
+					_wait_for_stop()
 				sensors=load_sensor_definitions(
 					config.profiles.default_profile,
 					config.profiles.overrides_file,
@@ -87,6 +105,7 @@ def main() -> None:
 					mqtt,
 					config.polling,
 					config.advanced.emit_raw_topics,
+					access_lock,
 				)
 				save_state(config.profiles.state_file, state)
 				if config.advanced.emit_scan_report:
@@ -108,6 +127,39 @@ def main() -> None:
 			time.sleep(config.logger.reconnect_delay)
 
 
+def _run_manual_scan(access_lock: Any) -> dict[str, Any]:
+	config=load_config()
+	solarman=SolarmanClient(config.logger)
+	try:
+		with access_lock:
+			solarman.connect()
+			probe_values=solarman.probe(
+				config.polling.startup_probe_register,
+				config.polling.startup_probe_count,
+			)
+			LOGGER.info("Manual panel scan probe values=%s",probe_values)
+			scan_report=scan_candidates(
+				load_scan_candidates(config.scan.bms_pack_count),
+				solarman,
+				config.polling,
+			)
+		save_scan_report(config.scan.report_file, scan_report)
+		save_detected_sensors(config.scan.detected_sensors_file, scan_report)
+		_log_scan_summary(scan_report,config.scan.detected_sensors_file)
+		statuses: dict[str,int]={}
+		for result in scan_report:
+			status=str(result["status"])
+			statuses[status]=statuses.get(status,0)+1
+		return {"count": len(scan_report),"statuses": statuses}
+	finally:
+		solarman.disconnect()
+
+
+def _wait_for_stop() -> None:
+	while True:
+		time.sleep(3600)
+
+
 def _log_scan_summary(report: list[dict[str, Any]], detected_sensors_file: str) -> None:
 	statuses: dict[str, int]={}
 	for result in report:
@@ -127,6 +179,7 @@ def run_iteration(
 	mqtt: MqttPublisher,
 	polling: PollingConfig,
 	emit_raw_topics: bool,
+	read_lock: Any | None=None,
 ) -> list[dict[str, Any]]:
 	report: list[dict[str, Any]]=[]
 	due_sensors=[
@@ -143,7 +196,8 @@ def run_iteration(
 
 		try:
 			start=time.perf_counter()
-			values=solarman.read_holding_registers(group_start, count)
+			with read_lock if read_lock is not None else nullcontext():
+				values=solarman.read_holding_registers(group_start, count)
 			latency_ms=(time.perf_counter()-start)*1000
 		except Exception as exc:
 			LOGGER.warning("Read failed start=%s count=%s error=%s", group_start, count, exc)

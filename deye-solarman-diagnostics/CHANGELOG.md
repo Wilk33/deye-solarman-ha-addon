@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0
+
+- Add a Home Assistant Ingress configuration panel for scanning, selecting MQTT entities, and editing decoding and polling values without using the terminal or editing YAML.
+- Keep `scan_only` running with MQTT disabled so the Ingress panel remains available after the automatic scan.
+- Serialize panel scans and MQTT polling reads to avoid concurrent Solarman Modbus requests.
+
 ## 0.2.1
 
 - Disable all default MQTT entities so normal monitoring publishes only sensors explicitly selected in `detected_sensors.yaml` or enabled in `user_sensors.yaml`.

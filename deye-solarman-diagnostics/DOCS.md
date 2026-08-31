@@ -71,17 +71,32 @@ scan:
 
 Parametry loggera musza wskazywac logger Solarman, nie adres IP samego falownika. `serial_number` w sekcji `logger` to numer loggera, a `inverter.serial_number` to numer seryjny falownika uzywany w nazwach MQTT.
 
+## Panel konfiguracji Ingress
+
+Po aktualizacji do wersji `0.3.0` Home Assistant pokazuje w panelu bocznym pozycje `Deye Solarman`. Jest to lokalny panel Ingress dodatku, dostepny bez mapowania portu na siec domowa.
+
+Panel umozliwia:
+
+- uruchomienie recznego skanu przyciskiem `Skanuj teraz`;
+- przegladanie wartosci zdekodowanej, RAW i hex dla kazdego rejestru;
+- filtrowanie wedlug statusu i wyszukiwanie po nazwie, kluczu, kategorii lub rejestrze;
+- zaznaczenie encji do MQTT przeznikiem `MQTT`;
+- zmiane nazwy, typu, mnoznika, offsetu, jednostki, slow order, interwalow, progu zmiany, retain i metadanych Home Assistant;
+- atomowy zapis konfiguracji przyciskiem `Zapisz wybor MQTT`.
+
+Adresy rejestrow, klucze encji i ich lista nie sa edytowalne w panelu. Chroni to katalog przed przypadkowa zmiana definicji Modbus. Po zapisie panel wyswietla informacje o koniecznosci restartu dodatku. Restart jest wymagany, aby petla MQTT zaladowala nowy wybor.
+
 ## Skanowanie i wybor encji
 
 Skan uruchamia sie wylacznie recznie. Nie jest wykonywany w normalnym cyklu odczytu.
 
-1. Ustaw `scan.mode: scan_only`, zapisz konfiguracje i uruchom dodatek.
-2. Dodatek wykona probe polaczenia, odczyta katalog rejestrow sekwencyjnie i zapisze dwa pliki. Nie polaczy sie wtedy z MQTT i zakonczy prace po skanie.
-3. Otworz raport `/share/deye_solarman_candidate_scan.json`. Zawiera status, wartosci RAW, zapis szesnastkowy, wartosc zdekodowana, opoznienie i zrodlo weryfikacji.
-4. Otworz `/config/detected_sensors.yaml`. Ustaw `monitor: true` wylacznie przy pozycjach o `last_scan.status: supported`, ktore chcesz publikowac.
-5. Ustaw `scan.mode: disabled` i uruchom dodatek ponownie. Od tej chwili tylko zaznaczone encje sa odpytywane oraz publikowane do MQTT.
+1. Ustaw `scan.mode: disabled` i uruchom dodatek.
+2. Otworz panel `Deye Solarman` z paska bocznego Home Assistant.
+3. Wybierz `Skanuj teraz`. Dodatek wykona probe polaczenia i odczyta katalog rejestrow sekwencyjnie. Nie tworzy przy tym encji MQTT.
+4. W panelu wlacz `MQTT` tylko przy pozycjach o statusie `supported`, ktore chcesz publikowac. Dostosuj parametry w `Konfiguruj dekodowanie i odpytywanie`, jesli sa potrzebne.
+5. Wybierz `Zapisz wybor MQTT`, a nastepnie zrestartuj dodatek. Od tej chwili tylko zaznaczone encje sa odpytywane oraz publikowane do MQTT.
 
-Opcja `scan_and_monitor` wykonuje skan, aktualizuje oba pliki, a nastepnie przechodzi od razu do normalnego MQTT. Uzywaj jej tylko wtedy, gdy istniejace zaznaczenia w `detected_sensors.yaml` sa juz poprawne.
+Opcja `scan_and_monitor` wykonuje skan podczas startu, aktualizuje oba pliki, a nastepnie przechodzi od razu do normalnego MQTT. Uzywaj jej tylko wtedy, gdy istniejace zaznaczenia sa juz poprawne. `scan_only` wykonuje skan podczas startu, nie laczy sie z MQTT i pozostawia uruchomiony panel Ingress do wyboru encji.
 
 Po kolejnym skanie zachowywane sa pola `monitor` oraz wlasne ustawienia `definition` z `detected_sensors.yaml`.
 

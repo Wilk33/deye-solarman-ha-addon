@@ -1,11 +1,17 @@
 name: Deye Solarman Diagnostics
 description: Diagnostics add-on for Deye inverter battery data through a local Solarman logger
-version: "0.2.1"
+version: "0.3.0"
 slug: deye-solarman-diagnostics
 url: "https://github.com/Wilk33/deye-solarman-ha-addon"
 services:
   - mqtt:need
 init: false
+ingress: true
+ingress_port: 8099
+ingress_entry: /
+panel_icon: mdi:solar-power-variant-outline
+panel_title: Deye Solarman
+panel_admin: true
 arch:
   - aarch64
   - amd64

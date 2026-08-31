@@ -4,6 +4,8 @@ import json
 import sys
 import tempfile
 import unittest
+from urllib.request import Request
+from urllib.request import urlopen
 from pathlib import Path
 from unittest.mock import patch
 
@@ -30,8 +32,10 @@ from deye_solarman_diagnostics.scan_catalog import load_scan_candidates
 from deye_solarman_diagnostics.scanner import load_monitored_definitions
 from deye_solarman_diagnostics.scanner import save_detected_sensors
 from deye_solarman_diagnostics.scanner import scan_candidates
+from deye_solarman_diagnostics.scanner import update_detected_sensors
 from deye_solarman_diagnostics.storage import load_state
 from deye_solarman_diagnostics.storage import save_state
+from deye_solarman_diagnostics.web import IngressPanel
 
 
 class FakeMqtt:
@@ -267,6 +271,140 @@ class RuntimeTests(unittest.TestCase):
 			self.assertEqual(selected[0]["read_every"], 120)
 			self.assertTrue(selected[0]["enabled"])
 			self.assertTrue(next(sensor for sensor in loaded if sensor.key == "battery_2_voltage").enabled)
+
+	def test_detected_sensor_selection_can_be_updated_without_editing_yaml(self) -> None:
+		report=[
+			{
+				"key": "battery_2_voltage",
+				"name": "Battery 2 Voltage",
+				"definition": {
+					"key": "battery_2_voltage",
+					"name": "Battery 2 Voltage",
+					"registers": [10078],
+					"type": "uint16",
+					"multiplier": 0.1,
+					"offset": 0.0,
+					"unit": "V",
+					"word_order": "high_low",
+					"schedule": "default",
+					"read_every": 60,
+					"report_every": 300,
+					"change_by": 0.0,
+					"enabled": False,
+					"retain": True,
+					"device_class": "voltage",
+					"state_class": "measurement",
+					"icon": "",
+					"category": "battery",
+					"topic_suffix": "battery_2/voltage",
+					"attributes": {},
+				},
+				"status": "supported",
+				"raw_registers": [524],
+				"raw_hex": ["0x020C"],
+				"decoded": 524,
+				"value": 52.4,
+				"latency_ms": 1.0,
+				"verification": "candidate",
+				"description": "test",
+			}
+		]
+		with tempfile.TemporaryDirectory() as directory:
+			detected_path=Path(directory) / "detected_sensors.yaml"
+			save_detected_sensors(str(detected_path),report)
+			updated=update_detected_sensors(
+				str(detected_path),
+				[
+					{
+						"key": "battery_2_voltage",
+						"monitor": True,
+						"definition": {
+							"read_every": 120,
+							"report_every": 600,
+							"change_by": 0.2,
+							"retain": False,
+						},
+					}
+				],
+			)
+
+			entry=updated["available_sensors"][0]
+			self.assertTrue(entry["monitor"])
+			self.assertEqual(entry["definition"]["read_every"],120)
+			self.assertFalse(entry["definition"]["retain"])
+
+	def test_ingress_panel_exposes_and_updates_detected_sensors(self) -> None:
+		report=[
+			{
+				"key": "grid_power_total",
+				"name": "Grid Power Total",
+				"definition": {
+					"key": "grid_power_total",
+					"name": "Grid Power Total",
+					"registers": [619],
+					"type": "int16",
+					"multiplier": 1.0,
+					"offset": 0.0,
+					"unit": "W",
+					"word_order": "high_low",
+					"schedule": "default",
+					"read_every": 60,
+					"report_every": 300,
+					"change_by": 1.0,
+					"enabled": False,
+					"retain": True,
+					"device_class": "power",
+					"state_class": "measurement",
+					"icon": "",
+					"category": "grid",
+					"topic_suffix": "grid_power_total",
+					"attributes": {},
+				},
+				"status": "supported",
+				"raw_registers": [800],
+				"raw_hex": ["0x0320"],
+				"decoded": 800,
+				"value": 800,
+				"latency_ms": 1.0,
+				"verification": "documented",
+				"description": "test",
+			}
+		]
+		with tempfile.TemporaryDirectory() as directory:
+			detected_path=Path(directory) / "detected_sensors.yaml"
+			save_detected_sensors(str(detected_path),report)
+			panel=IngressPanel(str(detected_path),lambda: {"count": 1},port=0)
+			panel.start()
+			try:
+				assert panel._server is not None
+				address=f"http://127.0.0.1:{panel._server.server_address[1]}"
+				with urlopen(f"{address}/api/sensors") as response:
+					listed=json.loads(response.read())
+				self.assertEqual(listed["available_sensors"][0]["key"],"grid_power_total")
+
+				body=json.dumps(
+					{
+						"sensors": [
+							{
+								"key": "grid_power_total",
+								"monitor": True,
+								"definition": {"read_every": 120},
+							}
+						]
+					}
+				).encode("utf-8")
+				request=Request(
+					f"{address}/api/sensors",
+					data=body,
+					headers={"Content-Type": "application/json"},
+					method="POST",
+				)
+				with urlopen(request) as response:
+					updated=json.loads(response.read())
+				self.assertTrue(updated["available_sensors"][0]["monitor"])
+				self.assertEqual(updated["available_sensors"][0]["definition"]["read_every"],120)
+			finally:
+				panel.stop()
 
 	def test_non_contiguous_registers_are_decoded_by_address(self) -> None:
 		sensor=SensorDefinition(
