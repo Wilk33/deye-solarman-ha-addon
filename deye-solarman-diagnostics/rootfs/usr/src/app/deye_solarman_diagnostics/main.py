@@ -54,6 +54,12 @@ def _run_addon(config: Any, access_lock: Any) -> None:
 
 	for sensor in sensors:
 		state.setdefault(sensor.key, SensorState())
+	LOGGER.info(
+		"Sensor configuration loaded total=%s enabled=%s selected_file=%s",
+		len(sensors),
+		sum(sensor.enabled for sensor in sensors),
+		config.scan.detected_sensors_file,
+	)
 
 	while True:
 		solarman=SolarmanClient(config.logger)
@@ -93,9 +99,15 @@ def _run_addon(config: Any, access_lock: Any) -> None:
 					state.setdefault(sensor.key, SensorState())
 
 			mqtt.connect()
-			for sensor in sensors:
-				if sensor.enabled:
-					mqtt.publish_discovery(sensor)
+			enabled_sensors=[sensor for sensor in sensors if sensor.enabled]
+			LOGGER.info(
+				"Publishing MQTT Discovery sensors=%s prefix=%s inverter_serial=%s",
+				len(enabled_sensors),
+				config.mqtt.discovery_prefix,
+				config.inverter.serial_number,
+			)
+			for sensor in enabled_sensors:
+				mqtt.publish_discovery(sensor)
 
 			while True:
 				iteration_report=run_iteration(

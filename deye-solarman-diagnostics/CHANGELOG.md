@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.4
+
+- Log the number of enabled sensors, MQTT connection confirmation, every Discovery publish topic, and delivery failures to diagnose missing Home Assistant entities.
+- Wait for MQTT broker connection and Discovery publication instead of continuing after an unconfirmed client call.
+
 ## 0.3.3
 
 - Fix a browser JavaScript syntax error that prevented the Ingress panel from loading scan data or responding to button clicks.
