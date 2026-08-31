@@ -4,6 +4,7 @@ import json
 import logging
 import threading
 from collections.abc import Callable
+from html import escape
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler
 from http.server import ThreadingHTTPServer
@@ -66,7 +67,7 @@ class IngressPanel:
 			def do_GET(self) -> None:
 				path=self.path.split("?",1)[0]
 				if path in {"/","/index.html"}:
-					self._send_html(PANEL_HTML)
+					self._send_html(PANEL_HTML.replace("__INGRESS_BASE__",self._ingress_base()))
 					return
 				if path == "/api/sensors":
 					self._send_json(load_detected_sensors(panel._detected_sensors_file))
@@ -135,6 +136,12 @@ class IngressPanel:
 				self.end_headers()
 				self.wfile.write(content)
 
+			def _ingress_base(self) -> str:
+				path=self.headers.get("X-Ingress-Path","").strip().rstrip("/")
+				if not path.startswith("/api/hassio_ingress/"):
+					path=""
+				return escape(f"{path}/",quote=True)
+
 		return PanelHandler
 
 	def _start_scan(self) -> bool:
@@ -174,6 +181,7 @@ PANEL_HTML="""<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<base href="__INGRESS_BASE__">
 <title>Deye Solarman - Konfigurator encji</title>
 <style>
 :root {

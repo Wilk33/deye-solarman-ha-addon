@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1
+
+- Fix panel API paths under Home Assistant Ingress by generating the browser base URL from the Supervisor `X-Ingress-Path` header.
+
 ## 0.3.0
 
 - Add a Home Assistant Ingress configuration panel for scanning, selecting MQTT entities, and editing decoding and polling values without using the terminal or editing YAML.

@@ -378,6 +378,14 @@ class RuntimeTests(unittest.TestCase):
 			try:
 				assert panel._server is not None
 				address=f"http://127.0.0.1:{panel._server.server_address[1]}"
+				with urlopen(
+					Request(
+						f"{address}/",
+						headers={"X-Ingress-Path": "/api/hassio_ingress/example-token"},
+					)
+				) as response:
+					page=response.read().decode("utf-8")
+				self.assertIn('<base href="/api/hassio_ingress/example-token/">',page)
 				with urlopen(f"{address}/api/sensors") as response:
 					listed=json.loads(response.read())
 				self.assertEqual(listed["available_sensors"][0]["key"],"grid_power_total")
