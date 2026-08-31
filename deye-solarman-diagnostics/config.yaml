@@ -2,7 +2,6 @@ name: Deye Solarman Diagnostics
 description: Diagnostics add-on for Deye inverter battery data through a local Solarman logger
 version: "0.1.0"
 slug: deye-solarman-diagnostics
-image: ghcr.io/wilk33/deye-solarman-diagnostics
 url: "https://github.com/Wilk33/deye-solarman-ha-addon"
 services:
   - mqtt:need
@@ -14,7 +13,7 @@ arch:
   - armhf
   - i386
 map:
-  - addon_config:rw
+  - app_config:rw
   - share:rw
 options:
   logger:

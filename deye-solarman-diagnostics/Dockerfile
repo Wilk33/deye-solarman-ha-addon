@@ -5,12 +5,12 @@ ENV LANG=C.UTF-8
 
 WORKDIR /usr/src/app
 
-COPY deye-solarman-diagnostics/rootfs/requirements.txt /tmp/requirements.txt
+COPY rootfs/requirements.txt /tmp/requirements.txt
 RUN apk add --no-cache python3 py3-pip bash \
 	&& pip3 install --no-cache-dir -r /tmp/requirements.txt
 
-COPY deye-solarman-diagnostics/rootfs/usr/src/app /usr/src/app
-COPY deye-solarman-diagnostics/run.sh /run.sh
+COPY rootfs/usr/src/app /usr/src/app
+COPY run.sh /run.sh
 
 RUN chmod a+x /run.sh
 
