@@ -62,6 +62,14 @@ class AdvancedConfig:
 
 
 @dataclass(slots=True)
+class ScanConfig:
+	mode: str
+	report_file: str
+	detected_sensors_file: str
+	bms_pack_count: int
+
+
+@dataclass(slots=True)
 class SensorDefinition:
 	key: str
 	name: str
@@ -105,3 +113,4 @@ class AppConfig:
 	profiles: ProfilesConfig
 	polling: PollingConfig
 	advanced: AdvancedConfig
+	scan: ScanConfig

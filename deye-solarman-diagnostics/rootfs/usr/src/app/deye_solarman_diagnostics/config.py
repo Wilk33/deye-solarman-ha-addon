@@ -11,6 +11,7 @@ from .models import LoggerConfig
 from .models import MqttConfig
 from .models import PollingConfig
 from .models import ProfilesConfig
+from .models import ScanConfig
 
 
 OPTIONS_PATH=Path("/data/options.json")
@@ -30,6 +31,15 @@ def load_config(path: Path=OPTIONS_PATH) -> AppConfig:
 	profiles=options["profiles"]
 	polling=options["polling"]
 	advanced=options["advanced"]
+	scan=options.get(
+		"scan",
+		{
+			"mode": "disabled",
+			"report_file": "/share/deye_solarman_candidate_scan.json",
+			"detected_sensors_file": "/config/detected_sensors.yaml",
+			"bms_pack_count": 4,
+		},
+	)
 
 	default_profile=profiles["default_profile"]
 	if isinstance(default_profile, str):
@@ -37,6 +47,10 @@ def load_config(path: Path=OPTIONS_PATH) -> AppConfig:
 	logger_serial_number=int(logger["serial_number"])
 	if logger_serial_number <= 0:
 		raise ValueError("logger.serial_number must be the positive serial number of the Solarman logger")
+	if scan["mode"] not in {"disabled","scan_only","scan_and_monitor"}:
+		raise ValueError("scan.mode must be disabled, scan_only, or scan_and_monitor")
+	if not 1 <= int(scan["bms_pack_count"]) <= 10:
+		raise ValueError("scan.bms_pack_count must be between 1 and 10")
 
 	return AppConfig(
 		logger=LoggerConfig(
@@ -83,5 +97,11 @@ def load_config(path: Path=OPTIONS_PATH) -> AppConfig:
 		advanced=AdvancedConfig(
 			emit_raw_topics=bool(advanced["emit_raw_topics"]),
 			emit_scan_report=bool(advanced["emit_scan_report"]),
+		),
+		scan=ScanConfig(
+			mode=scan["mode"],
+			report_file=scan["report_file"],
+			detected_sensors_file=scan["detected_sensors_file"],
+			bms_pack_count=int(scan["bms_pack_count"]),
 		),
 	)

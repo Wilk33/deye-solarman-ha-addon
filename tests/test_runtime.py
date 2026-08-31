@@ -7,6 +7,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import yaml
+
 
 APP_ROOT=Path(__file__).resolve().parents[1] / "deye-solarman-diagnostics" / "rootfs" / "usr" / "src" / "app"
 sys.path.insert(0, str(APP_ROOT))
@@ -23,6 +25,11 @@ from deye_solarman_diagnostics.models import SensorDefinition
 from deye_solarman_diagnostics.models import SensorState
 from deye_solarman_diagnostics.mqtt import MqttPublisher
 from deye_solarman_diagnostics.scheduler import group_sensors_for_read
+from deye_solarman_diagnostics.scan_catalog import ScanCandidate
+from deye_solarman_diagnostics.scan_catalog import load_scan_candidates
+from deye_solarman_diagnostics.scanner import load_monitored_definitions
+from deye_solarman_diagnostics.scanner import save_detected_sensors
+from deye_solarman_diagnostics.scanner import scan_candidates
 from deye_solarman_diagnostics.storage import load_state
 from deye_solarman_diagnostics.storage import save_state
 
@@ -55,6 +62,11 @@ class FakeSolarman:
 	def read_holding_registers(self, register: int, count: int) -> list[int]:
 		self.calls.append((register, count))
 		return self.values
+
+
+class FailingSolarman:
+	def read_holding_registers(self, register: int, count: int) -> list[int]:
+		raise RuntimeError("Modbus exception: illegal data address")
 
 
 def make_options(logger_serial_number: int=3556142832) -> dict[str, object]:
@@ -129,6 +141,23 @@ class RuntimeTests(unittest.TestCase):
 			config=load_config(options_path)
 
 		self.assertEqual(config.profiles.default_profile, ["deye_battery_packs"])
+		self.assertEqual(config.scan.mode, "disabled")
+
+	def test_config_accepts_manual_scan_options(self) -> None:
+		options=make_options()
+		options["scan"]={
+			"mode": "scan_only",
+			"report_file": "/share/candidate-scan.json",
+			"detected_sensors_file": "/config/detected_sensors.yaml",
+			"bms_pack_count": 6,
+		}
+		with tempfile.TemporaryDirectory() as directory:
+			options_path=Path(directory) / "options.json"
+			options_path.write_text(json.dumps(options), encoding="utf-8")
+			config=load_config(options_path)
+
+		self.assertEqual(config.scan.mode, "scan_only")
+		self.assertEqual(config.scan.bms_pack_count, 6)
 
 	def test_config_rejects_placeholder_logger_serial(self) -> None:
 		with tempfile.TemporaryDirectory() as directory:
@@ -141,6 +170,97 @@ class RuntimeTests(unittest.TestCase):
 	def test_unknown_profile_fails_before_polling(self) -> None:
 		with self.assertRaisesRegex(ValueError, "Unknown sensor profile"):
 			load_sensor_definitions(["not_a_profile"], "does-not-exist.yaml")
+
+	def test_catalog_covers_live_telemetry_and_configured_bms_packs(self) -> None:
+		candidates=load_scan_candidates(4)
+		by_key={candidate.sensor.key: candidate.sensor for candidate in candidates}
+
+		self.assertEqual(len(candidates), 124)
+		self.assertEqual(by_key["grid_power_total"].registers, [619])
+		self.assertEqual(by_key["pv_energy_total"].registers, [534,535])
+		self.assertEqual(by_key["pv_energy_total"].word_order, "low_high")
+		self.assertEqual(by_key["battery_2_voltage"].registers, [10078])
+		self.assertEqual(by_key["battery_4_cycles"].registers, [10170])
+		self.assertEqual(by_key["battery_1_temperature"].offset, -100.0)
+		self.assertEqual(by_key["battery_1_soc"].multiplier, 0.1)
+
+	def test_candidate_scan_reports_raw_hex_and_supported_status(self) -> None:
+		candidate=ScanCandidate(
+			SensorDefinition("battery_voltage", "Battery Voltage", [587], "uint16", 0.01, unit="V"),
+			"documented",
+			"test",
+		)
+		solarman=FakeSolarman([5240])
+
+		report=scan_candidates([candidate], solarman, make_polling())
+
+		self.assertEqual(report[0]["status"], "supported")
+		self.assertEqual(report[0]["raw_hex"], ["0x1478"])
+		self.assertEqual(report[0]["value"], 52.4)
+
+	def test_candidate_scan_identifies_unsupported_modbus_address(self) -> None:
+		candidate=ScanCandidate(
+			SensorDefinition("unknown", "Unknown", [65535], "uint16"),
+			"candidate",
+			"test",
+		)
+
+		report=scan_candidates([candidate], FailingSolarman(), make_polling())
+
+		self.assertEqual(report[0]["status"], "unsupported")
+
+	def test_detected_sensor_selection_is_preserved_and_loaded(self) -> None:
+		report=[
+			{
+				"key": "battery_2_voltage",
+				"name": "Battery 2 Voltage",
+				"definition": {
+					"key": "battery_2_voltage",
+					"name": "Battery 2 Voltage",
+					"registers": [10078],
+					"type": "uint16",
+					"multiplier": 0.1,
+					"offset": 0.0,
+					"unit": "V",
+					"word_order": "high_low",
+					"schedule": "default",
+					"read_every": 60,
+					"report_every": 300,
+					"change_by": 0.0,
+					"enabled": False,
+					"retain": True,
+					"device_class": "voltage",
+					"state_class": "measurement",
+					"icon": "",
+					"category": "",
+					"topic_suffix": "battery_2/voltage",
+					"attributes": {},
+				},
+				"status": "supported",
+				"raw_registers": [524],
+				"raw_hex": ["0x020C"],
+				"decoded": 524,
+				"value": 52.4,
+				"latency_ms": 1.0,
+				"verification": "candidate",
+				"description": "test",
+			}
+		]
+		with tempfile.TemporaryDirectory() as directory:
+			detected_path=Path(directory) / "detected_sensors.yaml"
+			save_detected_sensors(str(detected_path), report)
+			payload=yaml.safe_load(detected_path.read_text(encoding="utf-8"))
+			payload["available_sensors"][0]["monitor"]=True
+			payload["available_sensors"][0]["definition"]["read_every"]=120
+			detected_path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+
+			save_detected_sensors(str(detected_path), report)
+			selected=load_monitored_definitions(str(detected_path))
+			loaded=load_sensor_definitions(["deye_battery_packs"], "does-not-exist.yaml", str(detected_path))
+
+			self.assertEqual(selected[0]["read_every"], 120)
+			self.assertTrue(selected[0]["enabled"])
+			self.assertTrue(next(sensor for sensor in loaded if sensor.key == "battery_2_voltage").enabled)
 
 	def test_non_contiguous_registers_are_decoded_by_address(self) -> None:
 		sensor=SensorDefinition(

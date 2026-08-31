@@ -9,12 +9,17 @@ import yaml
 
 from .defaults import DEFAULT_PROFILES
 from .models import SensorDefinition
+from .scanner import load_monitored_definitions
 
 
 SUPPORTED_REGISTER_TYPES={"uint16","int16","uint32","int32","hex"}
 
 
-def load_sensor_definitions(profile_names: list[str], overrides_file: str) -> list[SensorDefinition]:
+def load_sensor_definitions(
+	profile_names: list[str],
+	overrides_file: str,
+	detected_sensors_file: str | None=None,
+) -> list[SensorDefinition]:
 	unknown_profiles=[name for name in profile_names if name not in DEFAULT_PROFILES]
 	if unknown_profiles:
 		raise ValueError(f"Unknown sensor profile(s): {', '.join(unknown_profiles)}")
@@ -23,25 +28,21 @@ def load_sensor_definitions(profile_names: list[str], overrides_file: str) -> li
 	for profile_name in profile_names:
 		sensors.extend(replace(sensor) for sensor in DEFAULT_PROFILES.get(profile_name,[]))
 
-	return _validate_sensor_definitions(_apply_overrides(sensors, Path(overrides_file)))
+	return _validate_sensor_definitions(
+		_apply_overrides(sensors, Path(overrides_file), detected_sensors_file)
+	)
 
 
-def _apply_overrides(defaults: list[SensorDefinition], overrides_path: Path) -> list[SensorDefinition]:
-	if not overrides_path.exists():
-		return defaults
-
-	with overrides_path.open("r", encoding="utf-8") as handle:
-		payload=yaml.safe_load(handle) or {}
-
-	override_items=payload.get("sensors",[])
-	if not isinstance(override_items, list):
-		raise ValueError("user_sensors.yaml: sensors must be a list")
-
-	overrides: dict[str, dict[str, Any]]={}
-	for index, item in enumerate(override_items):
-		if not isinstance(item, dict) or not isinstance(item.get("key"), str) or not item["key"]:
-			raise ValueError(f"user_sensors.yaml: sensors[{index}].key must be a non-empty string")
-		overrides[item["key"]]=item
+def _apply_overrides(
+	defaults: list[SensorDefinition],
+	overrides_path: Path,
+	detected_sensors_file: str | None,
+) -> list[SensorDefinition]:
+	overrides={
+		item["key"]: item
+		for item in _load_monitored_items(detected_sensors_file)
+	}
+	overrides.update(_load_override_items(overrides_path))
 	merged: list[SensorDefinition]=[]
 
 	for sensor in defaults:
@@ -63,6 +64,35 @@ def _apply_overrides(defaults: list[SensorDefinition], overrides_path: Path) -> 
 		merged.append(_sensor_from_override(override))
 
 	return merged
+
+
+def _load_override_items(overrides_path: Path) -> dict[str, dict[str, Any]]:
+	if not overrides_path.exists():
+		return {}
+	with overrides_path.open("r", encoding="utf-8") as handle:
+		payload=yaml.safe_load(handle) or {}
+	if not isinstance(payload, dict):
+		raise ValueError("user_sensors.yaml: root value must be an object")
+	override_items=payload.get("sensors",[])
+	if not isinstance(override_items, list):
+		raise ValueError("user_sensors.yaml: sensors must be a list")
+
+	overrides: dict[str, dict[str, Any]]={}
+	for index, item in enumerate(override_items):
+		if not isinstance(item, dict) or not isinstance(item.get("key"), str) or not item["key"]:
+			raise ValueError(f"user_sensors.yaml: sensors[{index}].key must be a non-empty string")
+		overrides[item["key"]]=item
+	return overrides
+
+
+def _load_monitored_items(detected_sensors_file: str | None) -> list[dict[str, Any]]:
+	if not detected_sensors_file:
+		return []
+	items=load_monitored_definitions(detected_sensors_file)
+	for index, item in enumerate(items):
+		if not isinstance(item.get("key"), str) or not item["key"]:
+			raise ValueError(f"detected_sensors.yaml: selected definition {index} has an invalid key")
+	return items
 
 
 def _validate_sensor_definitions(sensors: list[SensorDefinition]) -> list[SensorDefinition]:

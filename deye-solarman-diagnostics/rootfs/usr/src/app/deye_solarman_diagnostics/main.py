@@ -14,6 +14,9 @@ from .models import SensorState
 from .models import PollingConfig
 from .mqtt import MqttPublisher
 from .scheduler import group_sensors_for_read
+from .scan_catalog import load_scan_candidates
+from .scanner import save_detected_sensors
+from .scanner import scan_candidates
 from .solarman import SolarmanClient
 from .storage import load_state
 from .storage import save_scan_report
@@ -26,7 +29,11 @@ LOGGER=logging.getLogger(__name__)
 def main() -> None:
 	configure_logging()
 	config=load_config()
-	sensors=load_sensor_definitions(config.profiles.default_profile, config.profiles.overrides_file)
+	sensors=load_sensor_definitions(
+		config.profiles.default_profile,
+		config.profiles.overrides_file,
+		config.scan.detected_sensors_file,
+	)
 	state=load_state(config.profiles.state_file)
 
 	for sensor in sensors:
@@ -47,6 +54,25 @@ def main() -> None:
 				config.polling.startup_probe_count,
 				probe_values,
 			)
+			if config.scan.mode != "disabled":
+				scan_report=scan_candidates(
+					load_scan_candidates(config.scan.bms_pack_count),
+					solarman,
+					config.polling,
+				)
+				save_scan_report(config.scan.report_file, scan_report)
+				save_detected_sensors(config.scan.detected_sensors_file, scan_report)
+				_log_scan_summary(scan_report, config.scan.detected_sensors_file)
+				if config.scan.mode == "scan_only":
+					LOGGER.info("Scan complete. Add-on is stopping without MQTT publishing.")
+					return
+				sensors=load_sensor_definitions(
+					config.profiles.default_profile,
+					config.profiles.overrides_file,
+					config.scan.detected_sensors_file,
+				)
+				for sensor in sensors:
+					state.setdefault(sensor.key, SensorState())
 
 			mqtt.connect()
 			for sensor in sensors:
@@ -80,6 +106,18 @@ def main() -> None:
 
 		if config.polling.allow_reconnect:
 			time.sleep(config.logger.reconnect_delay)
+
+
+def _log_scan_summary(report: list[dict[str, Any]], detected_sensors_file: str) -> None:
+	statuses: dict[str, int]={}
+	for result in report:
+		status=str(result["status"])
+		statuses[status]=statuses.get(status,0)+1
+	LOGGER.info(
+		"Candidate scan complete results=%s file=%s",
+		", ".join(f"{status}={count}" for status,count in sorted(statuses.items())),
+		detected_sensors_file,
+	)
 
 
 def run_iteration(

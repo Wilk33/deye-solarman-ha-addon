@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.0
+
+- Add manual, read-only candidate scanning for 68 documented SG04LP3 / SG05LP3 telemetry values and 14 diagnostic values per BMS pack.
+- Store scan evidence and persistent user selection in `/share/deye_solarman_candidate_scan.json` and `/config/detected_sensors.yaml`.
+- Publish only entries selected with `monitor: true`; `scan_only` does not connect to MQTT or create discovery entities.
+- Correct per-pack BMS register offsets and temperature and SOC scaling in the default profile.
+
 ## 0.1.4
 
 - Validate Solarman logger and user sensor configuration before polling.
