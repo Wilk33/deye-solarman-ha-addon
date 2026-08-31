@@ -46,8 +46,7 @@ inverter:
 	model: SG05LP3
 
 profiles:
-	default_profile:
-		- deye_battery_packs
+	default_profile: deye_battery_packs
 	overrides_file: /config/user_sensors.yaml
 	state_file: /config/runtime_state.json
 	scan_report_file: /share/deye_solarman_scan_report.json
@@ -70,7 +69,9 @@ advanced:
 
 ## User overrides
 
-Create `/addon_configs/<slug>/user_sensors.yaml` and redefine only the fields you need to change.
+Create the file configured by `profiles.overrides_file`. With the default configuration this is `/config/user_sensors.yaml` inside the add-on.
+
+Use `schedule: slow` to make a sensor follow `polling.slow_interval`. The default `schedule: default` follows its own `read_every` value.
 
 Example:
 
@@ -79,6 +80,7 @@ sensors:
 	- key: battery_1_current
 		type: int16
 		multiplier: 0.1
+		schedule: default
 		read_every: 30
 		report_every: 120
 ```

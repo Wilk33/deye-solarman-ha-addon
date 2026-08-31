@@ -32,45 +32,54 @@ def main() -> None:
 	for sensor in sensors:
 		state.setdefault(sensor.key, SensorState())
 
-	solarman=SolarmanClient(config.logger)
-	mqtt=MqttPublisher(config.mqtt, config.inverter)
-
-	try:
-		solarman.connect()
-		probe_values=solarman.probe(
-			config.polling.startup_probe_register,
-			config.polling.startup_probe_count,
-		)
-		LOGGER.info(
-			"Startup probe ok register=%s count=%s values=%s",
-			config.polling.startup_probe_register,
-			config.polling.startup_probe_count,
-			probe_values,
-		)
-
-		mqtt.connect()
-		for sensor in sensors:
-			if sensor.enabled:
-				mqtt.publish_discovery(sensor)
-
-		while True:
-			iteration_report=run_iteration(
-				sensors,
-				state,
-				solarman,
-				mqtt,
-				config.polling,
-				config.advanced.emit_raw_topics,
+	while True:
+		solarman=SolarmanClient(config.logger)
+		mqtt=MqttPublisher(config.mqtt, config.inverter)
+		try:
+			solarman.connect()
+			probe_values=solarman.probe(
+				config.polling.startup_probe_register,
+				config.polling.startup_probe_count,
 			)
-			save_state(config.profiles.state_file, state)
-			if config.advanced.emit_scan_report:
-				save_scan_report(config.profiles.scan_report_file, iteration_report)
-			time.sleep(config.polling.default_interval)
-	except KeyboardInterrupt:
-		LOGGER.info("Stopping add-on")
-	finally:
-		mqtt.disconnect()
-		solarman.disconnect()
+			LOGGER.info(
+				"Startup probe ok register=%s count=%s values=%s",
+				config.polling.startup_probe_register,
+				config.polling.startup_probe_count,
+				probe_values,
+			)
+
+			mqtt.connect()
+			for sensor in sensors:
+				if sensor.enabled:
+					mqtt.publish_discovery(sensor)
+
+			while True:
+				iteration_report=run_iteration(
+					sensors,
+					state,
+					solarman,
+					mqtt,
+					config.polling,
+					config.advanced.emit_raw_topics,
+				)
+				save_state(config.profiles.state_file, state)
+				if config.advanced.emit_scan_report:
+					save_scan_report(config.profiles.scan_report_file, iteration_report)
+				time.sleep(config.polling.default_interval)
+		except KeyboardInterrupt:
+			LOGGER.info("Stopping add-on")
+			return
+		except Exception:
+			LOGGER.exception("Add-on cycle failed")
+			if not config.polling.allow_reconnect:
+				raise
+			LOGGER.info("Retrying connection in %s seconds", config.logger.reconnect_delay)
+		finally:
+			mqtt.disconnect()
+			solarman.disconnect()
+
+		if config.polling.allow_reconnect:
+			time.sleep(config.logger.reconnect_delay)
 
 
 def run_iteration(
@@ -85,13 +94,13 @@ def run_iteration(
 	due_sensors=[
 		sensor
 		for sensor in sensors
-		if sensor.enabled and _is_due(sensor, state[sensor.key])
+		if sensor.enabled and _is_due(sensor, state[sensor.key], polling)
 	]
 	groups=group_sensors_for_read(due_sensors, polling)
 
-	for group in groups:
-		group_start=group[0].registers[0]
-		group_end=max(sensor.registers[-1] for sensor in group)
+	for index, group in enumerate(groups):
+		group_start=min(register for sensor in group for register in sensor.registers)
+		group_end=max(register for sensor in group for register in sensor.registers)
 		count=group_end-group_start+1
 
 		try:
@@ -111,18 +120,35 @@ def run_iteration(
 						"error": str(exc),
 					}
 				)
+			if index < len(groups)-1 and polling.read_message_spacing > 0:
+				time.sleep(polling.read_message_spacing)
 			continue
 
 		for sensor in group:
-			report.append(_handle_sensor(sensor, values, group_start, latency_ms, state[sensor.key], mqtt, emit_raw_topics))
+			report.append(
+				_handle_sensor(
+					sensor,
+					values,
+					group_start,
+					latency_ms,
+					state[sensor.key],
+					mqtt,
+					emit_raw_topics,
+					polling.publish_unchanged_every,
+				)
+			)
+
+		if index < len(groups)-1 and polling.read_message_spacing > 0:
+			time.sleep(polling.read_message_spacing)
 
 	return report
 
 
-def _is_due(sensor: SensorDefinition, sensor_state: SensorState) -> bool:
+def _is_due(sensor: SensorDefinition, sensor_state: SensorState, polling: PollingConfig) -> bool:
 	if sensor_state.last_read_at == 0:
 		return True
-	return time.time()-sensor_state.last_read_at >= sensor.read_every
+	interval=polling.slow_interval if sensor.schedule == "slow" else sensor.read_every
+	return time.time()-sensor_state.last_read_at >= interval
 
 
 def _handle_sensor(
@@ -133,10 +159,9 @@ def _handle_sensor(
 	sensor_state: SensorState,
 	mqtt: MqttPublisher,
 	emit_raw_topics: bool,
+	publish_unchanged_every: int,
 ) -> dict[str, Any]:
-	offset_start=sensor.registers[0]-group_start
-	offset_end=offset_start+len(sensor.registers)
-	raw_values=group_values[offset_start:offset_end]
+	raw_values=[group_values[register-group_start] for register in sensor.registers]
 	decoded=decode_registers(raw_values, sensor.register_type, sensor.word_order)
 	value=apply_transform(decoded, sensor.multiplier, sensor.offset)
 	now=time.time()
@@ -147,7 +172,7 @@ def _handle_sensor(
 	sensor_state.raw_registers=raw_values
 	sensor_state.latency_ms=latency_ms
 
-	should_publish=_should_publish(sensor, sensor_state, now, value)
+	should_publish=_should_publish(sensor, sensor_state, now, value, publish_unchanged_every)
 	if should_publish:
 		attributes={
 			"raw_registers": raw_values,
@@ -158,6 +183,7 @@ def _handle_sensor(
 			"offset": sensor.offset,
 			"unit": sensor.unit,
 			"word_order": sensor.word_order,
+			"schedule": sensor.schedule,
 			"read_every": sensor.read_every,
 			"report_every": sensor.report_every,
 			"latency_ms": round(latency_ms,2),
@@ -187,6 +213,7 @@ def _should_publish(
 	sensor_state: SensorState,
 	now: float,
 	value: int | float | str,
+	publish_unchanged_every: int,
 ) -> bool:
 	if sensor_state.last_published_value is None:
 		return True
@@ -194,4 +221,5 @@ def _should_publish(
 		return value != sensor_state.last_published_value
 	if abs(float(value)-float(sensor_state.last_published_value)) >= sensor.change_by:
 		return True
-	return now-sensor_state.last_published_at >= sensor.report_every
+	report_interval=min(sensor.report_every, publish_unchanged_every)
+	return now-sensor_state.last_published_at >= report_interval

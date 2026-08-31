@@ -34,12 +34,15 @@ def load_config(path: Path=OPTIONS_PATH) -> AppConfig:
 	default_profile=profiles["default_profile"]
 	if isinstance(default_profile, str):
 		default_profile=[default_profile]
+	logger_serial_number=int(logger["serial_number"])
+	if logger_serial_number <= 0:
+		raise ValueError("logger.serial_number must be the positive serial number of the Solarman logger")
 
 	return AppConfig(
 		logger=LoggerConfig(
 			host=logger["host"],
 			port=int(logger["port"]),
-			serial_number=int(logger["serial_number"]),
+			serial_number=logger_serial_number,
 			modbus_id=int(logger["modbus_id"]),
 			timeout=int(logger["timeout"]),
 			reconnect_delay=int(logger["reconnect_delay"]),

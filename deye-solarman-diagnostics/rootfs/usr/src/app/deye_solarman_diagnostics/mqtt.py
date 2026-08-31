@@ -40,7 +40,7 @@ class MqttPublisher:
 			"name": sensor.name,
 			"state_topic": state_topic,
 			"unique_id": f"deye_solarman_{self._inverter.serial_number}_{sensor.key}",
-			"object_id": f"deye_solarman_{sensor.key}",
+			"object_id": f"deye_solarman_{self._inverter.serial_number}_{sensor.key}",
 			"json_attributes_topic": attributes_topic,
 			"device": {
 				"identifiers": [f"deye_solarman_{self._inverter.serial_number}"],
@@ -49,8 +49,9 @@ class MqttPublisher:
 				"model": self._inverter.model,
 				"serial_number": self._inverter.serial_number,
 			},
-			"entity_category": sensor.category,
 		}
+		if sensor.category:
+			payload["entity_category"]=sensor.category
 		if sensor.unit:
 			payload["unit_of_measurement"]=sensor.unit
 		if sensor.device_class:
@@ -62,15 +63,16 @@ class MqttPublisher:
 		self._client.publish(topic, json.dumps(payload), retain=self._config.retain)
 
 	def publish_state(self, sensor: SensorDefinition, value: int | float | str, attributes: dict[str, Any]) -> None:
-		self._client.publish(self.state_topic(sensor), value, retain=sensor.retain)
+		retain=self._config.retain and sensor.retain
+		self._client.publish(self.state_topic(sensor), value, retain=retain)
 		self._client.publish(
 			f"{self.state_topic(sensor)}/attributes",
 			json.dumps(attributes),
-			retain=sensor.retain,
+			retain=retain,
 		)
 
 	def publish_raw(self, sensor: SensorDefinition, raw_registers: list[int]) -> None:
-		self._client.publish(f"{self.state_topic(sensor)}/raw", json.dumps(raw_registers), retain=sensor.retain)
+		self._client.publish(f"{self.state_topic(sensor)}/raw", json.dumps(raw_registers), retain=self._config.retain and sensor.retain)
 
 	def state_topic(self, sensor: SensorDefinition) -> str:
 		suffix=sensor.topic_suffix or sensor.key

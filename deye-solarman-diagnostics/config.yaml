@@ -1,6 +1,6 @@
 name: Deye Solarman Diagnostics
 description: Diagnostics add-on for Deye inverter battery data through a local Solarman logger
-version: "0.1.2"
+version: "0.1.4"
 slug: deye-solarman-diagnostics
 url: "https://github.com/Wilk33/deye-solarman-ha-addon"
 services:
@@ -38,8 +38,7 @@ options:
     manufacturer: Deye
     model: SG05LP3
   profiles:
-    default_profile:
-      - deye_battery_packs
+    default_profile: deye_battery_packs
     overrides_file: /config/user_sensors.yaml
     state_file: /config/runtime_state.json
     scan_report_file: /share/deye_solarman_scan_report.json

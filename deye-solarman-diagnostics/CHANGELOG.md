@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.4
+
+- Validate Solarman logger and user sensor configuration before polling.
+- Correctly decode non-contiguous sensor register lists and respect MQTT retain and polling options.
+- Recover safely after startup connection failures and protect runtime state files from partial writes.
+
+## 0.1.3
+
+- Fix the default profile option format required by the Home Assistant configuration editor.
+
 ## 0.1.2
 
 - Pin pysolarmanv5 and PyYAML to published releases compatible with Alpine Linux.

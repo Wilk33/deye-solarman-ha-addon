@@ -71,6 +71,7 @@ class SensorDefinition:
 	offset: float=0.0
 	unit: str=""
 	word_order: str="high_low"
+	schedule: str="default"
 	read_every: int=60
 	report_every: int=300
 	change_by: float=0.0
@@ -79,7 +80,7 @@ class SensorDefinition:
 	device_class: str=""
 	state_class: str=""
 	icon: str=""
-	category: str="diagnostic"
+	category: str=""
 	topic_suffix: str=""
 	attributes: dict[str, Any]=field(default_factory=dict)
 
