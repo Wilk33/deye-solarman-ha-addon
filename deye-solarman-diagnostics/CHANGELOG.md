@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.0
+
+- Promote Deye Solarman Diagnostics from beta to the first stable release after transport, scanning, MQTT Discovery, runtime reload, remote catalog, diagnostics, and custom-sensor workflows were validated together.
+- Document the complete operating model, installation, configuration, MQTT topics, scan lifecycle, custom sensors, formula sandbox, diagnostics, and operational limits in the repository README.
+
 ## 0.8.1
 
 - Treat an empty `/config/custom_sensors.yaml` list as a valid initial state, so the add-on starts before the first custom sensor is created.
