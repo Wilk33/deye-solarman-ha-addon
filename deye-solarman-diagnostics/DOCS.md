@@ -81,7 +81,7 @@ Parametry loggera musza wskazywac logger Solarman, nie adres IP samego falownika
 
 ### Katalog rejestrow z GitHub
 
-Przy starcie dodatek pobiera plik YAML `catalog-overrides.yaml` z `catalog.url`. Plik pozwala dodawac, poprawiac i usuwac definicje kandydatow skanowania bez aktualizacji obrazu dodatku. Pobierane sa wylacznie dane YAML - dodatek nie wykonuje zdalnego kodu. Po udanej walidacji kopia jest atomowo zapisywana w `catalog.cache_file`.
+Przy starcie dodatek pobiera plik YAML `catalog-overrides.yaml` z `catalog.url`. Plik pozwala dodawac, poprawiac i usuwac definicje kandydatow skanowania bez aktualizacji obrazu dodatku. Pobierane sa wylacznie dane YAML - dodatek nie wykonuje zdalnego kodu. Po udanej walidacji kopia jest atomowo zapisywana w `catalog.cache_file`. Przycisk `Usun sensory` wymusza takie samo pobranie niezaleznie od opcji `refresh_on_start`.
 
 Gdy GitHub lub Internet jest niedostepny, dodatek wykorzystuje ostatnia poprawna kopie z cache. Gdy cache takze nie istnieje albo jest bledny, uzywany jest katalog wbudowany w obraz dodatku. Nie zmienia to pliku `/config/detected_sensors.yaml` ani istniejacych wyborow MQTT.
 
@@ -118,6 +118,8 @@ Po aktualizacji do wersji `0.3.4` Home Assistant pokazuje w panelu bocznym pozyc
 Panel umozliwia:
 
 - uruchomienie recznego skanu przyciskiem `Skanuj teraz`;
+- przywrocenie katalogowych ustawien domyslnych znalezionych czujnikow przyciskiem `Reset konfiguracji`;
+- usuniecie lokalnej listy wykryc i jej konfiguracji oraz odswiezenie cache katalogu z GitHub przyciskiem `Usun sensory`;
 - przegladanie wartosci zdekodowanej, RAW i hex dla kazdego rejestru;
 - filtrowanie wedlug statusu i wyszukiwanie po nazwie, kluczu, kategorii lub rejestrze;
 - zaznaczenie encji do MQTT przeznikiem `MQTT`;
@@ -134,7 +136,7 @@ Wersja `0.4.0` rozpoznaje `Connection closed on read` i `Connection already clos
 
 Jesli panel nie reaguje, otworz narzedzia programistyczne przegladarki, wybierz `Console`, odswiez panel i skopiuj wszystkie wpisy `[Deye Solarman]` oraz ewentualne czerwone bledy. Rownoczesnie skopiuj log dodatku z chwili otwarcia panelu i klikniecia `Skanuj teraz`.
 
-Adresy rejestrow, klucze encji i ich lista nie sa edytowalne w panelu. Chroni to katalog przed przypadkowa zmiana definicji Modbus. Po zapisie panel wyswietla informacje o koniecznosci restartu dodatku. Restart jest wymagany, aby petla MQTT zaladowala nowy wybor.
+Adresy rejestrow, klucze encji i ich lista nie sa edytowalne w panelu. Chroni to katalog przed przypadkowa zmiana definicji Modbus. `Reset konfiguracji` zachowuje ostatni wynik odczytu, przywraca domyslne definicje katalogowe i wylacza wszystkie przelaczniki `MQTT`. `Usun sensory` usuwa lokalny plik wykryc `/config/detected_sensors.yaml`; po nim uruchom nowy skan. Reset i usuniecie dopisuja wczesniej wybrane encje do lokalnej kolejki usuniecia Discovery. Po restarcie dodatek publikuje retained, pusty komunikat `.../config` dla tych encji, aby Home Assistant je usunal. Restart jest wymagany, aby petla MQTT zaladowala nowy wybor i wykonala te usuniecia.
 
 ## Skanowanie i wybor encji
 

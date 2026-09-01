@@ -19,6 +19,10 @@ from .scheduler import group_sensors_for_read
 from .scan_catalog import load_scan_candidates
 from .remote_catalog import RemoteCatalog
 from .remote_catalog import load_remote_catalog
+from .scanner import clear_detected_sensors
+from .scanner import clear_pending_discovery_removals
+from .scanner import load_pending_discovery_removals
+from .scanner import reset_detected_sensors
 from .scanner import save_detected_sensors
 from .scanner import scan_candidates
 from .solarman import SolarmanClient
@@ -35,15 +39,29 @@ LOGGER=logging.getLogger(__name__)
 def main() -> None:
 	configure_logging()
 	config=load_config()
-	remote_catalog=load_remote_catalog(config.catalog)
 	access_lock=threading.Lock()
+	catalog_lock=threading.Lock()
+	catalog_state={"current": load_remote_catalog(config.catalog)}
+
+	def current_catalog() -> RemoteCatalog:
+		with catalog_lock:
+			return catalog_state["current"]
+
+	def refresh_catalog() -> RemoteCatalog:
+		catalog=load_remote_catalog(config.catalog,force_refresh=True)
+		with catalog_lock:
+			catalog_state["current"]=catalog
+		return catalog
+
 	panel=IngressPanel(
 		config.scan.detected_sensors_file,
-		lambda: _run_manual_scan(config,access_lock,remote_catalog),
+		lambda: _run_manual_scan(config,access_lock,current_catalog()),
+		lambda: _reset_panel_configuration(config,current_catalog()),
+		lambda: _clear_panel_sensors(config,refresh_catalog()),
 	)
 	panel.start()
 	try:
-		_run_addon(config,access_lock,remote_catalog)
+		_run_addon(config,access_lock,current_catalog())
 	finally:
 		panel.stop()
 
@@ -103,6 +121,12 @@ def _run_addon(config: Any, access_lock: Any, remote_catalog: RemoteCatalog) -> 
 					state.setdefault(sensor.key, SensorState())
 
 			mqtt.connect()
+			pending_removals=load_pending_discovery_removals(config.scan.detected_sensors_file)
+			for sensor_key in pending_removals:
+				mqtt.remove_discovery(sensor_key)
+			if pending_removals:
+				clear_pending_discovery_removals(config.scan.detected_sensors_file)
+				LOGGER.info("Removed MQTT Discovery entities=%s",len(pending_removals))
 			enabled_sensors=[sensor for sensor in sensors if sensor.enabled]
 			LOGGER.info(
 				"Publishing MQTT Discovery sensors=%s prefix=%s inverter_serial=%s",
@@ -168,6 +192,25 @@ def _run_manual_scan(config: Any, access_lock: Any, remote_catalog: RemoteCatalo
 		return {"count": len(scan_report),"statuses": statuses}
 	finally:
 		solarman.disconnect()
+
+
+def _reset_panel_configuration(config: Any, remote_catalog: RemoteCatalog) -> dict[str, Any]:
+	payload=reset_detected_sensors(
+		config.scan.detected_sensors_file,
+		load_scan_candidates(config.scan.bms_pack_count,remote_catalog),
+	)
+	LOGGER.info(
+		"Panel reset detected sensor configuration sensors=%s catalog_source=%s",
+		len(payload["available_sensors"]),
+		remote_catalog.source,
+	)
+	return payload
+
+
+def _clear_panel_sensors(config: Any, remote_catalog: RemoteCatalog) -> dict[str, Any]:
+	payload=clear_detected_sensors(config.scan.detected_sensors_file)
+	LOGGER.info("Panel cleared detected sensors catalog_source=%s",remote_catalog.source)
+	return payload
 
 
 def _wait_for_stop() -> None:

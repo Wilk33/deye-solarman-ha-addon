@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.0
+
+- Synchronize the Ingress document with Home Assistant theme variables at runtime, including theme changes after the panel is open.
+- Add panel actions to reset found sensors to catalog defaults and clear the local found-sensor list while refreshing the cached GitHub catalog.
+- Remove retained MQTT Discovery configurations for deselected or deleted panel sensors on the following add-on restart.
+- Keep scan, reset, delete, and MQTT-selection save as separate operations with explicit confirmation for destructive local actions.
+
 ## 0.4.0
 
 - Reconnect the Solarman TCP client immediately after the logger closes the connection, instead of continuing to poll a dead session.

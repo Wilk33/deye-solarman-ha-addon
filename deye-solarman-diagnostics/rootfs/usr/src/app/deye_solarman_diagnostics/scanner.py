@@ -135,6 +135,68 @@ def save_detected_sensors(path: str, report: list[dict[str, Any]]) -> None:
 	_write_yaml(target, payload)
 
 
+def reset_detected_sensors(path: str, candidates: list[ScanCandidate]) -> dict[str, Any]:
+	"""Restore catalog defaults for sensors already found by a scan."""
+	target=Path(path)
+	payload=load_detected_sensors(path)
+	entries=payload.get("available_sensors",[])
+	if not isinstance(entries,list):
+		raise ValueError("detected_sensors.yaml: available_sensors must be a list")
+
+	_queue_discovery_removals(target,entries)
+	defaults={candidate.sensor.key: _sensor_to_payload(candidate.sensor) for candidate in candidates}
+	reset_entries=[]
+	for entry in entries:
+		if not isinstance(entry,dict):
+			continue
+		key=entry.get("key")
+		if not isinstance(key,str) or key not in defaults:
+			continue
+		reset_entries.append(
+			{
+				"key": key,
+				"monitor": False,
+				"definition": defaults[key],
+				"last_scan": entry.get("last_scan",{}),
+			}
+		)
+
+	payload["available_sensors"]=reset_entries
+	_write_yaml(target,payload)
+	return payload
+
+
+def clear_detected_sensors(path: str) -> dict[str, Any]:
+	"""Remove all local scan results and their per-sensor configuration."""
+	target=Path(path)
+	target.parent.mkdir(parents=True,exist_ok=True)
+	previous=load_detected_sensors(path)
+	entries=previous.get("available_sensors",[])
+	if isinstance(entries,list):
+		_queue_discovery_removals(target,entries)
+	payload={
+		"version": 1,
+		"scanned_at": None,
+		"available_sensors": [],
+	}
+	_write_yaml(target,payload)
+	return payload
+
+
+def load_pending_discovery_removals(path: str) -> list[str]:
+	payload=_load_yaml_mapping(_discovery_removals_path(Path(path)))
+	keys=payload.get("keys",[])
+	if not isinstance(keys,list) or not all(isinstance(key,str) and key for key in keys):
+		raise ValueError("discovery removal queue: keys must be a list of sensor keys")
+	return keys
+
+
+def clear_pending_discovery_removals(path: str) -> None:
+	target=_discovery_removals_path(Path(path))
+	if target.exists():
+		target.unlink()
+
+
 def load_monitored_definitions(path: str) -> list[dict[str, Any]]:
 	target=Path(path)
 	if not target.exists():
@@ -333,3 +395,24 @@ def _write_yaml(target: Path, payload: dict[str, Any]) -> None:
 	with temporary.open("w", encoding="utf-8") as handle:
 		yaml.safe_dump(payload, handle, allow_unicode=False, sort_keys=False)
 	temporary.replace(target)
+
+
+def _queue_discovery_removals(target: Path, entries: list[Any]) -> None:
+	keys={
+		entry.get("key")
+		for entry in entries
+		if isinstance(entry,dict) and entry.get("monitor") is True and isinstance(entry.get("key"),str)
+	}
+	if not keys:
+		return
+	queue_path=_discovery_removals_path(target)
+	payload=_load_yaml_mapping(queue_path)
+	pending=payload.get("keys",[])
+	if not isinstance(pending,list):
+		pending=[]
+	keys.update(key for key in pending if isinstance(key,str) and key)
+	_write_yaml(queue_path,{"version": 1,"keys": sorted(keys)})
+
+
+def _discovery_removals_path(target: Path) -> Path:
+	return target.with_name("deye_solarman_discovery_removals.yaml")

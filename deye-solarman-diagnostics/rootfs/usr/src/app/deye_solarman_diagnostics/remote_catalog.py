@@ -23,8 +23,8 @@ class RemoteCatalog:
 	source: str
 
 
-def load_remote_catalog(config: CatalogConfig) -> RemoteCatalog:
-	if config.refresh_on_start:
+def load_remote_catalog(config: CatalogConfig, force_refresh: bool=False) -> RemoteCatalog:
+	if config.refresh_on_start or force_refresh:
 		try:
 			payload=_download(config.url,config.timeout)
 			_validate_payload(payload)

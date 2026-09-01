@@ -35,6 +35,9 @@ from deye_solarman_diagnostics.remote_catalog import load_remote_catalog
 from deye_solarman_diagnostics.supervisor import discover_mqtt_service
 from deye_solarman_diagnostics.solarman import SolarmanConnectionClosedError
 from deye_solarman_diagnostics.scanner import load_monitored_definitions
+from deye_solarman_diagnostics.scanner import clear_detected_sensors
+from deye_solarman_diagnostics.scanner import load_pending_discovery_removals
+from deye_solarman_diagnostics.scanner import reset_detected_sensors
 from deye_solarman_diagnostics.scanner import save_detected_sensors
 from deye_solarman_diagnostics.scanner import scan_candidates
 from deye_solarman_diagnostics.scanner import update_detected_sensors
@@ -281,6 +284,15 @@ class RuntimeTests(unittest.TestCase):
 		self.assertEqual(cached.source,"cache")
 		self.assertEqual(cached.sensors[0]["key"],"ac_temperature")
 
+	def test_remote_catalog_force_refresh_ignores_startup_setting(self) -> None:
+		payload={"version": 1,"sensors": []}
+		with tempfile.TemporaryDirectory() as directory:
+			config=CatalogConfig(False,"https://example.invalid/catalog.yaml",str(Path(directory) / "catalog.yaml"),1)
+			with patch("deye_solarman_diagnostics.remote_catalog.urlopen",return_value=FakeSupervisorResponse(payload)):
+				catalog=load_remote_catalog(config,force_refresh=True)
+
+		self.assertEqual(catalog.source,"github")
+
 	def test_candidate_scan_reports_raw_hex_and_supported_status(self) -> None:
 		candidate=ScanCandidate(
 			SensorDefinition("battery_voltage", "Battery Voltage", [587], "uint16", 0.01, unit="V"),
@@ -420,6 +432,44 @@ class RuntimeTests(unittest.TestCase):
 			self.assertEqual(entry["definition"]["read_every"],120)
 			self.assertFalse(entry["definition"]["retain"])
 
+	def test_detected_sensors_can_be_reset_to_catalog_defaults_or_cleared(self) -> None:
+		candidate=ScanCandidate(
+			SensorDefinition("battery_voltage","Battery Voltage",[10040],"uint16",0.1,unit="V",read_every=60),
+			"candidate",
+			"test",
+		)
+		report=[
+			{
+				"key": "battery_voltage",
+				"name": "Battery Voltage",
+				"definition": {
+					"key": "battery_voltage", "name": "Edited Voltage", "registers": [10040], "type": "uint16",
+					"multiplier": 0.2, "offset": 0.0, "unit": "V", "word_order": "high_low",
+					"schedule": "default", "read_every": 120, "report_every": 300, "change_by": 0.0,
+					"enabled": False, "retain": True, "device_class": "", "state_class": "", "icon": "",
+					"category": "", "topic_suffix": "battery_voltage", "attributes": {},
+				},
+				"status": "supported", "raw_registers": [524], "raw_hex": ["0x020C"], "decoded": 524,
+				"value": 52.4, "latency_ms": 1.0, "verification": "candidate", "description": "test",
+			}
+		]
+		with tempfile.TemporaryDirectory() as directory:
+			detected_path=Path(directory) / "detected_sensors.yaml"
+			save_detected_sensors(str(detected_path),report)
+			update_detected_sensors(str(detected_path),[{"key": "battery_voltage","monitor": True,"definition": {"name": "Custom","read_every": 120}}])
+
+			reset=reset_detected_sensors(str(detected_path),[candidate])
+			entry=reset["available_sensors"][0]
+			self.assertFalse(entry["monitor"])
+			self.assertEqual(entry["definition"]["name"],"Battery Voltage")
+			self.assertEqual(entry["definition"]["read_every"],60)
+			self.assertEqual(entry["last_scan"]["value"],52.4)
+			self.assertEqual(load_pending_discovery_removals(str(detected_path)),["battery_voltage"])
+
+			cleared=clear_detected_sensors(str(detected_path))
+			self.assertEqual(cleared["available_sensors"],[])
+			self.assertIsNone(cleared["scanned_at"])
+
 	def test_ingress_panel_exposes_and_updates_detected_sensors(self) -> None:
 		report=[
 			{
@@ -460,7 +510,15 @@ class RuntimeTests(unittest.TestCase):
 		with tempfile.TemporaryDirectory() as directory:
 			detected_path=Path(directory) / "detected_sensors.yaml"
 			save_detected_sensors(str(detected_path),report)
-			panel=IngressPanel(str(detected_path),lambda: {"count": 1},port=0)
+			reset_calls=[]
+			clear_calls=[]
+			panel=IngressPanel(
+				str(detected_path),
+				lambda: {"count": 1},
+				lambda: reset_calls.append(True) or {"available_sensors": []},
+				lambda: clear_calls.append(True) or {"available_sensors": []},
+				port=0,
+			)
 			panel.start()
 			try:
 				assert panel._server is not None
@@ -475,7 +533,10 @@ class RuntimeTests(unittest.TestCase):
 				self.assertIn('<base href="/api/hassio_ingress/example-token/">',page)
 				self.assertIn("char.charCodeAt(0) === 34",page)
 				self.assertIn("var(--primary-background-color",page)
-				self.assertIn("color-scheme: light dark",page)
+				self.assertIn("syncHomeAssistantTheme",page)
+				self.assertIn("Home Assistant theme synchronized",page)
+				self.assertIn("Reset konfiguracji",page)
+				self.assertIn("Usun sensory",page)
 				self.assertNotIn('"""',page)
 				with urlopen(f"{address}/panel.js") as response:
 					diagnostics_script=response.read().decode("utf-8")
@@ -505,6 +566,18 @@ class RuntimeTests(unittest.TestCase):
 					updated=json.loads(response.read())
 				self.assertTrue(updated["available_sensors"][0]["monitor"])
 				self.assertEqual(updated["available_sensors"][0]["definition"]["read_every"],120)
+
+				for endpoint,calls in [("/api/reset",reset_calls),("/api/sensors/delete",clear_calls)]:
+					request=Request(
+						f"{address}{endpoint}",
+						data=b"{}",
+						headers={"Content-Type": "application/json"},
+						method="POST",
+					)
+					with urlopen(request) as response:
+						response_payload=json.loads(response.read())
+					self.assertEqual(response_payload["available_sensors"],[])
+					self.assertEqual(len(calls),1)
 			finally:
 				panel.stop()
 
@@ -587,6 +660,21 @@ class RuntimeTests(unittest.TestCase):
 		)
 		payload=json.loads(client.messages[0][1])
 		self.assertEqual(payload["unit_of_measurement"],"°C")
+
+	def test_discovery_removal_publishes_retained_empty_configuration(self) -> None:
+		publisher=MqttPublisher(
+			MqttConfig("host",1883,"","","test","base","homeassistant",True),
+			InverterConfig("2507092018","Deye","Deye","SG05LP3"),
+		)
+		client=FakePahoClient()
+		publisher._client=client
+
+		publisher.remove_discovery("battery_voltage")
+
+		topic,payload,retain=client.messages[0]
+		self.assertEqual(topic,"homeassistant/sensor/deye_solarman_2507092018_battery_voltage/config")
+		self.assertEqual(payload,"")
+		self.assertTrue(retain)
 
 	def test_invalid_state_file_is_ignored_and_replaced_safely(self) -> None:
 		with tempfile.TemporaryDirectory() as directory:

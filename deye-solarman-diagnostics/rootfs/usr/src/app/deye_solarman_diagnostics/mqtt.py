@@ -56,10 +56,7 @@ class MqttPublisher:
 			pass
 
 	def publish_discovery(self, sensor: SensorDefinition) -> None:
-		topic=(
-			f"{self._config.discovery_prefix}/sensor/"
-			f"deye_solarman_{self._inverter.serial_number}_{sensor.key}/config"
-		)
+		topic=self.discovery_topic(sensor.key)
 		state_topic=self.state_topic(sensor)
 		attributes_topic=f"{state_topic}/attributes"
 		payload: dict[str, Any]={
@@ -87,6 +84,15 @@ class MqttPublisher:
 		if sensor.icon:
 			payload["icon"]=sensor.icon
 		self._publish_confirmed(topic,json.dumps(payload),self._config.retain,"discovery")
+
+	def remove_discovery(self, sensor_key: str) -> None:
+		self._publish_confirmed(self.discovery_topic(sensor_key),"",True,"discovery removal")
+
+	def discovery_topic(self, sensor_key: str) -> str:
+		return (
+			f"{self._config.discovery_prefix}/sensor/"
+			f"deye_solarman_{self._inverter.serial_number}_{sensor_key}/config"
+		)
 
 	def publish_state(self, sensor: SensorDefinition, value: int | float | str, attributes: dict[str, Any]) -> None:
 		retain=self._config.retain and sensor.retain

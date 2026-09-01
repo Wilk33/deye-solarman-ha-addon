@@ -25,10 +25,14 @@ class IngressPanel:
 		self,
 		detected_sensors_file: str,
 		scan_handler: Callable[[], dict[str, Any]],
+		reset_handler: Callable[[], dict[str, Any]] | None=None,
+		clear_handler: Callable[[], dict[str, Any]] | None=None,
 		port: int=8099,
 	) -> None:
 		self._detected_sensors_file=detected_sensors_file
 		self._scan_handler=scan_handler
+		self._reset_handler=reset_handler
+		self._clear_handler=clear_handler
 		self._port=port
 		self._job_lock=threading.Lock()
 		self._job={
@@ -101,6 +105,20 @@ class IngressPanel:
 							raise ValueError("sensors must be a list")
 						updated=update_detected_sensors(panel._detected_sensors_file,updates)
 						self._send_json(updated)
+						return
+					if path == "/api/reset":
+						if panel._reset_handler is None:
+							self._send_json({"error": "Reset is unavailable"},HTTPStatus.NOT_FOUND)
+							return
+						self._read_json()
+						self._send_json(panel._run_configuration_action(panel._reset_handler))
+						return
+					if path == "/api/sensors/delete":
+						if panel._clear_handler is None:
+							self._send_json({"error": "Delete is unavailable"},HTTPStatus.NOT_FOUND)
+							return
+						self._read_json()
+						self._send_json(panel._run_configuration_action(panel._clear_handler))
 						return
 				except ValueError as error:
 					self._send_json({"error": str(error)},HTTPStatus.BAD_REQUEST)
@@ -199,6 +217,12 @@ class IngressPanel:
 				"result": result,
 			}
 
+	def _run_configuration_action(self, handler: Callable[[], dict[str, Any]]) -> dict[str, Any]:
+		with self._job_lock:
+			if self._job["status"] == "running":
+				raise ValueError("Poczekaj na zakonczenie aktualnego skanu")
+			return handler()
+
 
 PANEL_HTML="""<!doctype html>
 <html lang="en">
@@ -209,7 +233,7 @@ PANEL_HTML="""<!doctype html>
 <title>Deye Solarman - Konfigurator encji</title>
 <style>
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
   --ink: var(--primary-text-color, #212121);
   --muted: var(--secondary-text-color, #727272);
   --paper: var(--primary-background-color, #fafafa);
@@ -243,6 +267,8 @@ h1 { margin: 0; font-size: clamp(2rem, 5vw, 4.2rem); letter-spacing: -.055em; li
 .button { border: 1px solid var(--solar); border-radius: 4px; padding: 11px 16px; background: var(--solar); color: var(--text-primary-color, #fff); font-weight: bold; }
 .button:hover { background: var(--green); }
 .button.secondary { background: var(--panel); color: var(--ink); }
+.button.danger { border-color: var(--red); background: var(--panel); color: var(--red); }
+.button.danger:hover { background: var(--red); color: var(--panel); }
 .button:disabled { opacity: .55; cursor: progress; }
 #save-message { color: var(--green); font-family: "Courier New", monospace; font-size: .82rem; }
 .summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); box-shadow: var(--shadow); }
@@ -298,6 +324,8 @@ summary { padding: 11px 0; color: var(--green); cursor: pointer; font-family: "C
 
   <section class="actions">
     <button class="button" id="scan-button" type="button">Skanuj teraz</button>
+    <button class="button secondary" id="reset-button" type="button">Reset konfiguracji</button>
+    <button class="button danger" id="delete-button" type="button">Usun sensory</button>
     <button class="button secondary" id="save-button" type="button">Zapisz wybor MQTT</button>
     <span id="save-message"></span>
   </section>
@@ -328,10 +356,61 @@ const esc=value=>String(value ?? "").replace(/[&<>'"]/g,char=>{
 });
 const numberValue=value=>Number.isFinite(Number(value)) ? Number(value) : "";
 const byId=id=>document.getElementById(id);
+const haThemeVariables=["--primary-background-color","--secondary-background-color","--card-background-color","--primary-text-color","--secondary-text-color","--divider-color","--primary-color","--accent-color","--error-color","--success-color","--input-fill-color","--ha-card-box-shadow","--text-primary-color","--paper-font-body1_-_font-family"];
+let themeSynchronized=false;
 
 console.info("[Deye Solarman] panel script started",{href:window.location.href,base:document.baseURI});
 window.addEventListener("error",event=>console.error("[Deye Solarman] browser error",event.error || event.message));
 window.addEventListener("unhandledrejection",event=>console.error("[Deye Solarman] unhandled promise rejection",event.reason));
+
+function themeIsDark(color) {
+  const probe=document.createElement("span");
+  probe.style.color=color;
+  document.body.append(probe);
+  const match=getComputedStyle(probe).color.match(/[0-9]+/g);
+  probe.remove();
+  if (!match || match.length < 3) return false;
+  const [red,green,blue]=match.map(Number);
+  return red*0.2126+green*0.7152+blue*0.0722 < 140;
+}
+
+function syncHomeAssistantTheme() {
+  try {
+    if (window.parent === window) return;
+    const parentDocument=window.parent.document;
+    const sources=[parentDocument.querySelector("home-assistant"),parentDocument.documentElement,parentDocument.body].filter(Boolean);
+    let background="";
+    let copied=0;
+    for (const variable of haThemeVariables) {
+      for (const source of sources) {
+        const value=window.parent.getComputedStyle(source).getPropertyValue(variable).trim();
+        if (!value) continue;
+        document.documentElement.style.setProperty(variable,value);
+        if (variable === "--primary-background-color") background=value;
+        copied+=1;
+        break;
+      }
+    }
+    if (background) document.documentElement.style.colorScheme=themeIsDark(background) ? "dark" : "light";
+    if (copied && !themeSynchronized) {
+      console.info("[Deye Solarman] Home Assistant theme synchronized",{variables:copied,dark:themeIsDark(background)});
+      themeSynchronized=true;
+    }
+  } catch (error) {
+    if (!themeSynchronized) console.info("[Deye Solarman] Home Assistant theme unavailable",error.message);
+  }
+}
+
+function installHomeAssistantThemeSync() {
+  syncHomeAssistantTheme();
+  try {
+    const observer=new MutationObserver(syncHomeAssistantTheme);
+    observer.observe(window.parent.document.documentElement,{attributes:true,subtree:true,attributeFilter:["class","style","data-theme"]});
+  } catch (error) {
+    console.info("[Deye Solarman] Theme change observer unavailable",error.message);
+  }
+  window.setInterval(syncHomeAssistantTheme,10000);
+}
 
 async function request(path,options={}) {
   const url=new URL(path,document.baseURI).toString();
@@ -438,6 +517,30 @@ async function save() {
   } catch (error) { message.textContent=`Blad zapisu: ${error.message}`; message.style.color="var(--red)"; }
 }
 
+async function resetConfiguration() {
+  if (!window.confirm("Przywrocic domyslne ustawienia katalogowe dla znalezionych czujnikow? Wszystkie wyboru MQTT zostana wylaczone.")) return;
+  const message=byId("save-message");
+  try {
+    const payload=await request("api/reset",{method:"POST",body:"{}"});
+    sensors=payload.available_sensors || [];
+    message.style.color="var(--green)";
+    message.textContent="Przywrocono domyslna konfiguracje. Zrestartuj dodatek, aby zatrzymac poprzednio wybrane publikacje MQTT.";
+    render();
+  } catch (error) { message.style.color="var(--red)"; message.textContent=`Blad resetu: ${error.message}`; }
+}
+
+async function deleteSensors() {
+  if (!window.confirm("Usunac lokalna liste znalezionych czujnikow i ich konfiguracje? Katalog rejestrow zostanie odswiezony z GitHub.")) return;
+  const message=byId("save-message");
+  try {
+    const payload=await request("api/sensors/delete",{method:"POST",body:"{}"});
+    sensors=payload.available_sensors || [];
+    message.style.color="var(--green)";
+    message.textContent="Usunieto lokalna liste. Katalog zostal odswiezony - uruchom skan, aby utworzyc nowa liste.";
+    render();
+  } catch (error) { message.style.color="var(--red)"; message.textContent=`Blad usuwania: ${error.message}`; }
+}
+
 async function refreshScanStatus() {
   const job=await request("api/scan-status");
   byId("scan-state").textContent=job.status.toUpperCase();
@@ -459,8 +562,11 @@ byId("scan-button").addEventListener("click",async()=>{
   catch (error) { byId("scan-message").textContent=error.message; }
 });
 byId("save-button").addEventListener("click",save);
+byId("reset-button").addEventListener("click",resetConfiguration);
+byId("delete-button").addEventListener("click",deleteSensors);
 byId("search").addEventListener("input",render);
 byId("status-filter").addEventListener("change",render);
+installHomeAssistantThemeSync();
 Promise.all([loadSensors(),refreshScanStatus()]).catch(error=>{
   console.error("[Deye Solarman] panel initialization failed",error);
   byId("scan-message").textContent=error.message;
