@@ -81,28 +81,31 @@ Parametry loggera musza wskazywac logger Solarman, nie adres IP samego falownika
 
 ### Katalog rejestrow z GitHub
 
-Przy starcie dodatek pobiera plik YAML `catalog-overrides.yaml` z `catalog.url`. Plik pozwala dodawac, poprawiac i usuwac definicje kandydatow skanowania bez aktualizacji obrazu dodatku. Pobierane sa wylacznie dane YAML - dodatek nie wykonuje zdalnego kodu. Po udanej walidacji kopia jest atomowo zapisywana w `catalog.cache_file`. Przycisk `Usun sensory` wymusza takie samo pobranie niezaleznie od opcji `refresh_on_start`.
+Przy starcie dodatek pobiera plik YAML `catalog-overrides.yaml` z `catalog.url`. Od wersji `1.1.0` jest to pelna mapa `version: 2`: zawiera 68 definicji telemetrycznych oraz szablon 14 pozycji BMS, ktory jest rozwijany zgodnie z `bms_pack_count`. Pobierane sa wylacznie dane YAML - dodatek nie wykonuje zdalnego kodu. Po udanej walidacji kopia jest atomowo zapisywana w `catalog.cache_file`. Przycisk `Usun sensory` wymusza takie samo pobranie niezaleznie od opcji `refresh_on_start`.
 
 Gdy GitHub lub Internet jest niedostepny, dodatek wykorzystuje ostatnia poprawna kopie z cache. Gdy cache takze nie istnieje albo jest bledny, uzywany jest katalog wbudowany w obraz dodatku. Nie zmienia to pliku `/config/detected_sensors.yaml` ani istniejacych wyborow MQTT.
 
-Format katalogu jest wersjonowany. Kazdy wpis `sensors` ma `key` oraz opcjonalny obiekt `definition`. Istniejacy wpis jest laczony z definicja wbudowana, nowy wpis musi podac co najmniej `name`, `registers` i `type`. Aby usunac kandydata, uzyj `remove: true`.
+Format katalogu jest wersjonowany. Kompletna mapa `version: 2` ma liste `sensors` i obiekt `bms_pack`. Jest autorytatywna, wiec brak wpisu w YAML usuwa go z listy kandydatow, gdy zdalny katalog albo jego cache jest dostepny. Wpisy `sensors` definiuja telemetrie falownika. `bms_pack.base_register` i `register_stride` okreslaja adres kolejnego pakietu, a kazdy wpis `bms_pack.sensors` zawiera `register_offsets` oraz symbole `{pack}` w `key`, `name` i opcjonalnym `topic_suffix`. Katalog jest walidowany przed uzyciem, a gdy siec i cache zawioda, dodatek uzywa wbudowanego fallbacku.
 
 ```yaml
-version: 1
+version: 2
 sensors:
-  - key: battery_1_temperature
-    definition:
-      multiplier: 0.1
-      offset: -100.0
-      unit: "°C"
-  - key: firmware_build
-    definition:
-      name: Firmware Build
-      registers: [550]
+  - key: battery_voltage
+    name: Battery Voltage
+    registers: [587]
+    type: uint16
+    multiplier: 0.01
+    unit: V
+bms_pack:
+  base_register: 10032
+  register_stride: 38
+  sensors:
+    - key: "battery_{pack}_voltage"
+      name: "Battery {pack} Voltage"
+      register_offsets: [8]
       type: uint16
-      schedule: slow
-  - key: obsolete_candidate
-    remove: true
+      multiplier: 0.1
+      unit: V
 ```
 
 ### MQTT i Supervisor

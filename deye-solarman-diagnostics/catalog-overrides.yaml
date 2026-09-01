@@ -1,5 +1,92 @@
-version: 1
-# This file is fetched at add-on startup. Add, patch, or remove scan candidates
-# here without requiring an add-on image update. The add-on validates this data
-# before use and retains the most recent valid copy in /config.
-sensors: []
+version: 2
+# Complete remotely updateable register catalog. It is fetched at add-on startup,
+# validated, cached in /config, and overlays the built-in emergency fallback.
+# Do not add writable configuration registers to this read-only scan catalog.
+sensors:
+  - {key: run_state, name: Run State, registers: [500], type: uint16, schedule: slow}
+  - {key: pv1_voltage, name: PV1 Voltage, registers: [676], type: uint16, multiplier: 0.1, unit: V, device_class: voltage, state_class: measurement}
+  - {key: pv1_current, name: PV1 Current, registers: [677], type: uint16, multiplier: 0.1, unit: A, device_class: current, state_class: measurement}
+  - {key: pv1_power, name: PV1 Power, registers: [672], type: uint16, unit: W, device_class: power, state_class: measurement}
+  - {key: pv2_voltage, name: PV2 Voltage, registers: [678], type: uint16, multiplier: 0.1, unit: V, device_class: voltage, state_class: measurement}
+  - {key: pv2_current, name: PV2 Current, registers: [679], type: uint16, multiplier: 0.1, unit: A, device_class: current, state_class: measurement}
+  - {key: pv2_power, name: PV2 Power, registers: [673], type: uint16, unit: W, device_class: power, state_class: measurement}
+  - {key: pv3_voltage, name: PV3 Voltage, registers: [680], type: uint16, multiplier: 0.1, unit: V, device_class: voltage, state_class: measurement}
+  - {key: pv3_current, name: PV3 Current, registers: [681], type: uint16, multiplier: 0.1, unit: A, device_class: current, state_class: measurement}
+  - {key: pv3_power, name: PV3 Power, registers: [674], type: uint16, unit: W, device_class: power, state_class: measurement}
+  - {key: pv4_voltage, name: PV4 Voltage, registers: [682], type: uint16, multiplier: 0.1, unit: V, device_class: voltage, state_class: measurement}
+  - {key: pv4_current, name: PV4 Current, registers: [683], type: uint16, multiplier: 0.1, unit: A, device_class: current, state_class: measurement}
+  - {key: pv4_power, name: PV4 Power, registers: [675], type: uint16, unit: W, device_class: power, state_class: measurement}
+  - {key: battery_soc, name: Battery SOC, registers: [588], type: uint16, unit: "%", schedule: slow, device_class: battery, state_class: measurement}
+  - {key: battery_voltage, name: Battery Voltage, registers: [587], type: uint16, multiplier: 0.01, unit: V, device_class: voltage, state_class: measurement}
+  - {key: battery_current, name: Battery Current, registers: [591], type: int16, multiplier: 0.01, unit: A, device_class: current, state_class: measurement}
+  - {key: battery_power, name: Battery Power, registers: [590], type: int16, unit: W, device_class: power, state_class: measurement}
+  - {key: battery_temperature, name: Battery Temperature, registers: [586], type: uint16, multiplier: 0.1, offset: -100.0, unit: "\u00B0C", device_class: temperature, state_class: measurement}
+  - {key: battery_corrected_ah, name: Battery Corrected Capacity, registers: [592], type: uint16, unit: Ah, schedule: slow, state_class: measurement}
+  - {key: grid_voltage_l1, name: Grid Voltage L1, registers: [598], type: uint16, multiplier: 0.1, unit: V, device_class: voltage, state_class: measurement}
+  - {key: grid_voltage_l2, name: Grid Voltage L2, registers: [599], type: uint16, multiplier: 0.1, unit: V, device_class: voltage, state_class: measurement}
+  - {key: grid_voltage_l3, name: Grid Voltage L3, registers: [600], type: uint16, multiplier: 0.1, unit: V, device_class: voltage, state_class: measurement}
+  - {key: grid_frequency, name: Grid Frequency, registers: [609], type: uint16, multiplier: 0.01, unit: Hz, device_class: frequency, state_class: measurement}
+  - {key: grid_power_l1, name: Grid Power L1, registers: [616], type: int16, unit: W, device_class: power, state_class: measurement}
+  - {key: grid_power_l2, name: Grid Power L2, registers: [617], type: int16, unit: W, device_class: power, state_class: measurement}
+  - {key: grid_power_l3, name: Grid Power L3, registers: [618], type: int16, unit: W, device_class: power, state_class: measurement}
+  - {key: grid_current_l1, name: Grid Current L1, registers: [613], type: int16, multiplier: 0.01, unit: A, device_class: current, state_class: measurement}
+  - {key: grid_current_l2, name: Grid Current L2, registers: [614], type: int16, multiplier: 0.01, unit: A, device_class: current, state_class: measurement}
+  - {key: grid_current_l3, name: Grid Current L3, registers: [615], type: int16, multiplier: 0.01, unit: A, device_class: current, state_class: measurement}
+  - {key: grid_power_total, name: Grid Power, registers: [619], type: int16, unit: W, device_class: power, state_class: measurement}
+  - {key: grid_internal_power, name: Grid Internal Total Power, registers: [607], type: int16, unit: W, device_class: power, state_class: measurement}
+  - {key: inverter_voltage_l1, name: Inverter Voltage L1, registers: [627], type: uint16, multiplier: 0.1, unit: V, device_class: voltage, state_class: measurement}
+  - {key: inverter_voltage_l2, name: Inverter Voltage L2, registers: [628], type: uint16, multiplier: 0.1, unit: V, device_class: voltage, state_class: measurement}
+  - {key: inverter_voltage_l3, name: Inverter Voltage L3, registers: [629], type: uint16, multiplier: 0.1, unit: V, device_class: voltage, state_class: measurement}
+  - {key: inverter_current_l1, name: Inverter Current L1, registers: [630], type: int16, multiplier: 0.01, unit: A, device_class: current, state_class: measurement}
+  - {key: inverter_current_l2, name: Inverter Current L2, registers: [631], type: int16, multiplier: 0.01, unit: A, device_class: current, state_class: measurement}
+  - {key: inverter_current_l3, name: Inverter Current L3, registers: [632], type: int16, multiplier: 0.01, unit: A, device_class: current, state_class: measurement}
+  - {key: inverter_power_total, name: Inverter Power, registers: [636], type: int16, unit: W, device_class: power, state_class: measurement}
+  - {key: inverter_frequency, name: Inverter Frequency, registers: [638], type: uint16, multiplier: 0.01, unit: Hz, device_class: frequency, state_class: measurement}
+  - {key: load_voltage_l1, name: Load Voltage L1, registers: [644], type: uint16, multiplier: 0.1, unit: V, device_class: voltage, state_class: measurement}
+  - {key: load_voltage_l2, name: Load Voltage L2, registers: [645], type: uint16, multiplier: 0.1, unit: V, device_class: voltage, state_class: measurement}
+  - {key: load_voltage_l3, name: Load Voltage L3, registers: [646], type: uint16, multiplier: 0.1, unit: V, device_class: voltage, state_class: measurement}
+  - {key: load_power_l1, name: Load Power L1, registers: [650], type: int16, unit: W, device_class: power, state_class: measurement}
+  - {key: load_power_l2, name: Load Power L2, registers: [651], type: int16, unit: W, device_class: power, state_class: measurement}
+  - {key: load_power_l3, name: Load Power L3, registers: [652], type: int16, unit: W, device_class: power, state_class: measurement}
+  - {key: load_power_total, name: Load Power, registers: [653], type: int16, unit: W, device_class: power, state_class: measurement}
+  - {key: load_frequency, name: Load Frequency, registers: [655], type: uint16, multiplier: 0.01, unit: Hz, device_class: frequency, state_class: measurement}
+  - {key: ups_power_total, name: Backup Power, registers: [643], type: uint16, unit: W, device_class: power, state_class: measurement}
+  - {key: gen_voltage_l1, name: Generator Voltage L1, registers: [661], type: uint16, multiplier: 0.1, unit: V, device_class: voltage, state_class: measurement}
+  - {key: gen_power_total, name: Generator Power, registers: [667], type: int16, unit: W, device_class: power, state_class: measurement}
+  - {key: ac_temperature, name: AC Temperature, registers: [541], type: uint16, multiplier: 0.1, offset: -100.0, unit: "\u00B0C", device_class: temperature, state_class: measurement}
+  - {key: dc_temperature, name: DC Temperature, registers: [540], type: uint16, multiplier: 0.1, offset: -100.0, unit: "\u00B0C", device_class: temperature, state_class: measurement}
+  - {key: energy_gen_today, name: Grid Generation Today, registers: [501], type: int16, multiplier: 0.1, unit: kWh, schedule: slow, device_class: energy, state_class: total}
+  - {key: pv_energy_today, name: PV Production Today, registers: [529], type: uint16, multiplier: 0.1, unit: kWh, schedule: slow, device_class: energy, state_class: total}
+  - {key: pv1_energy_today, name: PV1 Production Today, registers: [530], type: uint16, multiplier: 0.1, unit: kWh, schedule: slow, device_class: energy, state_class: total}
+  - {key: pv2_energy_today, name: PV2 Production Today, registers: [531], type: uint16, multiplier: 0.1, unit: kWh, schedule: slow, device_class: energy, state_class: total}
+  - {key: battery_charge_today, name: Battery Charge Today, registers: [514], type: uint16, multiplier: 0.1, unit: kWh, schedule: slow, device_class: energy, state_class: total}
+  - {key: battery_discharge_today, name: Battery Discharge Today, registers: [515], type: uint16, multiplier: 0.1, unit: kWh, schedule: slow, device_class: energy, state_class: total}
+  - {key: grid_import_today, name: Grid Import Today, registers: [520], type: uint16, multiplier: 0.1, unit: kWh, schedule: slow, device_class: energy, state_class: total}
+  - {key: grid_export_today, name: Grid Export Today, registers: [521], type: uint16, multiplier: 0.1, unit: kWh, schedule: slow, device_class: energy, state_class: total}
+  - {key: load_energy_today, name: Load Consumption Today, registers: [526], type: uint16, multiplier: 0.1, unit: kWh, schedule: slow, device_class: energy, state_class: total}
+  - {key: energy_gen_total, name: Grid Generation Total, registers: [504, 505], type: uint32, multiplier: 0.1, unit: kWh, word_order: low_high, schedule: slow, read_every: 600, report_every: 900, device_class: energy, state_class: total_increasing}
+  - {key: pv_energy_total, name: PV Production Total, registers: [534, 535], type: uint32, multiplier: 0.1, unit: kWh, word_order: low_high, schedule: slow, read_every: 600, report_every: 900, device_class: energy, state_class: total_increasing}
+  - {key: battery_charge_total, name: Battery Charge Total, registers: [516, 517], type: uint32, multiplier: 0.1, unit: kWh, word_order: low_high, schedule: slow, read_every: 600, report_every: 900, device_class: energy, state_class: total_increasing}
+  - {key: battery_discharge_total, name: Battery Discharge Total, registers: [518, 519], type: uint32, multiplier: 0.1, unit: kWh, word_order: low_high, schedule: slow, read_every: 600, report_every: 900, device_class: energy, state_class: total_increasing}
+  - {key: grid_import_total, name: Grid Import Total, registers: [522, 523], type: uint32, multiplier: 0.1, unit: kWh, word_order: low_high, schedule: slow, read_every: 600, report_every: 900, device_class: energy, state_class: total_increasing}
+  - {key: grid_export_total, name: Grid Export Total, registers: [524, 525], type: uint32, multiplier: 0.1, unit: kWh, word_order: low_high, schedule: slow, read_every: 600, report_every: 900, device_class: energy, state_class: total_increasing}
+  - {key: load_energy_total, name: Load Consumption Total, registers: [527, 528], type: uint32, multiplier: 0.1, unit: kWh, word_order: low_high, schedule: slow, read_every: 600, report_every: 900, device_class: energy, state_class: total_increasing}
+
+bms_pack:
+  base_register: 10032
+  register_stride: 38
+  sensors:
+    - {key: "battery_{pack}_bms_serial", name: "Battery {pack} BMS Serial", register_offsets: [0, 1, 2, 3, 4, 5, 6, 7], type: ascii, schedule: slow, read_every: 3600, report_every: 3600}
+    - {key: "battery_{pack}_voltage", name: "Battery {pack} Voltage", register_offsets: [8], type: uint16, multiplier: 0.1, unit: V, device_class: voltage, state_class: measurement, topic_suffix: "battery_{pack}/voltage"}
+    - {key: "battery_{pack}_current", name: "Battery {pack} Current", register_offsets: [9], type: int16, multiplier: 0.1, unit: A, device_class: current, state_class: measurement, topic_suffix: "battery_{pack}/current"}
+    - {key: "battery_{pack}_temperature", name: "Battery {pack} Temperature", register_offsets: [10], type: uint16, multiplier: 0.1, offset: -100.0, unit: "\u00B0C", device_class: temperature, state_class: measurement, topic_suffix: "battery_{pack}/temperature"}
+    - {key: "battery_{pack}_soc", name: "Battery {pack} SOC", register_offsets: [15], type: uint16, multiplier: 0.1, unit: "%", schedule: slow, read_every: 600, report_every: 600, change_by: 0.1, device_class: battery, state_class: measurement, topic_suffix: "battery_{pack}/soc"}
+    - {key: "battery_{pack}_soh", name: "Battery {pack} SOH", register_offsets: [16], type: uint16, multiplier: 0.1, unit: "%", schedule: slow, read_every: 600, report_every: 900, device_class: battery, state_class: measurement, topic_suffix: "battery_{pack}/soh"}
+    - {key: "battery_{pack}_capacity", name: "Battery {pack} Capacity", register_offsets: [18], type: uint16, multiplier: 0.1, unit: Ah, schedule: slow, read_every: 600, report_every: 900, topic_suffix: "battery_{pack}/capacity"}
+    - {key: "battery_{pack}_max_cell_voltage", name: "Battery {pack} Max Cell Voltage", register_offsets: [22], type: uint16, multiplier: 0.001, unit: V, schedule: slow, read_every: 600, report_every: 900, device_class: voltage, state_class: measurement, topic_suffix: "battery_{pack}/max_cell_voltage"}
+    - {key: "battery_{pack}_min_cell_voltage", name: "Battery {pack} Min Cell Voltage", register_offsets: [23], type: uint16, multiplier: 0.001, unit: V, schedule: slow, read_every: 600, report_every: 900, device_class: voltage, state_class: measurement, topic_suffix: "battery_{pack}/min_cell_voltage"}
+    - {key: "battery_{pack}_cycles", name: "Battery {pack} Cycles", register_offsets: [24], type: uint16, schedule: slow, read_every: 3600, report_every: 3600, state_class: total_increasing, topic_suffix: "battery_{pack}/cycles"}
+    - {key: "battery_{pack}_mos", name: "Battery {pack} BMS MOS", register_offsets: [25], type: hex, schedule: slow, read_every: 600, report_every: 900, topic_suffix: "battery_{pack}/mos"}
+    - {key: "battery_{pack}_alarm", name: "Battery {pack} BMS Alarm", register_offsets: [26, 27, 28, 29], type: hex, schedule: slow, read_every: 600, report_every: 900, topic_suffix: "battery_{pack}/alarm"}
+    - {key: "battery_{pack}_software_version", name: "Battery {pack} BMS Software Version", register_offsets: [30], type: hex, schedule: slow, read_every: 3600, report_every: 3600, topic_suffix: "battery_{pack}/software_version"}
+    - {key: "battery_{pack}_hardware_version", name: "Battery {pack} BMS Hardware Version", register_offsets: [31], type: hex, schedule: slow, read_every: 3600, report_every: 3600, topic_suffix: "battery_{pack}/hardware_version"}

@@ -1,6 +1,6 @@
 name: Deye Solarman Diagnostics
 description: Diagnostics add-on for Deye inverter battery data through a local Solarman logger
-version: "1.0.0"
+version: "1.1.0"
 slug: deye-solarman-diagnostics
 url: "https://github.com/Wilk33/deye-solarman-ha-addon"
 services:

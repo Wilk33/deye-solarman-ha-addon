@@ -1,6 +1,6 @@
 # Deye Solarman HA Add-on
 
-Stabilne wydanie `1.0.0` dodatku Home Assistant OS do lokalnej, diagnostycznej komunikacji z falownikiem Deye przez logger Solarman TCP. Dodatek odczytuje rejestry Modbus tylko do odczytu, pozwala zweryfikowac ich dostepnosc w panelu Ingress i publikuje w Home Assistant wybrane encje przez MQTT Discovery.
+Stabilne wydanie `1.1.0` dodatku Home Assistant OS do lokalnej, diagnostycznej komunikacji z falownikiem Deye przez logger Solarman TCP. Dodatek odczytuje rejestry Modbus tylko do odczytu, pozwala zweryfikowac ich dostepnosc w panelu Ingress i publikuje w Home Assistant wybrane encje przez MQTT Discovery.
 
 Projekt jest przeznaczony dla falownikow z rodziny Deye SUN-*-SG04LP3 / SG05LP3 oraz loggerow Solarman dostepnych lokalnie przez TCP. Moze zbierac dane biezace falownika i dane per-pakiet BMS, ale nie zastepuje bezposredniej integracji RS485, np. `Sunsynk or Deye Inverter add-on (multi)`. RS485 pozostaje lepszym kanalem dla szybkiej telemetrii i sterowania.
 
@@ -14,7 +14,7 @@ Projekt jest przeznaczony dla falownikow z rodziny Deye SUN-*-SG04LP3 / SG05LP3 
 - MQTT Discovery z automatycznym tworzeniem urzadzenia oraz encji w Home Assistant.
 - Automatyczne usuwanie wycofanych encji MQTT Discovery.
 - Odtwarzanie sesji TCP po rozlaczeniu loggera.
-- Aktualizowalny katalog kandydatow pobierany z GitHub z lokalnym cache i bez wykonywania zdalnego kodu.
+- Pelna, aktualizowalna mapa rejestrow YAML pobierana z GitHub z lokalnym cache i bez wykonywania zdalnego kodu.
 - Reczne sensory Modbus oraz bezpieczne, lokalne formuly o ograniczonym podzbiorze Pythona.
 - Diagnostyka RAW, HEX i ASCII oraz kolorowe znaczniki logow.
 
@@ -193,11 +193,11 @@ Gdy sensor zostanie odznaczony lub usuniety, dodatek publikuje retained pusty pa
 
 ## Katalog rejestrow
 
-Katalog wbudowany obejmuje 68 udokumentowanych wartosci telemetrycznych dla rodziny SG04LP3 / SG05LP3 oraz 14 pozycji diagnostycznych na skonfigurowany pakiet BMS. Przy `bms_pack_count: 4` panel ma 124 kandydatow.
+Kanoniczna mapa jest w [catalog-overrides.yaml](deye-solarman-diagnostics/catalog-overrides.yaml). Mimo historycznej nazwy nie jest juz pusta nakladka: format `version: 2` zawiera pelne 68 definicji telemetrycznych oraz jeden szablon 14 pozycji BMS. Szablon wylicza adresy dla `bms_pack_count` od 1 do 10. Przy `bms_pack_count: 4` panel ma 124 kandydatow, a przy `10` - 208.
 
-Katalog z `catalog.url` jest pobierany podczas startu. Dodatek akceptuje tylko dane YAML, waliduje je i zapisuje poprawna kopie do `catalog.cache_file`. Jezeli GitHub jest niedostepny, uzywa ostatniej poprawnej kopii cache. Jezeli cache nie istnieje lub jest niepoprawny, dziala na katalogu wbudowanym.
+Katalog z `catalog.url` jest pobierany podczas startu. Dodatek akceptuje tylko dane YAML, waliduje je i zapisuje poprawna kopie do `catalog.cache_file`. Format `version: 2` jest autorytatywny: gdy GitHub albo cache jest dostepny, brak wpisu w YAML oznacza brak tego kandydata w skanie. Jezeli GitHub jest niedostepny, uzywa ostatniej poprawnej kopii cache. Jezeli cache nie istnieje lub jest niepoprawny, dziala na wbudowanym katalogu awaryjnym [catalog.py](deye-solarman-diagnostics/rootfs/usr/src/app/deye_solarman_diagnostics/catalog.py). Katalog awaryjny jest objety testem zgodnosci z YAML.
 
-Aktualizacja katalogu nie usuwa samodzielnie lokalnego wyniku skanu ani wyborow MQTT. Przycisk `Usun sensory` wymusza odswiezenie katalogu przy czyszczeniu listy wykryc.
+Aktualizuj mape przez commit do `catalog-overrides.yaml` w tym repozytorium. Nie edytuj `/config/deye_solarman_catalog.yaml`, poniewaz jest to cache nadpisywany po poprawnym pobraniu. Aktualizacja katalogu nie usuwa samodzielnie lokalnego wyniku skanu ani wyborow MQTT. Przycisk `Usun sensory` wymusza odswiezenie katalogu przy czyszczeniu listy wykryc.
 
 Szczegolowy przeglad typow rejestrow jest w [REGISTER_TYPE_AUDIT.md](deye-solarman-diagnostics/REGISTER_TYPE_AUDIT.md).
 

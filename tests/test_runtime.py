@@ -40,6 +40,7 @@ from deye_solarman_diagnostics.scheduler import group_sensors_for_read
 from deye_solarman_diagnostics.scan_catalog import ScanCandidate
 from deye_solarman_diagnostics.scan_catalog import load_scan_candidates
 from deye_solarman_diagnostics.remote_catalog import RemoteCatalog
+from deye_solarman_diagnostics.remote_catalog import apply_remote_catalog
 from deye_solarman_diagnostics.remote_catalog import load_remote_catalog
 from deye_solarman_diagnostics.supervisor import discover_mqtt_service
 from deye_solarman_diagnostics.solarman import SolarmanConnectionClosedError
@@ -442,6 +443,24 @@ class RuntimeTests(unittest.TestCase):
 		self.assertEqual(by_key["battery_1_temperature"].unit, "°C")
 		self.assertEqual(by_key["battery_1_soc"].multiplier, 0.1)
 		self.assertEqual(by_key["battery_4_bms_serial"].register_type,"ascii")
+
+	def test_remote_full_register_catalog_matches_builtin_fallback(self) -> None:
+		path=APP_ROOT.parents[3] / "catalog-overrides.yaml"
+		payload=yaml.safe_load(path.read_text(encoding="utf-8"))
+		catalog=RemoteCatalog(payload["sensors"],"repository",payload["bms_pack"],payload["version"])
+
+		remote={sensor.key: sensor for sensor in apply_remote_catalog([],catalog,4)}
+		fallback={candidate.sensor.key: candidate.sensor for candidate in load_scan_candidates(4)}
+
+		self.assertEqual(payload["version"],2)
+		self.assertEqual(len(payload["sensors"]),68)
+		self.assertEqual(len(payload["bms_pack"]["sensors"]),14)
+		self.assertEqual({entry["key"] for entry in payload["sensors"]},{candidate.sensor.key for candidate in load_scan_candidates(0)})
+		self.assertEqual(remote,fallback)
+
+		maximum={sensor.key: sensor for sensor in apply_remote_catalog([],catalog,10)}
+		self.assertEqual(len(maximum),208)
+		self.assertEqual(maximum["battery_10_voltage"].registers,[10382])
 
 	def test_ascii_type_decodes_modbus_words_and_replaces_control_bytes(self) -> None:
 		registers=[0x3530,0x3034,0x3034,0x3030,0x4244,0x3432,0x3130,0x3237]

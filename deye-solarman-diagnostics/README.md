@@ -4,7 +4,7 @@ Dodatek Home Assistant OS do diagnostycznego, lokalnego odczytu falownika Deye p
 
 Dodatek jest przeznaczony jako wolniejsza sciezka diagnostyczna i uzupelnienie bezposredniej integracji RS485, na przyklad `Sunsynk or Deye Inverter add-on (multi)`. Nie zastepuje kanalu RS485.
 
-Wersja stabilna `1.0.0` samoczynnie odtwarza zamknieta sesje Solarman TCP, publikuje temperatury w standardowej jednostce Home Assistant `°C`, synchronizuje panel Ingress z motywem Home Assistant, pokazuje HEX i ASCII oraz pobiera aktualizowalny katalog rejestrow z GitHub z lokalnym cache. Zapis wyboru MQTT stosuje zmiany bez restartowania kontenera dodatku. Pulpit `Wlasne sensory` umozliwia dodanie recznych definicji Modbus oraz bezpiecznych skryptow odczytujacych rejestry przez `sensor(...)` i `RAW(...)`.
+Wersja stabilna `1.1.0` samoczynnie odtwarza zamknieta sesje Solarman TCP, publikuje temperatury w standardowej jednostce Home Assistant `°C`, synchronizuje panel Ingress z motywem Home Assistant, pokazuje HEX i ASCII oraz pobiera pelna, aktualizowalna mape rejestrow YAML z GitHub z lokalnym cache i fallbackiem w obrazie. Zapis wyboru MQTT stosuje zmiany bez restartowania kontenera dodatku. Pulpit `Wlasne sensory` umozliwia dodanie recznych definicji Modbus oraz bezpiecznych skryptow odczytujacych rejestry przez `sensor(...)` i `RAW(...)`.
 
 Pelna instrukcja konfiguracji i skanowania jest w [DOCS.md](DOCS.md).
 
