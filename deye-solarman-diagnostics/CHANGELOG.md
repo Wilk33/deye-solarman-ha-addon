@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.1
+
+- Expand the SG04LP3 / SG05LP3 read-only map to 94 inverter definitions and 23 BMS definitions per pack, including separate BMS alarm and fault words, BMS temperatures and limits, phase measurements, generator measurements, and status flags.
+- Add per-sensor ASCII `byte_order`; BMS serials use `low_high`, while the historical `high_low` decoder remains the default for all other ASCII data.
+- Build the offline fallback from the same versioned catalog copied into the add-on image, and migrate legacy scanned BMS serial definitions to the corrected byte order without clearing MQTT selections.
+
 ## 1.1.0
 
 - Move the complete remote register map into `deye_sg04_sg05_3ph_lv_catalog.yaml` version 2: 68 live inverter definitions and a validated BMS-pack template for one to ten packs are now editable on GitHub without a new add-on image.

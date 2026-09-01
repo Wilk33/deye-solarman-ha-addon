@@ -12,6 +12,7 @@ RUN apk add --no-cache python3 py3-pip bash \
 	&& /opt/venv/bin/pip install --no-cache-dir -r /tmp/requirements.txt
 
 COPY rootfs/usr/src/app /usr/src/app
+COPY deye_sg04_sg05_3ph_lv_catalog.yaml /usr/src/app/deye_solarman_diagnostics/deye_sg04_sg05_3ph_lv_catalog.yaml
 COPY run.sh /run.sh
 
 RUN chmod a+x /run.sh

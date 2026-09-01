@@ -6,8 +6,8 @@ Dodatek odczytuje lokalny logger Solarman TCP i publikuje przez MQTT Discovery t
 
 Katalog skanowania zawiera bezpieczne rejestry tylko do odczytu:
 
-- 68 udokumentowanych wartosci biezacych dla rodziny Deye SUN-*-SG04LP3 / SG05LP3: stan falownika, PV1-PV4, bateria, siec, CT, obciazenie, wyjscie, UPS, generator, temperatury i energia.
-- 14 pol diagnostycznych dla kazdego skonfigurowanego pakietu BMS: numer seryjny, napiecie, prad, temperatura, SOC, SOH, pojemnosc, napiecia cel, cykle i dane BMS.
+- 94 kandydatow telemetrycznych dla rodziny Deye SUN-*-SG04LP3 / SG05LP3: stan falownika, PV1-PV4, bateria, siec, CT, obciazenie, wyjscie, UPS, generator, temperatury i energia.
+- 23 pola diagnostyczne dla kazdego skonfigurowanego pakietu BMS: numer seryjny, temperatury, SOC, SOH, pojemnosci, limity, napiecia cel, cykle oraz rozdzielone dane BMS alarm i fault.
 
 Nie sa skanowane rejestry konfiguracji ani sterowania, wiec skan nie powinien modyfikowac ustawien falownika. "Powodzenie" skanu oznacza, ze logger zwrocil wartosc. Nie potwierdza ono jeszcze znaczenia kazdego pola BMS - wartosci oznaczone w raporcie jako `candidate` trzeba porownac z wyswietlaczem falownika lub BMS.
 
@@ -81,11 +81,11 @@ Parametry loggera musza wskazywac logger Solarman, nie adres IP samego falownika
 
 ### Katalog rejestrow z GitHub
 
-Przy starcie dodatek pobiera plik YAML `deye_sg04_sg05_3ph_lv_catalog.yaml` z `catalog.url`. Od wersji `1.1.0` jest to pelna mapa `version: 2`: zawiera 68 definicji telemetrycznych oraz szablon 14 pozycji BMS, ktory jest rozwijany zgodnie z `bms_pack_count`. Pobierane sa wylacznie dane YAML - dodatek nie wykonuje zdalnego kodu. Po udanej walidacji kopia jest atomowo zapisywana w `catalog.cache_file`. Przycisk `Usun sensory` wymusza takie samo pobranie niezaleznie od opcji `refresh_on_start`.
+Przy starcie dodatek pobiera plik YAML `deye_sg04_sg05_3ph_lv_catalog.yaml` z `catalog.url`. Od wersji `1.1.1` jest to pelna mapa `version: 2`: zawiera 94 definicje telemetryczne oraz szablon 23 pozycji BMS, ktory jest rozwijany zgodnie z `bms_pack_count`. Pobierane sa wylacznie dane YAML - dodatek nie wykonuje zdalnego kodu. Po udanej walidacji kopia jest atomowo zapisywana w `catalog.cache_file`. Przycisk `Usun sensory` wymusza takie samo pobranie niezaleznie od opcji `refresh_on_start`.
 
 Gdy GitHub lub Internet jest niedostepny, dodatek wykorzystuje ostatnia poprawna kopie z cache. Gdy cache takze nie istnieje albo jest bledny, uzywany jest katalog wbudowany w obraz dodatku. Nie zmienia to pliku `/config/detected_sensors.yaml` ani istniejacych wyborow MQTT.
 
-Format katalogu jest wersjonowany. Kompletna mapa `version: 2` ma liste `sensors` i obiekt `bms_pack`. Jest autorytatywna, wiec brak wpisu w YAML usuwa go z listy kandydatow, gdy zdalny katalog albo jego cache jest dostepny. Wpisy `sensors` definiuja telemetrie falownika. `bms_pack.base_register` i `register_stride` okreslaja adres kolejnego pakietu, a kazdy wpis `bms_pack.sensors` zawiera `register_offsets` oraz symbole `{pack}` w `key`, `name` i opcjonalnym `topic_suffix`. Katalog jest walidowany przed uzyciem, a gdy siec i cache zawioda, dodatek uzywa wbudowanego fallbacku.
+Format katalogu jest wersjonowany. Kompletna mapa `version: 2` ma liste `sensors` i obiekt `bms_pack`. Jest autorytatywna, wiec brak wpisu w YAML usuwa go z listy kandydatow, gdy zdalny katalog albo jego cache jest dostepny. Wpisy `sensors` definiuja telemetrie falownika. `bms_pack.base_register` i `register_stride` okreslaja adres kolejnego pakietu, a kazdy wpis `bms_pack.sensors` zawiera `register_offsets` oraz symbole `{pack}` w `key`, `name` i opcjonalnym `topic_suffix`. Typ `ascii` obsluguje opcjonalne `byte_order: high_low|low_high`; BMS serial uzywa `low_high`, ktore zamienia kolejnosc dwoch bajtow w kazdym slowie bez zmiany kolejnosci rejestrow. Katalog jest walidowany przed uzyciem, a gdy siec i cache zawioda, dodatek uzywa wbudowanego fallbacku z tej samej mapy w obrazie.
 
 ```yaml
 version: 2
@@ -126,7 +126,7 @@ Panel umozliwia:
 - przegladanie wartosci zdekodowanej, RAW i hex dla kazdego rejestru;
 - filtrowanie wedlug statusu i wyszukiwanie po nazwie, kluczu, kategorii lub rejestrze;
 - zaznaczenie encji do MQTT przeznikiem `MQTT`;
-- zmiane nazwy, typu, mnoznika, offsetu, jednostki, slow order, interwalow, progu zmiany, retain i metadanych Home Assistant;
+- zmiane nazwy, typu, mnoznika, offsetu, jednostki, kolejnosci slow, kolejnosci bajtow ASCII, interwalow, progu zmiany, retain i metadanych Home Assistant;
 - atomowy zapis konfiguracji przyciskiem `Zapisz wybor MQTT`, z automatycznym przeladowaniem tylko petli MQTT i odczytow.
 
 ## Diagnostyka panelu
@@ -168,7 +168,7 @@ current=sensor(R591,int16,0.01)
 return abs(voltage*current)
 ```
 
-`sensor(adres,typ,mnoznik[,offset[,kolejnosc_slow]])` odczytuje rejestr bezposrednio przez logger, dekoduje go i zwraca wartosc po przeliczeniu. `RAW(adres)` zwraca surowa, liczbowa wartosc pojedynczego rejestru `uint16`. Skrypt moze uzywac lokalnych zmiennych, `def`, `return`, `if` / `elif` / `else`, `match` / `case`, funkcji `abs`, `min`, `max`, `round`, `sqrt`, `clamp` oraz ograniczonego `for ... in range(...)`.
+`sensor(adres,typ,mnoznik[,offset[,kolejnosc_slow[,kolejnosc_bajtow]]])` odczytuje rejestr bezposrednio przez logger, dekoduje go i zwraca wartosc po przeliczeniu. `kolejnosc_bajtow` jest opcjonalna i dotyczy wylacznie `ascii`; moze miec wartosc `high_low` albo `low_high`. `RAW(adres)` zwraca surowa, liczbowa wartosc pojedynczego rejestru `uint16`. Skrypt moze uzywac lokalnych zmiennych, `def`, `return`, `if` / `elif` / `else`, `match` / `case`, funkcji `abs`, `min`, `max`, `round`, `sqrt`, `clamp` oraz ograniczonego `for ... in range(...)`.
 
 Nie sa dozwolone importy, `eval`, `exec`, dostep do plikow lub sieci, atrybuty obiektow, `while`, rekurencja ani dowolne funkcje Pythona. Interpreter ogranicza formule do 300 wezlow skladni, 64 iteracji petli i 128 bezposrednich odczytow rejestrow w jednym wykonaniu.
 
@@ -204,7 +204,7 @@ available_sensors:
       attributes: {}
 ```
 
-Mozna zmienic miedzy innymi `type`, `multiplier`, `offset`, `unit`, `word_order`, `schedule`, `read_every`, `report_every`, `change_by`, `retain` i pola MQTT. Typ `ascii` dekoduje dwa znaki ASCII z kazdego rejestru i zastepuje znaki niedrukowalne kropkami. Jest uzyty domyslnie dla numerow seryjnych BMS. Dla wartosci BMS nie zmieniaj przelicznika ani typu przed porownaniem z realnym odczytem urzadzenia.
+Mozna zmienic miedzy innymi `type`, `multiplier`, `offset`, `unit`, `word_order`, `byte_order`, `schedule`, `read_every`, `report_every`, `change_by`, `retain` i pola MQTT. Typ `ascii` dekoduje dwa znaki ASCII z kazdego rejestru i zastepuje znaki niedrukowalne kropkami. Domyslne `byte_order: high_low` czyta najpierw starszy bajt, a `low_high` odwraca bajty w pojedynczym rejestrze. BMS serial uzywa `low_high`; ustawienie nie zmienia kolejnosci rejestrow. Dla wartosci BMS nie zmieniaj przelicznika ani typu przed porownaniem z realnym odczytem urzadzenia.
 
 Domyslny profil zawiera definicje BMS, ale wszystkie sa wylaczone. W normalnym trybie MQTT publikuje wiec wylacznie pozycje z `monitor: true` w `/config/detected_sensors.yaml` albo wpisy jawnie wlaczone w `/config/user_sensors.yaml`.
 

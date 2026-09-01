@@ -16,6 +16,7 @@ MAX_FUNCTION_CALL_DEPTH=8
 MAX_REGISTER_READS=128
 REGISTER_TYPES={"uint16","int16","uint32","int32","hex","ascii"}
 WORD_ORDERS={"high_low","low_high"}
+BYTE_ORDERS={"high_low","low_high"}
 MATH_FUNCTIONS={"abs","min","max","round","sqrt","clamp"}
 
 
@@ -31,6 +32,7 @@ class FormulaRead:
 	multiplier: float
 	offset: float
 	word_order: str
+	byte_order: str
 	decoded: int | str
 	value: int | float | str
 
@@ -269,7 +271,7 @@ class FormulaExecutor:
 				raise FormulaError("RAW requires exactly one register address")
 			address=self._address(arguments[0])
 			raw_value=self._read_registers(address,1)[0]
-			self._reads.append(FormulaRead(address,[raw_value],"raw",1.0,0.0,"high_low",raw_value,raw_value))
+			self._reads.append(FormulaRead(address,[raw_value],"raw",1.0,0.0,"high_low","high_low",raw_value,raw_value))
 			return raw_value
 		if name == "range":
 			if not 1 <= len(arguments) <= 3 or not all(type(argument) is int for argument in arguments):
@@ -300,8 +302,8 @@ class FormulaExecutor:
 		raise FormulaError(f"Formula function {name} must return a value")
 
 	def _sensor(self, arguments: list[Any]) -> int | float | str:
-		if not 3 <= len(arguments) <= 5:
-			raise FormulaError("sensor requires address, type, multiplier, optional offset and word order")
+		if not 3 <= len(arguments) <= 6:
+			raise FormulaError("sensor requires address, type, multiplier, optional offset, word order, and ASCII byte order")
 		address=self._address(arguments[0])
 		register_type=arguments[1]
 		if register_type not in REGISTER_TYPES:
@@ -315,15 +317,20 @@ class FormulaExecutor:
 				raise FormulaError("sensor offset must be numeric")
 			offset=float(arguments[3])
 		word_order="high_low"
-		if len(arguments) == 5:
+		if len(arguments) >= 5:
 			word_order=arguments[4]
 			if word_order not in {"high_low","low_high"}:
 				raise FormulaError("sensor word order must be high_low or low_high")
+		byte_order="high_low"
+		if len(arguments) == 6:
+			byte_order=arguments[5]
+			if byte_order not in BYTE_ORDERS:
+				raise FormulaError("sensor ASCII byte order must be high_low or low_high")
 		count=2 if register_type in {"uint32","int32"} else 1
 		raw_registers=self._read_registers(address,count)
-		decoded=decode_registers(raw_registers,register_type,word_order)
+		decoded=decode_registers(raw_registers,register_type,word_order,byte_order)
 		value=apply_transform(decoded,multiplier,offset)
-		self._reads.append(FormulaRead(address,raw_registers,register_type,multiplier,offset,word_order,decoded,value))
+		self._reads.append(FormulaRead(address,raw_registers,register_type,multiplier,offset,word_order,byte_order,decoded,value))
 		return value
 
 	def _read_registers(self, address: int, count: int) -> list[int]:

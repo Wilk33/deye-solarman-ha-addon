@@ -9,12 +9,17 @@ def combine_words(registers: list[int], word_order: str) -> list[int]:
 	return registers
 
 
-def decode_registers(registers: list[int], register_type: str, word_order: str) -> int | str:
+def decode_registers(
+	registers: list[int],
+	register_type: str,
+	word_order: str,
+	byte_order: str="high_low",
+) -> int | str:
 	ordered=combine_words(registers, word_order)
 	if register_type == "hex":
 		return " ".join(f"0x{value:04X}" for value in ordered)
 	if register_type == "ascii":
-		return registers_to_ascii(ordered)
+		return registers_to_ascii(ordered,byte_order)
 	if register_type == "uint16":
 		return ordered[0]
 	if register_type == "int16":
@@ -28,11 +33,16 @@ def decode_registers(registers: list[int], register_type: str, word_order: str) 
 	raise ValueError(f"Unsupported register type: {register_type}")
 
 
-def registers_to_ascii(registers: list[int]) -> str:
+def registers_to_ascii(registers: list[int], byte_order: str="high_low") -> str:
 	"""Decode Modbus words as printable ASCII without emitting control characters."""
+	if byte_order not in {"high_low","low_high"}:
+		raise ValueError(f"Unsupported ASCII byte order: {byte_order}")
 	characters=[]
 	for register in registers:
-		for byte in ((register >> 8)&0xFF,register&0xFF):
+		bytes=((register >> 8)&0xFF,register&0xFF)
+		if byte_order == "low_high":
+			bytes=tuple(reversed(bytes))
+		for byte in bytes:
 			characters.append(chr(byte) if 32 <= byte <= 126 else ".")
 	return "".join(characters)
 

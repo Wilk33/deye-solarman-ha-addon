@@ -26,6 +26,7 @@ EDITABLE_DEFINITION_FIELDS={
 	"offset",
 	"unit",
 	"word_order",
+	"byte_order",
 	"schedule",
 	"read_every",
 	"report_every",
@@ -104,6 +105,9 @@ def save_detected_sensors(path: str, report: list[dict[str, Any]]) -> None:
 		previous_definition=previous_entry.get("definition")
 		if isinstance(previous_definition, dict):
 			definition.update(previous_definition)
+			# Existing files predate byte_order, so retain user settings while applying the new BMS serial default.
+			if key.endswith("_bms_serial") and "byte_order" not in previous_definition:
+				definition["byte_order"]="low_high"
 		definition["key"]=key
 
 		monitor=previous_entry.get("monitor",False)
@@ -292,7 +296,7 @@ def _scan_value(
 	sensor=candidate.sensor
 	try:
 		raw_values=[group_values[register-group_start] for register in sensor.registers]
-		decoded=decode_registers(raw_values, sensor.register_type, sensor.word_order)
+		decoded=decode_registers(raw_values,sensor.register_type,sensor.word_order,sensor.byte_order)
 		value=apply_transform(decoded, sensor.multiplier, sensor.offset)
 	except (IndexError, TypeError, ValueError) as error:
 		return _scan_error(candidate, "invalid_value", str(error), latency_ms)
@@ -304,7 +308,7 @@ def _scan_value(
 		"status": "supported",
 		"raw_registers": raw_values,
 		"raw_hex": [f"0x{value:04X}" for value in raw_values],
-		"raw_ascii": registers_to_ascii(raw_values),
+		"raw_ascii": registers_to_ascii(raw_values,sensor.byte_order),
 		"decoded": decoded,
 		"value": value,
 		"latency_ms": round(latency_ms,2),
@@ -377,6 +381,10 @@ def _validate_definition_value(key: str, field: str, value: Any) -> Any:
 	if field == "word_order":
 		if value not in {"high_low","low_high"}:
 			raise ValueError(f"Update {key}: unsupported word order")
+		return value
+	if field == "byte_order":
+		if value not in {"high_low","low_high"}:
+			raise ValueError(f"Update {key}: unsupported byte order")
 		return value
 	if field == "schedule":
 		if value not in {"default","slow"}:

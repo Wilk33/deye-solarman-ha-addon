@@ -495,7 +495,7 @@ summary { padding: 11px 0; color: var(--green); cursor: pointer; font-family: "C
 <script>
 let sensors=[];
 let scanTimer=null;
-const editable=["name","multiplier","offset","unit","type","word_order","schedule","read_every","report_every","change_by","retain","device_class","state_class","icon","category","topic_suffix"];
+const editable=["name","multiplier","offset","unit","type","word_order","byte_order","schedule","read_every","report_every","change_by","retain","device_class","state_class","icon","category","topic_suffix"];
 const esc=value=>String(value ?? "").replace(/[&<>'"]/g,char=>{
   if (char.charCodeAt(0) === 34) return "&quot;";
   return {"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;"}[char];
@@ -577,9 +577,12 @@ function select(key,field,label,current,values) {
 	return `<label class="field">${label}<div class="select-control" data-select-control><input data-field="${esc(field)}" data-key="${esc(key)}" type="hidden" value="${esc(selected)}"><button class="select-trigger" type="button" data-select-trigger aria-haspopup="listbox" aria-expanded="false"><span class="select-value">${esc(selected)}</span><span class="select-chevron">&#9662;</span></button><div class="select-options" role="listbox">${values.map(value=>`<button class="select-option ${value === selected ? "selected" : ""}" type="button" data-select-option data-value="${esc(value)}">${esc(value)}</button>`).join("")}</div></div></label>`;
 }
 
-function asciiFromRaw(registers) {
+function asciiFromRaw(registers,byteOrder="high_low") {
 	if (!Array.isArray(registers) || !registers.length) return "";
-	return registers.flatMap(register=>[(register >> 8)&255,register&255]).map(byte=>byte >= 32 && byte <= 126 ? String.fromCharCode(byte) : ".").join("");
+	return registers.flatMap(register=>{
+		const bytes=[(register >> 8)&255,register&255];
+		return byteOrder === "low_high" ? bytes.reverse() : bytes;
+	}).map(byte=>byte >= 32 && byte <= 126 ? String.fromCharCode(byte) : ".").join("");
 }
 
 function sensorCard(entry) {
@@ -587,7 +590,7 @@ function sensorCard(entry) {
   const scan=entry.last_scan || {};
   const value=scan.value === null || scan.value === undefined ? "-" : `${esc(scan.value)} ${esc(definition.unit)}`;
   const raw=(scan.raw_hex || []).join(", ") || "-";
-  const rawAscii=scan.raw_ascii || asciiFromRaw(scan.raw_registers) || "-";
+  const rawAscii=scan.raw_ascii || asciiFromRaw(scan.raw_registers,definition.byte_order) || "-";
   return `<article class="sensor ${entry.monitor ? "selected" : ""}" data-sensor="${esc(entry.key)}">
     <div class="sensor-head">
       <div><h3>${esc(definition.name || entry.key)}</h3><span class="key">${esc(entry.key)} / R${esc((definition.registers || []).join(","))}</span>
@@ -603,6 +606,7 @@ function sensorCard(entry) {
       ${input(entry.key,"unit","Jednostka",definition.unit)}
       ${select(entry.key,"type","Typ rejestru",definition.type,["uint16","int16","uint32","int32","hex","ascii"])}
       ${select(entry.key,"word_order","Kolejnosc slow",definition.word_order,["high_low","low_high"])}
+      ${select(entry.key,"byte_order","Kolejnosc bajtow ASCII",definition.byte_order,["high_low","low_high"])}
       ${select(entry.key,"schedule","Harmonogram",definition.schedule,["default","slow"])}
       ${input(entry.key,"read_every","Odczyt co sekundy",definition.read_every,"number")}
       ${input(entry.key,"report_every","Ponowna publikacja co sekundy",definition.report_every,"number")}

@@ -34,6 +34,7 @@ function customDefaultDefinition(key)
 		offset:0,
 		unit:"",
 		word_order:"high_low",
+		byte_order:"high_low",
 		schedule:"default",
 		read_every:60,
 		report_every:300,
@@ -85,7 +86,8 @@ function customCard(entry)
 		${customSelect(entry.key,"type","Typ rejestru",definition.type,["uint16","int16","uint32","int32","hex","ascii"])}
 		${customInput(entry.key,"multiplier","Mnoznik",definition.multiplier,"number")}
 		${customInput(entry.key,"offset","Offset",definition.offset,"number")}
-		${customSelect(entry.key,"word_order","Kolejnosc slow",definition.word_order,["high_low","low_high"])}`;
+		${customSelect(entry.key,"word_order","Kolejnosc slow",definition.word_order,["high_low","low_high"])}
+		${customSelect(entry.key,"byte_order","Kolejnosc bajtow ASCII",definition.byte_order,["high_low","low_high"])}`;
 	return `<article class="custom-sensor ${entry.monitor ? "enabled" : ""}" data-custom-sensor="${customEsc(entry.key)}">
 		<div class="sensor-head"><div><h3>${customEsc(definition.name || entry.key)}</h3><span class="key">${customEsc(entry.key)}${formula ? " / formula" : " / R"+customEsc((definition.registers || []).join(","))}</span></div><label class="toggle"><input data-custom-monitor="${customEsc(entry.key)}" type="checkbox" ${entry.monitor ? "checked" : ""}> MQTT</label></div>
 		<div class="fields">
@@ -145,6 +147,7 @@ function collectCustomSensors()
 			offset:formulaMode ? 0 : Number(value("offset")),
 			unit:String(value("unit")).trim(),
 			word_order:formulaMode ? "high_low" : String(value("word_order")),
+			byte_order:formulaMode ? "high_low" : String(value("byte_order")),
 			schedule:String(value("schedule")),
 			read_every:Number(value("read_every")),
 			report_every:Number(value("report_every")),

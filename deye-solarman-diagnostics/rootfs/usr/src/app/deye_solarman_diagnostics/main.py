@@ -286,7 +286,7 @@ def _test_custom_sensor(config: Any, access_lock: Any, definition: dict[str, Any
 			values=solarman.read_holding_registers(start_register,max(sensor.registers)-start_register+1)
 			latency_ms=(time.perf_counter()-start)*1000
 			raw_values=[values[register-start_register] for register in sensor.registers]
-			decoded=decode_registers(raw_values,sensor.register_type,sensor.word_order)
+			decoded=decode_registers(raw_values,sensor.register_type,sensor.word_order,sensor.byte_order)
 			value=apply_transform(decoded,sensor.multiplier,sensor.offset)
 			return {
 				"value": value,
@@ -436,7 +436,7 @@ def _handle_sensor(
 	publish_unchanged_every: int,
 ) -> dict[str, Any]:
 	raw_values=[group_values[register-group_start] for register in sensor.registers]
-	decoded=decode_registers(raw_values, sensor.register_type, sensor.word_order)
+	decoded=decode_registers(raw_values,sensor.register_type,sensor.word_order,sensor.byte_order)
 	value=apply_transform(decoded, sensor.multiplier, sensor.offset)
 	now=time.time()
 
@@ -450,15 +450,16 @@ def _handle_sensor(
 	if should_publish:
 		attributes={
 			"raw_registers": raw_values,
-			"raw_ascii": registers_to_ascii(raw_values),
+			"raw_ascii": registers_to_ascii(raw_values,sensor.byte_order),
 			"decoded": decoded,
 			"registers": sensor.registers,
 			"type": sensor.register_type,
 			"multiplier": sensor.multiplier,
 			"offset": sensor.offset,
-			"unit": sensor.unit,
-			"word_order": sensor.word_order,
-			"schedule": sensor.schedule,
+				"unit": sensor.unit,
+				"word_order": sensor.word_order,
+				"byte_order": sensor.byte_order,
+				"schedule": sensor.schedule,
 			"read_every": sensor.read_every,
 			"report_every": sensor.report_every,
 			"latency_ms": round(latency_ms,2),
@@ -499,6 +500,7 @@ def _formula_result_payload(result: FormulaResult) -> dict[str, Any]:
 				"multiplier": read.multiplier,
 				"offset": read.offset,
 				"word_order": read.word_order,
+				"byte_order": read.byte_order,
 				"decoded": read.decoded,
 				"value": read.value,
 			}

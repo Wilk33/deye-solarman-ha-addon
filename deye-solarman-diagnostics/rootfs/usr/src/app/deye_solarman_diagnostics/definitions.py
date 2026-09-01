@@ -151,6 +151,8 @@ def _validate_sensor_definitions(sensors: list[SensorDefinition]) -> list[Sensor
 				raise ValueError(f"Sensor {sensor.key}: {sensor.register_type} requires exactly two registers")
 		if sensor.word_order not in {"high_low","low_high"}:
 			raise ValueError(f"Sensor {sensor.key}: unsupported word_order {sensor.word_order!r}")
+		if sensor.byte_order not in {"high_low","low_high"}:
+			raise ValueError(f"Sensor {sensor.key}: unsupported byte_order {sensor.byte_order!r}")
 		if sensor.schedule not in {"default","slow"}:
 			raise ValueError(f"Sensor {sensor.key}: unsupported schedule {sensor.schedule!r}")
 		if sensor.read_every <= 0 or sensor.report_every <= 0 or sensor.change_by < 0:
@@ -175,6 +177,7 @@ def sensor_from_payload(payload: dict[str, Any], enabled: bool=True) -> SensorDe
 		offset=float(payload.get("offset",0.0)),
 		unit=payload.get("unit",""),
 		word_order=payload.get("word_order","high_low"),
+		byte_order=payload.get("byte_order","high_low"),
 		schedule=payload.get("schedule","default"),
 		read_every=int(payload.get("read_every",60)),
 		report_every=int(payload.get("report_every",300)),

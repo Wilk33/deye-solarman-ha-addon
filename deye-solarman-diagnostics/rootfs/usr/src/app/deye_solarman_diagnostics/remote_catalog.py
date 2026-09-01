@@ -135,6 +135,7 @@ def _validate_payload(payload: dict[str, Any]) -> None:
 			or not all(type(register) is int and 0 <= register <= 65535 for register in definition["registers"])
 		):
 			raise ValueError(f"catalog sensors[{index}].registers must contain Modbus addresses")
+		_validate_definition_decoding(definition,f"catalog sensors[{index}]")
 	if payload.get("version") == 2:
 		_validate_bms_pack_template(payload.get("bms_pack"))
 
@@ -163,6 +164,17 @@ def _validate_bms_pack_template(template: Any) -> None:
 			raise ValueError(f"catalog bms_pack.sensors[{index}].register_offsets must be non-negative integers")
 		if base+9*stride+max(offsets) > 65535:
 			raise ValueError(f"catalog bms_pack.sensors[{index}] exceeds the supported ten-pack Modbus range")
+		_validate_definition_decoding(entry,f"catalog bms_pack.sensors[{index}]")
+
+
+def _validate_definition_decoding(definition: dict[str, Any], location: str) -> None:
+	register_type=definition.get("type","uint16")
+	if register_type not in {"uint16","int16","uint32","int32","hex","ascii"}:
+		raise ValueError(f"{location}.type is unsupported")
+	for field in ("word_order","byte_order"):
+		value=definition.get(field,"high_low")
+		if value not in {"high_low","low_high"}:
+			raise ValueError(f"{location}.{field} must be high_low or low_high")
 
 
 def _apply_bms_pack_template(

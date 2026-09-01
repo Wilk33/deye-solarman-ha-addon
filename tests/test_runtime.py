@@ -232,6 +232,14 @@ class RuntimeTests(unittest.TestCase):
 
 		self.assertEqual(result.value,0.2)
 
+	def test_formula_sensor_supports_ascii_byte_order(self) -> None:
+		registers={10032:0x3530,10033:0x3034}
+		executor=FormulaExecutor(lambda address,count: [registers[index] for index in range(address,address+count)])
+		result=executor.execute("return sensor(R10032,ascii,1,0,high_low,low_high)")
+
+		self.assertEqual(result.value,"05")
+		self.assertEqual(result.reads[0].byte_order,"low_high")
+
 	def test_formula_rejects_unsafe_or_unbounded_syntax(self) -> None:
 		for source in [
 			"import os\nreturn 1",
@@ -433,7 +441,7 @@ class RuntimeTests(unittest.TestCase):
 		candidates=load_scan_candidates(4)
 		by_key={candidate.sensor.key: candidate.sensor for candidate in candidates}
 
-		self.assertEqual(len(candidates), 124)
+		self.assertEqual(len(candidates), 186)
 		self.assertEqual(by_key["grid_power_total"].registers, [619])
 		self.assertEqual(by_key["pv_energy_total"].registers, [534,535])
 		self.assertEqual(by_key["pv_energy_total"].word_order, "low_high")
@@ -443,6 +451,9 @@ class RuntimeTests(unittest.TestCase):
 		self.assertEqual(by_key["battery_1_temperature"].unit, "°C")
 		self.assertEqual(by_key["battery_1_soc"].multiplier, 0.1)
 		self.assertEqual(by_key["battery_4_bms_serial"].register_type,"ascii")
+		self.assertEqual(by_key["battery_4_bms_serial"].byte_order,"low_high")
+		self.assertEqual(by_key["battery_1_fault"].registers,[10060,10061])
+		self.assertEqual(by_key["battery_1_heat_memory_temperature"].registers,[10046])
 
 	def test_remote_full_register_catalog_matches_builtin_fallback(self) -> None:
 		path=APP_ROOT.parents[3] / "deye_sg04_sg05_3ph_lv_catalog.yaml"
@@ -453,20 +464,22 @@ class RuntimeTests(unittest.TestCase):
 		fallback={candidate.sensor.key: candidate.sensor for candidate in load_scan_candidates(4)}
 
 		self.assertEqual(payload["version"],2)
-		self.assertEqual(len(payload["sensors"]),68)
-		self.assertEqual(len(payload["bms_pack"]["sensors"]),14)
+		self.assertEqual(len(payload["sensors"]),94)
+		self.assertEqual(len(payload["bms_pack"]["sensors"]),23)
 		self.assertEqual({entry["key"] for entry in payload["sensors"]},{candidate.sensor.key for candidate in load_scan_candidates(0)})
 		self.assertEqual(remote,fallback)
 
 		maximum={sensor.key: sensor for sensor in apply_remote_catalog([],catalog,10)}
-		self.assertEqual(len(maximum),208)
+		self.assertEqual(len(maximum),324)
 		self.assertEqual(maximum["battery_10_voltage"].registers,[10382])
 
 	def test_ascii_type_decodes_modbus_words_and_replaces_control_bytes(self) -> None:
-		registers=[0x3530,0x3034,0x3034,0x3030,0x4244,0x3432,0x3130,0x3237]
+		registers=[0x3530,0x3034,0x3037,0x3030,0x3145,0x3630,0x3930,0x3830]
 
-		self.assertEqual(decode_registers(registers,"ascii","high_low"),"50040400BD421027")
+		self.assertEqual(decode_registers(registers,"ascii","high_low"),"500407001E609080")
+		self.assertEqual(decode_registers(registers,"ascii","high_low","low_high"),"05407000E1060908")
 		self.assertEqual(registers_to_ascii([0x4100,0x1F42]),"A..B")
+		self.assertEqual(registers_to_ascii([0x4100,0x1F42],"low_high"),".AB.")
 
 	def test_remote_catalog_can_patch_and_extend_scan_candidates(self) -> None:
 		catalog=RemoteCatalog(
@@ -589,6 +602,58 @@ class RuntimeTests(unittest.TestCase):
 			self.assertEqual(selected[0]["read_every"], 120)
 			self.assertTrue(selected[0]["enabled"])
 			self.assertTrue(next(sensor for sensor in loaded if sensor.key == "battery_2_voltage").enabled)
+
+	def test_rescan_migrates_legacy_bms_serial_byte_order(self) -> None:
+		report=[
+			{
+				"key": "battery_1_bms_serial",
+				"name": "Battery 1 BMS Serial",
+				"definition": {
+					"key": "battery_1_bms_serial",
+					"name": "Battery 1 BMS Serial",
+					"registers": [10032,10033],
+					"type": "ascii",
+					"multiplier": 1.0,
+					"offset": 0.0,
+					"unit": "",
+					"word_order": "high_low",
+					"byte_order": "low_high",
+					"schedule": "slow",
+					"read_every": 600,
+					"report_every": 900,
+					"change_by": 0.0,
+					"enabled": False,
+					"retain": True,
+					"device_class": "",
+					"state_class": "",
+					"icon": "",
+					"category": "battery",
+					"topic_suffix": "battery_1/bms_serial",
+					"attributes": {},
+				},
+				"status": "supported",
+				"raw_registers": [0x3530,0x3034],
+				"raw_hex": ["0x3530","0x3034"],
+				"decoded": "0540",
+				"value": "0540",
+				"latency_ms": 1.0,
+				"verification": "candidate",
+				"description": "test",
+			}
+		]
+		with tempfile.TemporaryDirectory() as directory:
+			detected_path=Path(directory) / "detected_sensors.yaml"
+			save_detected_sensors(str(detected_path),report)
+			payload=yaml.safe_load(detected_path.read_text(encoding="utf-8"))
+			payload["available_sensors"][0]["monitor"]=True
+			payload["available_sensors"][0]["definition"].pop("byte_order")
+			detected_path.write_text(yaml.safe_dump(payload,sort_keys=False),encoding="utf-8")
+
+			save_detected_sensors(str(detected_path),report)
+			migrated=yaml.safe_load(detected_path.read_text(encoding="utf-8"))["available_sensors"][0]
+
+			self.assertTrue(migrated["monitor"])
+			self.assertEqual(migrated["definition"]["byte_order"],"low_high")
 
 	def test_detected_sensor_selection_can_be_updated_without_editing_yaml(self) -> None:
 		report=[

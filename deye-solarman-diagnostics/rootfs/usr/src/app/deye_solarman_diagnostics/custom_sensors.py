@@ -83,6 +83,7 @@ def _normalized_definition(sensor: Any) -> dict[str, Any]:
 		"offset": sensor.offset,
 		"unit": sensor.unit,
 		"word_order": sensor.word_order,
+		"byte_order": sensor.byte_order,
 		"schedule": sensor.schedule,
 		"read_every": sensor.read_every,
 		"report_every": sensor.report_every,

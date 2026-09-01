@@ -44,6 +44,9 @@ def load_scan_candidates(bms_pack_count: int, remote_catalog: RemoteCatalog | No
 def _is_bms_sensor(sensor: SensorDefinition, bms_pack_count: int) -> bool:
 	parts=sensor.key.split("_",2)
 	return (
+		bool(sensor.registers)
+		and min(sensor.registers) >= 10032
+		and
 		len(parts) == 3
 		and parts[0] == "battery"
 		and parts[1].isdigit()

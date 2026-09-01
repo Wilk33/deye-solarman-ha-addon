@@ -90,6 +90,7 @@ class SensorDefinition:
 	offset: float=0.0
 	unit: str=""
 	word_order: str="high_low"
+	byte_order: str="high_low"
 	schedule: str="default"
 	read_every: int=60
 	report_every: int=300
