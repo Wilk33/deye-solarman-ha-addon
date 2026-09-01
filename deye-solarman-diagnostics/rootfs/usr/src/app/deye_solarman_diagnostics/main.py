@@ -17,9 +17,12 @@ from .models import PollingConfig
 from .mqtt import MqttPublisher
 from .scheduler import group_sensors_for_read
 from .scan_catalog import load_scan_candidates
+from .remote_catalog import RemoteCatalog
+from .remote_catalog import load_remote_catalog
 from .scanner import save_detected_sensors
 from .scanner import scan_candidates
 from .solarman import SolarmanClient
+from .solarman import SolarmanConnectionClosedError
 from .storage import load_state
 from .storage import save_scan_report
 from .storage import save_state
@@ -32,19 +35,20 @@ LOGGER=logging.getLogger(__name__)
 def main() -> None:
 	configure_logging()
 	config=load_config()
+	remote_catalog=load_remote_catalog(config.catalog)
 	access_lock=threading.Lock()
 	panel=IngressPanel(
 		config.scan.detected_sensors_file,
-		lambda: _run_manual_scan(access_lock),
+		lambda: _run_manual_scan(config,access_lock,remote_catalog),
 	)
 	panel.start()
 	try:
-		_run_addon(config,access_lock)
+		_run_addon(config,access_lock,remote_catalog)
 	finally:
 		panel.stop()
 
 
-def _run_addon(config: Any, access_lock: Any) -> None:
+def _run_addon(config: Any, access_lock: Any, remote_catalog: RemoteCatalog) -> None:
 	sensors=load_sensor_definitions(
 		config.profiles.default_profile,
 		config.profiles.overrides_file,
@@ -80,7 +84,7 @@ def _run_addon(config: Any, access_lock: Any) -> None:
 			if config.scan.mode != "disabled":
 				with access_lock:
 					scan_report=scan_candidates(
-						load_scan_candidates(config.scan.bms_pack_count),
+						load_scan_candidates(config.scan.bms_pack_count,remote_catalog),
 						solarman,
 						config.polling,
 					)
@@ -139,8 +143,7 @@ def _run_addon(config: Any, access_lock: Any) -> None:
 			time.sleep(config.logger.reconnect_delay)
 
 
-def _run_manual_scan(access_lock: Any) -> dict[str, Any]:
-	config=load_config()
+def _run_manual_scan(config: Any, access_lock: Any, remote_catalog: RemoteCatalog) -> dict[str, Any]:
 	solarman=SolarmanClient(config.logger)
 	try:
 		with access_lock:
@@ -151,7 +154,7 @@ def _run_manual_scan(access_lock: Any) -> dict[str, Any]:
 			)
 			LOGGER.info("Manual panel scan probe values=%s",probe_values)
 			scan_report=scan_candidates(
-				load_scan_candidates(config.scan.bms_pack_count),
+				load_scan_candidates(config.scan.bms_pack_count,remote_catalog),
 				solarman,
 				config.polling,
 			)
@@ -194,6 +197,7 @@ def run_iteration(
 	read_lock: Any | None=None,
 ) -> list[dict[str, Any]]:
 	report: list[dict[str, Any]]=[]
+	failed_groups=0
 	due_sensors=[
 		sensor
 		for sensor in sensors
@@ -211,8 +215,12 @@ def run_iteration(
 			with read_lock if read_lock is not None else nullcontext():
 				values=solarman.read_holding_registers(group_start, count)
 			latency_ms=(time.perf_counter()-start)*1000
+		except SolarmanConnectionClosedError as error:
+			LOGGER.warning("Solarman TCP session closed start=%s count=%s; reconnecting",group_start,count)
+			raise error
 		except Exception as exc:
 			LOGGER.warning("Read failed start=%s count=%s error=%s", group_start, count, exc)
+			failed_groups+=1
 			for sensor in group:
 				current_state=state[sensor.key]
 				current_state.last_status="timeout"
@@ -244,6 +252,9 @@ def run_iteration(
 
 		if index < len(groups)-1 and polling.read_message_spacing > 0:
 			time.sleep(polling.read_message_spacing)
+
+	if groups and failed_groups == len(groups):
+		raise ConnectionError("All due Solarman register groups failed; reconnecting")
 
 	return report
 

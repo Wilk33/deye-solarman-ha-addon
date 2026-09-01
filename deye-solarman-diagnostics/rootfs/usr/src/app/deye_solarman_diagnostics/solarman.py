@@ -12,6 +12,15 @@ from .models import LoggerConfig
 LOGGER=logging.getLogger(__name__)
 
 
+class SolarmanConnectionClosedError(ConnectionError):
+	"""The logger has closed its TCP session and requires a fresh client."""
+
+
+def is_connection_closed_error(error: Exception) -> bool:
+	message=str(error).lower()
+	return "connection already closed" in message or "connection closed on read" in message
+
+
 class SolarmanClientProtocol(Protocol):
 	def read_holding_registers(self, register_addr: int, quantity: int) -> list[int]:
 		...
@@ -63,6 +72,10 @@ class SolarmanClient:
 		start=time.perf_counter()
 		try:
 			return self._client.read_holding_registers(register, count)
+		except Exception as error:
+			if is_connection_closed_error(error):
+				raise SolarmanConnectionClosedError(str(error)) from error
+			raise
 		finally:
 			latency_ms=(time.perf_counter()-start)*1000
 			LOGGER.debug("Read register=%s count=%s latency_ms=%.2f", register, count, latency_ms)

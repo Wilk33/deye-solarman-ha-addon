@@ -6,6 +6,7 @@ from typing import Any
 
 from .models import AdvancedConfig
 from .models import AppConfig
+from .models import CatalogConfig
 from .models import InverterConfig
 from .models import LoggerConfig
 from .models import MqttConfig
@@ -43,6 +44,15 @@ def load_config(path: Path=OPTIONS_PATH) -> AppConfig:
 			"bms_pack_count": 4,
 		},
 	)
+	catalog=options.get(
+		"catalog",
+		{
+			"refresh_on_start": True,
+			"url": "https://raw.githubusercontent.com/Wilk33/deye-solarman-ha-addon/main/deye-solarman-diagnostics/catalog-overrides.yaml",
+			"cache_file": "/config/deye_solarman_catalog.yaml",
+			"timeout": 5,
+		},
+	)
 
 	default_profile=profiles["default_profile"]
 	if isinstance(default_profile, str):
@@ -54,6 +64,8 @@ def load_config(path: Path=OPTIONS_PATH) -> AppConfig:
 		raise ValueError("scan.mode must be disabled, scan_only, or scan_and_monitor")
 	if not 1 <= int(scan["bms_pack_count"]) <= 10:
 		raise ValueError("scan.bms_pack_count must be between 1 and 10")
+	if not 1 <= int(catalog["timeout"]) <= 30:
+		raise ValueError("catalog.timeout must be between 1 and 30")
 
 	return AppConfig(
 		logger=LoggerConfig(
@@ -108,5 +120,11 @@ def load_config(path: Path=OPTIONS_PATH) -> AppConfig:
 			report_file=scan["report_file"],
 			detected_sensors_file=scan["detected_sensors_file"],
 			bms_pack_count=int(scan["bms_pack_count"]),
+		),
+		catalog=CatalogConfig(
+			refresh_on_start=bool(catalog["refresh_on_start"]),
+			url=str(catalog["url"]),
+			cache_file=str(catalog["cache_file"]),
+			timeout=int(catalog["timeout"]),
 		),
 	)

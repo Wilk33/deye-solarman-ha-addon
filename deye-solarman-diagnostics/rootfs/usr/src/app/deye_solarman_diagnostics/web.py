@@ -209,27 +209,26 @@ PANEL_HTML="""<!doctype html>
 <title>Deye Solarman - Konfigurator encji</title>
 <style>
 :root {
-  color-scheme: light;
-  --ink: #16231f;
-  --muted: #5f7168;
-  --paper: #f5f0e6;
-  --panel: #fffdf8;
-  --line: #c9c0ad;
-  --sun: #e8a719;
-  --solar: #cf6c22;
-  --green: #17644e;
-  --red: #a54332;
-  --shadow: 0 18px 55px rgba(45, 44, 32, .14);
+  color-scheme: light dark;
+  --ink: var(--primary-text-color, #212121);
+  --muted: var(--secondary-text-color, #727272);
+  --paper: var(--primary-background-color, #fafafa);
+  --panel: var(--card-background-color, #ffffff);
+  --line: var(--divider-color, #e0e0e0);
+  --sun: var(--accent-color, var(--primary-color, #03a9f4));
+  --solar: var(--primary-color, #03a9f4);
+  --green: var(--success-color, var(--primary-color, #03a9f4));
+  --red: var(--error-color, #db4437);
+  --field: var(--input-fill-color, var(--secondary-background-color, #f5f5f5));
+  --shadow: var(--ha-card-box-shadow, 0 2px 4px rgba(0, 0, 0, .18));
 }
 * { box-sizing: border-box; }
 body {
   margin: 0;
   min-width: 320px;
   color: var(--ink);
-  background:
-    radial-gradient(circle at 10% 0%, rgba(232, 167, 25, .22), transparent 30rem),
-    linear-gradient(135deg, #ebe4d4, var(--paper) 46%, #e6eee5);
-  font-family: Georgia, "Times New Roman", serif;
+  background: var(--paper);
+  font-family: var(--paper-font-body1_-_font-family, Roboto, sans-serif);
 }
 button, input, select { font: inherit; }
 button { cursor: pointer; }
@@ -241,7 +240,7 @@ h1 { margin: 0; font-size: clamp(2rem, 5vw, 4.2rem); letter-spacing: -.055em; li
 .status { min-width: 250px; border-left: 4px solid var(--sun); padding: 10px 0 10px 14px; font-family: "Courier New", monospace; font-size: .82rem; }
 .status strong { display: block; margin-bottom: 5px; color: var(--green); }
 .actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 25px 0 14px; }
-.button { border: 1px solid var(--ink); border-radius: 0; padding: 11px 16px; background: var(--ink); color: #fffdf8; font-weight: bold; }
+.button { border: 1px solid var(--solar); border-radius: 4px; padding: 11px 16px; background: var(--solar); color: var(--text-primary-color, #fff); font-weight: bold; }
 .button:hover { background: var(--green); }
 .button.secondary { background: var(--panel); color: var(--ink); }
 .button:disabled { opacity: .55; cursor: progress; }
@@ -251,13 +250,13 @@ h1 { margin: 0; font-size: clamp(2rem, 5vw, 4.2rem); letter-spacing: -.055em; li
 .metric b { display: block; font-family: "Courier New", monospace; font-size: 1.8rem; color: var(--solar); }
 .metric span { color: var(--muted); font-size: .85rem; }
 .filters { margin-top: 28px; display: grid; grid-template-columns: minmax(0, 1fr) 180px; gap: 12px; }
-.filters input, .filters select { width: 100%; border: 1px solid var(--line); background: rgba(255,253,248,.82); padding: 12px; color: var(--ink); }
+.filters input, .filters select { width: 100%; border: 1px solid var(--line); background: var(--field); padding: 12px; color: var(--ink); }
 #empty { margin: 32px 0; color: var(--muted); font-style: italic; }
 .group { margin-top: 34px; }
 .group-title { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; font-size: 1.25rem; }
 .group-title small { color: var(--muted); font-family: "Courier New", monospace; }
 .sensor-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 12px; }
-.sensor { border: 1px solid var(--line); background: rgba(255,253,248,.93); box-shadow: 0 5px 19px rgba(45,44,32,.07); }
+.sensor { border: 1px solid var(--line); background: var(--panel); box-shadow: var(--shadow); }
 .sensor.selected { border-left: 5px solid var(--green); }
 .sensor-head { display: grid; grid-template-columns: 1fr auto; gap: 10px; padding: 15px; }
 .sensor h3 { margin: 0; font-size: 1.05rem; }
@@ -274,7 +273,7 @@ details { border-top: 1px solid var(--line); padding: 0 15px 14px; }
 summary { padding: 11px 0; color: var(--green); cursor: pointer; font-family: "Courier New", monospace; font-size: .75rem; }
 .fields { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 9px; }
 .field { display: grid; gap: 4px; color: var(--muted); font-family: "Courier New", monospace; font-size: .68rem; text-transform: uppercase; }
-.field input, .field select { min-width: 0; border: 1px solid var(--line); background: #fffdf8; padding: 7px; color: var(--ink); font-family: "Courier New", monospace; font-size: .8rem; text-transform: none; }
+.field input, .field select { min-width: 0; border: 1px solid var(--line); background: var(--field); padding: 7px; color: var(--ink); font-family: "Courier New", monospace; font-size: .8rem; text-transform: none; }
 .field.wide { grid-column: 1 / -1; }
 .notice { margin-top: 34px; border-top: 1px solid var(--line); padding-top: 15px; color: var(--muted); line-height: 1.5; }
 @media (max-width: 760px) {

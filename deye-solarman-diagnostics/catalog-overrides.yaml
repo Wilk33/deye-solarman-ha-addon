@@ -1,0 +1,5 @@
+version: 1
+# This file is fetched at add-on startup. Add, patch, or remove scan candidates
+# here without requiring an add-on image update. The add-on validates this data
+# before use and retains the most recent valid copy in /config.
+sensors: []

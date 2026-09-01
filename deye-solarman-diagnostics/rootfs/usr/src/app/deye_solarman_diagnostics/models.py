@@ -72,6 +72,14 @@ class ScanConfig:
 
 
 @dataclass(slots=True)
+class CatalogConfig:
+	refresh_on_start: bool
+	url: str
+	cache_file: str
+	timeout: int
+
+
+@dataclass(slots=True)
 class SensorDefinition:
 	key: str
 	name: str
@@ -116,3 +124,4 @@ class AppConfig:
 	polling: PollingConfig
 	advanced: AdvancedConfig
 	scan: ScanConfig
+	catalog: CatalogConfig

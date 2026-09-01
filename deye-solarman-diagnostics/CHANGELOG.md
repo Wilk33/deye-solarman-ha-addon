@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.0
+
+- Reconnect the Solarman TCP client immediately after the logger closes the connection, instead of continuing to poll a dead session.
+- Use the Home Assistant temperature unit `°C` in MQTT Discovery so BMS and inverter temperature entities are accepted as temperature sensors.
+- Replace fixed Ingress colors with Home Assistant theme CSS variables for light and dark themes.
+- Refresh a validated register-catalog overlay from GitHub on startup, cache its last valid copy in `/config`, and fall back to built-in definitions when it is unavailable.
+
 ## 0.3.6
 
 - Parse the MQTT service payload returned by the Home Assistant Supervisor API when it is wrapped in a `data` object.

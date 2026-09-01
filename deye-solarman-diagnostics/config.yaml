@@ -1,6 +1,6 @@
 name: Deye Solarman Diagnostics
 description: Diagnostics add-on for Deye inverter battery data through a local Solarman logger
-version: "0.3.6"
+version: "0.4.0"
 slug: deye-solarman-diagnostics
 url: "https://github.com/Wilk33/deye-solarman-ha-addon"
 services:
@@ -68,6 +68,11 @@ options:
     report_file: /share/deye_solarman_candidate_scan.json
     detected_sensors_file: /config/detected_sensors.yaml
     bms_pack_count: 4
+  catalog:
+    refresh_on_start: true
+    url: https://raw.githubusercontent.com/Wilk33/deye-solarman-ha-addon/main/deye-solarman-diagnostics/catalog-overrides.yaml
+    cache_file: /config/deye_solarman_catalog.yaml
+    timeout: 5
 schema:
   logger:
     host: str
@@ -115,3 +120,8 @@ schema:
     report_file: str
     detected_sensors_file: str
     bms_pack_count: int(1,10)
+  catalog:
+    refresh_on_start: bool
+    url: str
+    cache_file: str
+    timeout: int(1,30)

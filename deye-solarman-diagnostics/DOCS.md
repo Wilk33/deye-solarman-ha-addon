@@ -69,9 +69,41 @@ scan:
   report_file: /share/deye_solarman_candidate_scan.json
   detected_sensors_file: /config/detected_sensors.yaml
   bms_pack_count: 4
+
+catalog:
+  refresh_on_start: true
+  url: https://raw.githubusercontent.com/Wilk33/deye-solarman-ha-addon/main/deye-solarman-diagnostics/catalog-overrides.yaml
+  cache_file: /config/deye_solarman_catalog.yaml
+  timeout: 5
 ```
 
 Parametry loggera musza wskazywac logger Solarman, nie adres IP samego falownika. `serial_number` w sekcji `logger` to numer loggera, a `inverter.serial_number` to numer seryjny falownika uzywany w nazwach MQTT.
+
+### Katalog rejestrow z GitHub
+
+Przy starcie dodatek pobiera plik YAML `catalog-overrides.yaml` z `catalog.url`. Plik pozwala dodawac, poprawiac i usuwac definicje kandydatow skanowania bez aktualizacji obrazu dodatku. Pobierane sa wylacznie dane YAML - dodatek nie wykonuje zdalnego kodu. Po udanej walidacji kopia jest atomowo zapisywana w `catalog.cache_file`.
+
+Gdy GitHub lub Internet jest niedostepny, dodatek wykorzystuje ostatnia poprawna kopie z cache. Gdy cache takze nie istnieje albo jest bledny, uzywany jest katalog wbudowany w obraz dodatku. Nie zmienia to pliku `/config/detected_sensors.yaml` ani istniejacych wyborow MQTT.
+
+Format katalogu jest wersjonowany. Kazdy wpis `sensors` ma `key` oraz opcjonalny obiekt `definition`. Istniejacy wpis jest laczony z definicja wbudowana, nowy wpis musi podac co najmniej `name`, `registers` i `type`. Aby usunac kandydata, uzyj `remove: true`.
+
+```yaml
+version: 1
+sensors:
+  - key: battery_1_temperature
+    definition:
+      multiplier: 0.1
+      offset: -100.0
+      unit: "°C"
+  - key: firmware_build
+    definition:
+      name: Firmware Build
+      registers: [550]
+      type: uint16
+      schedule: slow
+  - key: obsolete_candidate
+    remove: true
+```
 
 ### MQTT i Supervisor
 
@@ -97,6 +129,8 @@ Panel umozliwia:
 Wersja `0.3.4` zapisuje kazde zadanie panelu w logu dodatku, na przyklad `Ingress request method=GET path=/api/sensors` albo `Ingress request method=POST path=/api/scan`. Dodatkowo konsola przegladarki zapisuje wpisy zaczynajace sie od `[Deye Solarman]` z adresem Ingress, metoda zadania i kodem odpowiedzi.
 
 Przy starcie MQTT log powinien zawierac `Using MQTT service credentials supplied by Home Assistant Supervisor`, `Sensor configuration loaded`, `MQTT connection confirmed`, `Publishing MQTT Discovery` i po jednym wpisie `MQTT discovery published` dla kazdej wybranej encji. Brak tych wpisow jednoznacznie wskazuje etap, na ktorym konfiguracja nie przechodzi do Home Assistant.
+
+Wersja `0.4.0` rozpoznaje `Connection closed on read` i `Connection already closed` jako utrate sesji Solarman. Zamiast kontynuowac nieskuteczne odczyty, zamyka klienta i po `logger.reconnect_delay` nawiazuje nowe polaczenie. Temperatura w Discovery jest publikowana z jednostka `°C`, wymagana dla `device_class: temperature`.
 
 Jesli panel nie reaguje, otworz narzedzia programistyczne przegladarki, wybierz `Console`, odswiez panel i skopiuj wszystkie wpisy `[Deye Solarman]` oraz ewentualne czerwone bledy. Rownoczesnie skopiuj log dodatku z chwili otwarcia panelu i klikniecia `Skanuj teraz`.
 

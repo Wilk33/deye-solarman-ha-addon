@@ -21,6 +21,7 @@ from deye_solarman_diagnostics.main import _handle_sensor
 from deye_solarman_diagnostics.main import _is_due
 from deye_solarman_diagnostics.main import run_iteration
 from deye_solarman_diagnostics.models import InverterConfig
+from deye_solarman_diagnostics.models import CatalogConfig
 from deye_solarman_diagnostics.models import MqttConfig
 from deye_solarman_diagnostics.models import PollingConfig
 from deye_solarman_diagnostics.models import SensorDefinition
@@ -29,7 +30,10 @@ from deye_solarman_diagnostics.mqtt import MqttPublisher
 from deye_solarman_diagnostics.scheduler import group_sensors_for_read
 from deye_solarman_diagnostics.scan_catalog import ScanCandidate
 from deye_solarman_diagnostics.scan_catalog import load_scan_candidates
+from deye_solarman_diagnostics.remote_catalog import RemoteCatalog
+from deye_solarman_diagnostics.remote_catalog import load_remote_catalog
 from deye_solarman_diagnostics.supervisor import discover_mqtt_service
+from deye_solarman_diagnostics.solarman import SolarmanConnectionClosedError
 from deye_solarman_diagnostics.scanner import load_monitored_definitions
 from deye_solarman_diagnostics.scanner import save_detected_sensors
 from deye_solarman_diagnostics.scanner import scan_candidates
@@ -72,6 +76,11 @@ class FakeSolarman:
 class FailingSolarman:
 	def read_holding_registers(self, register: int, count: int) -> list[int]:
 		raise RuntimeError("Modbus exception: illegal data address")
+
+
+class ClosedSolarman:
+	def read_holding_registers(self, register: int, count: int) -> list[int]:
+		raise SolarmanConnectionClosedError("Connection already closed")
 
 
 class FakeSupervisorResponse:
@@ -235,7 +244,42 @@ class RuntimeTests(unittest.TestCase):
 		self.assertEqual(by_key["battery_2_voltage"].registers, [10078])
 		self.assertEqual(by_key["battery_4_cycles"].registers, [10170])
 		self.assertEqual(by_key["battery_1_temperature"].offset, -100.0)
+		self.assertEqual(by_key["battery_1_temperature"].unit, "°C")
 		self.assertEqual(by_key["battery_1_soc"].multiplier, 0.1)
+
+	def test_remote_catalog_can_patch_and_extend_scan_candidates(self) -> None:
+		catalog=RemoteCatalog(
+			[
+				{"key": "battery_1_temperature", "definition": {"unit": "°C", "multiplier": 0.01}},
+				{
+					"key": "firmware_build",
+					"definition": {
+						"name": "Firmware Build",
+						"registers": [550],
+						"type": "uint16",
+						"schedule": "slow",
+					},
+				},
+			],
+			"test",
+		)
+		by_key={candidate.sensor.key: candidate.sensor for candidate in load_scan_candidates(4,catalog)}
+
+		self.assertEqual(by_key["battery_1_temperature"].multiplier,0.01)
+		self.assertEqual(by_key["firmware_build"].registers,[550])
+
+	def test_remote_catalog_uses_cached_data_after_download_failure(self) -> None:
+		payload={"version": 1,"sensors": [{"key": "ac_temperature","definition": {"unit": "°C"}}]}
+		with tempfile.TemporaryDirectory() as directory:
+			config=CatalogConfig(True,"https://example.invalid/catalog.yaml",str(Path(directory) / "catalog.yaml"),1)
+			with patch("deye_solarman_diagnostics.remote_catalog.urlopen",return_value=FakeSupervisorResponse(payload)):
+				downloaded=load_remote_catalog(config)
+			with patch("deye_solarman_diagnostics.remote_catalog.urlopen",side_effect=OSError("offline")):
+				cached=load_remote_catalog(config)
+
+		self.assertEqual(downloaded.source,"github")
+		self.assertEqual(cached.source,"cache")
+		self.assertEqual(cached.sensors[0]["key"],"ac_temperature")
 
 	def test_candidate_scan_reports_raw_hex_and_supported_status(self) -> None:
 		candidate=ScanCandidate(
@@ -430,6 +474,8 @@ class RuntimeTests(unittest.TestCase):
 					page=response.read().decode("utf-8")
 				self.assertIn('<base href="/api/hassio_ingress/example-token/">',page)
 				self.assertIn("char.charCodeAt(0) === 34",page)
+				self.assertIn("var(--primary-background-color",page)
+				self.assertIn("color-scheme: light dark",page)
 				self.assertNotIn('"""',page)
 				with urlopen(f"{address}/panel.js") as response:
 					diagnostics_script=response.read().decode("utf-8")
@@ -494,6 +540,11 @@ class RuntimeTests(unittest.TestCase):
 		self.assertEqual(report[0]["raw"], [2,1])
 		self.assertEqual(report[0]["decoded"], 131073)
 
+	def test_iteration_reconnects_when_solarman_session_is_closed(self) -> None:
+		sensor=SensorDefinition("voltage", "Voltage", [10040], "uint16")
+		with self.assertRaisesRegex(SolarmanConnectionClosedError, "Connection already closed"):
+			run_iteration([sensor], {"voltage": SensorState()}, ClosedSolarman(), FakeMqtt(), make_polling(), False)
+
 	def test_scheduler_uses_actual_register_range(self) -> None:
 		first=SensorDefinition("first", "First", [10042,10040], "uint32")
 		second=SensorDefinition("second", "Second", [10043], "uint16")
@@ -523,6 +574,19 @@ class RuntimeTests(unittest.TestCase):
 
 		self.assertTrue(client.messages)
 		self.assertTrue(all(retain is False for _, _, retain in client.messages))
+
+	def test_temperature_discovery_uses_home_assistant_celsius_unit(self) -> None:
+		publisher=MqttPublisher(
+			MqttConfig("host",1883,"","","test","base","homeassistant",True),
+			InverterConfig("2507092018","Deye","Deye","SG05LP3"),
+		)
+		client=FakePahoClient()
+		publisher._client=client
+		publisher.publish_discovery(
+			SensorDefinition("temperature","Temperature",[10042],"uint16",unit="°C",device_class="temperature")
+		)
+		payload=json.loads(client.messages[0][1])
+		self.assertEqual(payload["unit_of_measurement"],"°C")
 
 	def test_invalid_state_file_is_ignored_and_replaced_safely(self) -> None:
 		with tempfile.TemporaryDirectory() as directory:
