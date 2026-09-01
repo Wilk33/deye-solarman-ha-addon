@@ -40,6 +40,7 @@ class InverterConfig:
 class ProfilesConfig:
 	default_profile: list[str]
 	overrides_file: str
+	custom_sensors_file: str
 	state_file: str
 	scan_report_file: str
 
@@ -100,6 +101,7 @@ class SensorDefinition:
 	icon: str=""
 	category: str=""
 	topic_suffix: str=""
+	formula: str=""
 	attributes: dict[str, Any]=field(default_factory=dict)
 
 

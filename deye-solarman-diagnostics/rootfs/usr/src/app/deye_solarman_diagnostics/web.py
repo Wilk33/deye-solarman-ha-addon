@@ -10,7 +10,11 @@ from http.server import BaseHTTPRequestHandler
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote
 
+from .custom_sensors import delete_custom_sensor
+from .custom_sensors import load_custom_sensors
+from .custom_sensors import save_custom_sensors
 from .scanner import load_detected_sensors
 from .scanner import update_detected_sensors
 from .logging_utils import success
@@ -19,6 +23,7 @@ from .logging_utils import success
 LOGGER=logging.getLogger(__name__)
 MAX_REQUEST_BYTES=1_000_000
 PANEL_SCRIPT=Path(__file__).with_name("panel.js").read_text(encoding="utf-8")
+CUSTOM_PANEL_SCRIPT=Path(__file__).with_name("custom_panel.js").read_text(encoding="utf-8")
 
 
 class IngressPanel:
@@ -29,6 +34,9 @@ class IngressPanel:
 		reset_handler: Callable[[], dict[str, Any]] | None=None,
 		clear_handler: Callable[[], dict[str, Any]] | None=None,
 		configuration_changed_handler: Callable[[], None] | None=None,
+		custom_sensors_file: str | None=None,
+		custom_test_handler: Callable[[dict[str, Any]], dict[str, Any]] | None=None,
+		custom_save_handler: Callable[[list[dict[str, Any]]], dict[str, Any]] | None=None,
 		port: int=8099,
 	) -> None:
 		self._detected_sensors_file=detected_sensors_file
@@ -36,6 +44,9 @@ class IngressPanel:
 		self._reset_handler=reset_handler
 		self._clear_handler=clear_handler
 		self._configuration_changed_handler=configuration_changed_handler
+		self._custom_sensors_file=custom_sensors_file
+		self._custom_test_handler=custom_test_handler
+		self._custom_save_handler=custom_save_handler
 		self._port=port
 		self._job_lock=threading.Lock()
 		self._job={
@@ -82,12 +93,21 @@ class IngressPanel:
 				if path == "/panel.js":
 					self._send_script(PANEL_SCRIPT)
 					return
+				if path == "/custom-panel.js":
+					self._send_script(CUSTOM_PANEL_SCRIPT)
+					return
 				if path == "/api/sensors":
 					self._send_json(load_detected_sensors(panel._detected_sensors_file))
 					return
 				if path == "/api/scan-status":
 					with panel._job_lock:
 						self._send_json(dict(panel._job))
+					return
+				if path == "/api/custom-sensors":
+					if panel._custom_sensors_file is None:
+						self._send_json({"error": "Custom sensors are unavailable"},HTTPStatus.NOT_FOUND)
+						return
+					self._send_json(load_custom_sensors(panel._custom_sensors_file))
 					return
 				self._send_json({"error": "Not found"},HTTPStatus.NOT_FOUND)
 
@@ -124,10 +144,53 @@ class IngressPanel:
 						self._read_json()
 						self._send_json(panel._run_configuration_action(panel._clear_handler))
 						return
+					if path == "/api/custom-sensors":
+						if panel._custom_sensors_file is None:
+							self._send_json({"error": "Custom sensors are unavailable"},HTTPStatus.NOT_FOUND)
+							return
+						payload=self._read_json()
+						entries=payload.get("sensors") if isinstance(payload,dict) else None
+						if not isinstance(entries,list):
+							raise ValueError("custom sensors must be a list")
+						updated=(
+							panel._custom_save_handler(entries)
+							if panel._custom_save_handler is not None
+							else save_custom_sensors(panel._custom_sensors_file,entries)
+						)
+						panel._notify_configuration_changed()
+						self._send_json(updated)
+						return
+					if path == "/api/custom-sensors/test":
+						if panel._custom_test_handler is None:
+							self._send_json({"error": "Custom sensor test is unavailable"},HTTPStatus.NOT_FOUND)
+							return
+						payload=self._read_json()
+						definition=payload.get("definition") if isinstance(payload,dict) else None
+						if not isinstance(definition,dict):
+							raise ValueError("Custom sensor definition must be an object")
+						self._send_json(panel._custom_test_handler(definition))
+						return
 				except ValueError as error:
 					self._send_json({"error": str(error)},HTTPStatus.BAD_REQUEST)
 					return
 				self._send_json({"error": "Not found"},HTTPStatus.NOT_FOUND)
+
+			def do_DELETE(self) -> None:
+				path=self.path.split("?",1)[0]
+				self._log_request(path)
+				if not path.startswith("/api/custom-sensors/") or panel._custom_sensors_file is None:
+					self._send_json({"error": "Not found"},HTTPStatus.NOT_FOUND)
+					return
+				key=unquote(path.removeprefix("/api/custom-sensors/"))
+				if not key or "/" in key:
+					self._send_json({"error": "Invalid custom sensor key"},HTTPStatus.BAD_REQUEST)
+					return
+				try:
+					updated=delete_custom_sensor(panel._custom_sensors_file,key)
+					panel._notify_configuration_changed()
+					self._send_json(updated)
+				except ValueError as error:
+					self._send_json({"error": str(error)},HTTPStatus.BAD_REQUEST)
 
 			def log_message(self, format: str, *args: Any) -> None:
 				LOGGER.debug("Ingress request: "+format,*args)
@@ -267,7 +330,7 @@ body {
   background: var(--paper);
   font-family: var(--paper-font-body1_-_font-family, Roboto, sans-serif);
 }
-button, input { font: inherit; }
+button, input, textarea { font: inherit; }
 button { cursor: pointer; }
 .shell { max-width: 1480px; margin: 0 auto; padding: 34px 28px 64px; }
 .masthead { display: flex; justify-content: space-between; gap: 24px; align-items: end; border-bottom: 2px solid var(--ink); padding-bottom: 22px; }
@@ -277,6 +340,10 @@ h1 { margin: 0; font-size: clamp(2rem, 5vw, 4.2rem); letter-spacing: -.055em; li
 .status { min-width: 250px; border-left: 4px solid var(--sun); padding: 10px 0 10px 14px; font-family: "Courier New", monospace; font-size: .82rem; }
 .status strong { display: block; margin-bottom: 5px; color: var(--green); }
 .actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 25px 0 14px; }
+.tabs { display: flex; gap: 8px; margin: 24px 0 0; border-bottom: 1px solid var(--line); }
+.tab { border: 0; border-bottom: 3px solid transparent; background: transparent; color: var(--muted); padding: 11px 15px; font-weight: bold; }
+.tab.active { border-bottom-color: var(--solar); color: var(--ink); }
+.tab-panel[hidden] { display: none; }
 .button { border: 1px solid var(--solar); border-radius: 4px; padding: 11px 16px; background: var(--solar); color: var(--text-primary-color, #fff); font-weight: bold; }
 .button:hover { background: var(--green); }
 .button.secondary { background: var(--panel); color: var(--ink); }
@@ -331,12 +398,33 @@ summary { padding: 11px 0; color: var(--green); cursor: pointer; font-family: "C
 .select-option:hover, .select-option:focus-visible, .select-option.selected { background: var(--solar); color: var(--text-primary-color, #fff); outline: 0; }
 .sensor.select-open { position: relative; z-index: 4; }
 .notice { margin-top: 34px; border-top: 1px solid var(--line); padding-top: 15px; color: var(--muted); line-height: 1.5; }
+.custom-intro { margin: 24px 0 8px; max-width: 760px; color: var(--muted); line-height: 1.5; }
+.custom-actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 22px 0; }
+.custom-actions div { display: flex; flex-wrap: wrap; gap: 10px; }
+.custom-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 12px; }
+.custom-sensor { position: relative; border: 1px solid var(--line); background: var(--panel); box-shadow: var(--shadow); }
+.custom-sensor.enabled { border-left: 5px solid var(--green); }
+.custom-sensor .sensor-head { padding-bottom: 9px; }
+.custom-sensor .fields { padding: 0 15px 15px; }
+.custom-sensor .field textarea { min-height: 148px; width: 100%; resize: vertical; border: 1px solid var(--line); background: var(--field); color: var(--ink); padding: 8px; font: .8rem/1.45 "Courier New", monospace; text-transform: none; white-space: pre; overflow: auto; }
+.formula-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; grid-column: 1 / -1; }
+.formula-toolbar .button { padding: 7px 10px; font-size: .75rem; }
+.test-result { grid-column: 1 / -1; margin: 0; max-height: 260px; overflow: auto; border: 1px solid var(--line); background: var(--field); color: var(--ink); padding: 10px; font: .75rem/1.45 "Courier New", monospace; white-space: pre-wrap; }
+.test-result.error { border-color: var(--red); color: var(--red); }
+.formula-modal[hidden] { display: none; }
+.formula-modal { position: fixed; z-index: 100; inset: 0; display: grid; place-items: center; padding: 22px; background: rgba(0,0,0,.62); }
+.formula-dialog { display: grid; grid-template-rows: auto minmax(0,1fr) auto auto; width: min(1040px,100%); height: min(760px,100%); border: 1px solid var(--line); background: var(--panel); box-shadow: var(--shadow); }
+.formula-dialog header, .formula-dialog footer { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px; border-bottom: 1px solid var(--line); }
+.formula-dialog footer { border-top: 1px solid var(--line); border-bottom: 0; justify-content: flex-end; }
+.formula-dialog h2 { margin: 0; font-size: 1.1rem; }
+.formula-dialog textarea { min-height: 0; width: 100%; height: 100%; border: 0; background: var(--field); color: var(--ink); padding: 16px; resize: none; font: .9rem/1.55 "Courier New", monospace; white-space: pre; overflow: auto; }
 @media (max-width: 760px) {
   .shell { padding: 22px 16px 44px; }
   .masthead { display: block; }
   .status { margin-top: 22px; }
   .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .filters { grid-template-columns: 1fr; }
+  .custom-actions { align-items: flex-start; flex-direction: column; }
 }
 </style>
 </head>
@@ -351,6 +439,12 @@ summary { padding: 11px 0; color: var(--green); cursor: pointer; font-family: "C
     <div class="status"><strong id="scan-state">Ladowanie panelu</strong><span id="scan-message">Odczyt zapisanego wyniku skanu.</span></div>
   </header>
 
+  <nav class="tabs" aria-label="Pulpity konfiguracji">
+    <button class="tab active" type="button" data-tab="detected">Wykryte sensory</button>
+    <button class="tab" type="button" data-tab="custom">Wlasne sensory</button>
+  </nav>
+
+  <section id="detected-tab" class="tab-panel">
   <section class="actions">
     <button class="button" id="scan-button" type="button">Skanuj teraz</button>
     <button class="button secondary" id="reset-button" type="button">Reset konfiguracji</button>
@@ -377,7 +471,26 @@ summary { padding: 11px 0; color: var(--green); cursor: pointer; font-family: "C
   <p id="empty" hidden>Brak danych skanu. Uzyj Skanuj teraz po skonfigurowaniu polaczenia loggera w zakladce Konfiguracja dodatku.</p>
   <section id="sensor-groups"></section>
   <p class="notice"><b>Zastosowanie zmian:</b> zapis aktualizuje trwaly plik wyboru. Dodatek automatycznie przeladowuje tylko polaczenia Solarman i MQTT oraz odczyt wybranych czujnikow. Wiersz ASCII pokazuje dwa znaki z kazdego rejestru, a znaki niedrukowalne jako kropki. Poprawny odczyt BMS potwierdza dostep transportowy, ale niekoniecznie znaczenie rejestru.</p>
+  </section>
+
+  <section id="custom-tab" class="tab-panel" hidden>
+    <p class="custom-intro">Dodaj zwykly sensor Modbus lub wlacz <b>Wlasna formula</b>, aby lokalnie odczytywac rejestry przez <code>sensor(...)</code> i <code>RAW(...)</code>. Zapis automatycznie przeladowuje tylko odczyt oraz MQTT.</p>
+    <section class="custom-actions">
+      <div><button class="button" id="custom-add-button" type="button">+ Dodaj sensor</button><button class="button secondary" id="custom-save-button" type="button">Zapisz wlasne sensory</button></div>
+      <span id="custom-save-message"></span>
+    </section>
+    <section id="custom-sensor-list" class="custom-grid"></section>
+    <p id="custom-empty" hidden>Nie utworzono jeszcze wlasnych sensorow. Uzyj przycisku + Dodaj sensor.</p>
+  </section>
 </main>
+<section id="formula-modal" class="formula-modal" hidden aria-modal="true" role="dialog" aria-label="Edytor formuly">
+  <div class="formula-dialog">
+    <header><div><h2 id="formula-modal-title">Formula</h2><span id="formula-modal-key" class="key"></span></div><button class="button secondary" id="formula-minimize-button" type="button">Minimalizuj</button></header>
+    <textarea id="formula-modal-editor" spellcheck="false" aria-label="Formula"></textarea>
+    <pre id="formula-modal-result" class="test-result" hidden></pre>
+    <footer><button class="button secondary" id="formula-modal-test-button" type="button">Test formuly</button><button class="button" id="formula-apply-button" type="button">Zastosuj</button></footer>
+  </div>
+</section>
 <script src="panel.js"></script>
 <script>
 let sensors=[];
@@ -654,6 +767,7 @@ Promise.all([loadSensors(),refreshScanStatus()]).catch(error=>{
   byId("scan-message").textContent=error.message;
 });
 </script>
+<script src="custom-panel.js"></script>
 </body>
 </html>
 """

@@ -10,7 +10,10 @@ from .codec import apply_transform
 from .codec import decode_registers
 from .codec import registers_to_ascii
 from .config import load_config
+from .definitions import sensor_from_payload
 from .definitions import load_sensor_definitions
+from .formula import FormulaExecutor
+from .formula import FormulaResult
 from .logging_utils import configure_logging
 from .logging_utils import success
 from .models import SensorDefinition
@@ -62,6 +65,9 @@ def main() -> None:
 		lambda: _reset_panel_configuration(config,current_catalog()),
 		lambda: _clear_panel_sensors(config,refresh_catalog()),
 		configuration_changed.set,
+		config.profiles.custom_sensors_file,
+		lambda definition: _test_custom_sensor(config,access_lock,definition),
+		lambda entries: _save_custom_sensor_configuration(config,entries),
 	)
 	panel.start()
 	try:
@@ -85,6 +91,7 @@ def _run_addon(
 			config.profiles.default_profile,
 			config.profiles.overrides_file,
 			config.scan.detected_sensors_file,
+			config.profiles.custom_sensors_file,
 		)
 		for sensor in sensors:
 			state.setdefault(sensor.key, SensorState())
@@ -128,16 +135,28 @@ def _run_addon(
 					config.profiles.default_profile,
 					config.profiles.overrides_file,
 					config.scan.detected_sensors_file,
+					config.profiles.custom_sensors_file,
 				)
 				for sensor in sensors:
 					state.setdefault(sensor.key, SensorState())
 
 			mqtt.connect()
-			pending_removals=load_pending_discovery_removals(config.scan.detected_sensors_file)
+			removal_paths={
+				config.scan.detected_sensors_file,
+				config.profiles.custom_sensors_file,
+			}
+			pending_removals=sorted(
+				{
+					key
+					for path in removal_paths
+					for key in load_pending_discovery_removals(path)
+				}
+			)
 			for sensor_key in pending_removals:
 				mqtt.remove_discovery(sensor_key)
 			if pending_removals:
-				clear_pending_discovery_removals(config.scan.detected_sensors_file)
+				for path in removal_paths:
+					clear_pending_discovery_removals(path)
 				success(LOGGER,"Removed MQTT Discovery entities=%s",len(pending_removals))
 			enabled_sensors=[sensor for sensor in sensors if sensor.enabled]
 			LOGGER.info(
@@ -232,6 +251,54 @@ def _clear_panel_sensors(config: Any, remote_catalog: RemoteCatalog) -> dict[str
 	return payload
 
 
+def _save_custom_sensor_configuration(config: Any, entries: list[dict[str, Any]]) -> dict[str, Any]:
+	base_sensors=load_sensor_definitions(
+		config.profiles.default_profile,
+		config.profiles.overrides_file,
+		config.scan.detected_sensors_file,
+		None,
+	)
+	base_keys={sensor.key for sensor in base_sensors}
+	for entry in entries:
+		if not isinstance(entry,dict) or not isinstance(entry.get("key"),str):
+			continue
+		if entry["key"] in base_keys:
+			raise ValueError(f"Custom sensor key is already used: {entry['key']}")
+	from .custom_sensors import save_custom_sensors
+
+	return save_custom_sensors(config.profiles.custom_sensors_file,entries)
+
+
+def _test_custom_sensor(config: Any, access_lock: Any, definition: dict[str, Any]) -> dict[str, Any]:
+	sensor=sensor_from_payload(definition,enabled=True)
+	from .definitions import _validate_sensor_definitions
+
+	_validate_sensor_definitions([sensor])
+	solarman=SolarmanClient(config.logger)
+	try:
+		with access_lock:
+			solarman.connect()
+			if sensor.formula:
+				result=_evaluate_formula_sensor(sensor,solarman)
+				return _formula_result_payload(result)
+			start=time.perf_counter()
+			start_register=min(sensor.registers)
+			values=solarman.read_holding_registers(start_register,max(sensor.registers)-start_register+1)
+			latency_ms=(time.perf_counter()-start)*1000
+			raw_values=[values[register-start_register] for register in sensor.registers]
+			decoded=decode_registers(raw_values,sensor.register_type,sensor.word_order)
+			value=apply_transform(decoded,sensor.multiplier,sensor.offset)
+			return {
+				"value": value,
+				"raw_registers": raw_values,
+				"raw_hex": [f"0x{raw:04X}" for raw in raw_values],
+				"decoded": decoded,
+				"latency_ms": round(latency_ms,2),
+			}
+	finally:
+		solarman.disconnect()
+
+
 def _wait_for_stop() -> None:
 	while True:
 		time.sleep(3600)
@@ -266,7 +333,9 @@ def run_iteration(
 		for sensor in sensors
 		if sensor.enabled and _is_due(sensor, state[sensor.key], polling)
 	]
-	groups=group_sensors_for_read(due_sensors, polling)
+	direct_sensors=[sensor for sensor in due_sensors if not sensor.formula]
+	formula_sensors=[sensor for sensor in due_sensors if sensor.formula]
+	groups=group_sensors_for_read(direct_sensors, polling)
 
 	for index, group in enumerate(groups):
 		group_start=min(register for sensor in group for register in sensor.registers)
@@ -318,6 +387,33 @@ def run_iteration(
 
 	if groups and failed_groups == len(groups):
 		raise ConnectionError("All due Solarman register groups failed; reconnecting")
+
+	for sensor in formula_sensors:
+		try:
+			start=time.perf_counter()
+			with read_lock if read_lock is not None else nullcontext():
+				formula_result=_evaluate_formula_sensor(sensor,solarman)
+			latency_ms=(time.perf_counter()-start)*1000
+			report.append(
+				_handle_formula_sensor(
+					sensor,
+					formula_result,
+					latency_ms,
+					state[sensor.key],
+					mqtt,
+					emit_raw_topics,
+					polling.publish_unchanged_every,
+				)
+			)
+		except SolarmanConnectionClosedError as error:
+			LOGGER.warning("Solarman TCP session closed for formula sensor=%s; reconnecting",sensor.key)
+			raise error
+		except Exception as error:
+			LOGGER.warning("Formula read failed sensor=%s error=%s",sensor.key,error)
+			current_state=state[sensor.key]
+			current_state.last_status="formula_error"
+			current_state.timeout_count+=1
+			report.append({"sensor": sensor.key,"status": "formula_error","error": str(error)})
 
 	return report
 
@@ -383,6 +479,84 @@ def _handle_sensor(
 		"decoded": decoded,
 		"value": value,
 		"status": "supported",
+		"latency_ms": round(latency_ms,2),
+	}
+
+
+def _evaluate_formula_sensor(sensor: SensorDefinition, solarman: SolarmanClient) -> FormulaResult:
+	return FormulaExecutor(solarman.read_holding_registers).execute(sensor.formula)
+
+
+def _formula_result_payload(result: FormulaResult) -> dict[str, Any]:
+	return {
+		"value": result.value,
+		"reads": [
+			{
+				"register": read.address,
+				"raw_registers": read.raw_registers,
+				"raw_hex": [f"0x{raw:04X}" for raw in read.raw_registers],
+				"type": read.register_type,
+				"multiplier": read.multiplier,
+				"offset": read.offset,
+				"word_order": read.word_order,
+				"decoded": read.decoded,
+				"value": read.value,
+			}
+			for read in result.reads
+		],
+	}
+
+
+def _handle_formula_sensor(
+	sensor: SensorDefinition,
+	formula_result: FormulaResult,
+	latency_ms: float,
+	sensor_state: SensorState,
+	mqtt: MqttPublisher,
+	emit_raw_topics: bool,
+	publish_unchanged_every: int,
+) -> dict[str, Any]:
+	now=time.time()
+	value=formula_result.value
+	raw_values=[raw for read in formula_result.reads for raw in read.raw_registers]
+	sensor_state.last_read_at=now
+	sensor_state.raw_registers=raw_values
+	sensor_state.latency_ms=latency_ms
+	if value is None:
+		sensor_state.last_value=None
+		sensor_state.last_status="unavailable"
+		return {
+			"sensor": sensor.key,
+			"name": sensor.name,
+			"status": "unavailable",
+			"value": None,
+			"formula_reads": _formula_result_payload(formula_result)["reads"],
+		}
+
+	sensor_state.last_value=value
+	sensor_state.last_status="supported"
+	if _should_publish(sensor,sensor_state,now,value,publish_unchanged_every):
+		attributes={
+			"formula": sensor.formula,
+			"type": "auto",
+			"formula_reads": _formula_result_payload(formula_result)["reads"],
+			"latency_ms": round(latency_ms,2),
+			"last_read_at": int(now),
+			"timeout_count": sensor_state.timeout_count,
+		}
+		mqtt.publish_state(sensor,value,attributes)
+		if emit_raw_topics:
+			mqtt.publish_raw(sensor,raw_values)
+		sensor_state.last_published_at=now
+		sensor_state.last_published_value=value
+
+	return {
+		"sensor": sensor.key,
+		"name": sensor.name,
+		"status": "supported",
+		"value": value,
+		"raw": raw_values,
+		"formula_reads": _formula_result_payload(formula_result)["reads"],
 		"latency_ms": round(latency_ms,2),
 	}
 

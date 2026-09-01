@@ -97,6 +97,7 @@ def load_config(path: Path=OPTIONS_PATH) -> AppConfig:
 		profiles=ProfilesConfig(
 			default_profile=list(default_profile),
 			overrides_file=profiles["overrides_file"],
+			custom_sensors_file=profiles.get("custom_sensors_file","/config/custom_sensors.yaml"),
 			state_file=profiles["state_file"],
 			scan_report_file=profiles["scan_report_file"],
 		),

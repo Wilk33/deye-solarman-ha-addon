@@ -8,17 +8,20 @@ from typing import Any
 import yaml
 
 from .defaults import DEFAULT_PROFILES
+from .formula import validate_formula
 from .models import SensorDefinition
 from .scanner import load_monitored_definitions
 
 
 SUPPORTED_REGISTER_TYPES={"uint16","int16","uint32","int32","hex","ascii"}
+FORMULA_REGISTER_TYPE="auto"
 
 
 def load_sensor_definitions(
 	profile_names: list[str],
 	overrides_file: str,
 	detected_sensors_file: str | None=None,
+	custom_sensors_file: str | None=None,
 ) -> list[SensorDefinition]:
 	unknown_profiles=[name for name in profile_names if name not in DEFAULT_PROFILES]
 	if unknown_profiles:
@@ -28,9 +31,33 @@ def load_sensor_definitions(
 	for profile_name in profile_names:
 		sensors.extend(replace(sensor) for sensor in DEFAULT_PROFILES.get(profile_name,[]))
 
-	return _validate_sensor_definitions(
-		_apply_overrides(sensors, Path(overrides_file), detected_sensors_file)
-	)
+	merged=_apply_overrides(sensors, Path(overrides_file), detected_sensors_file)
+	if custom_sensors_file:
+		merged.extend(load_custom_sensor_definitions(custom_sensors_file))
+	return _validate_sensor_definitions(merged)
+
+
+def load_custom_sensor_definitions(path: str) -> list[SensorDefinition]:
+	from .custom_sensors import load_custom_sensors
+
+	payload=load_custom_sensors(path)
+	entries=payload.get("sensors",[])
+	if not isinstance(entries,list):
+		raise ValueError("custom_sensors.yaml: sensors must be a list")
+	sensors=[]
+	for index, entry in enumerate(entries):
+		if not isinstance(entry,dict):
+			raise ValueError(f"custom_sensors.yaml: sensors[{index}] must be an object")
+		monitor=entry.get("monitor",True)
+		if not isinstance(monitor,bool):
+			raise ValueError(f"custom_sensors.yaml: sensors[{index}].monitor must be a boolean")
+		definition=entry.get("definition")
+		if not isinstance(definition,dict):
+			raise ValueError(f"custom_sensors.yaml: sensors[{index}].definition must be an object")
+		if definition.get("key") != entry.get("key"):
+			raise ValueError(f"custom_sensors.yaml: sensors[{index}] has inconsistent key")
+		sensors.append(sensor_from_payload(definition,enabled=monitor))
+	return _validate_sensor_definitions(sensors)
 
 
 def _apply_overrides(
@@ -105,13 +132,21 @@ def _validate_sensor_definitions(sensors: list[SensorDefinition]) -> list[Sensor
 			raise ValueError(f"Sensor key must be unique and non-empty: {sensor.key!r}")
 		keys.add(sensor.key)
 		if sensor.register_type not in SUPPORTED_REGISTER_TYPES:
-			raise ValueError(f"Sensor {sensor.key}: unsupported type {sensor.register_type!r}")
-		if not sensor.registers or any(type(register) is not int or register < 0 or register > 65535 for register in sensor.registers):
-			raise ValueError(f"Sensor {sensor.key}: registers must contain values from 0 to 65535")
-		if sensor.register_type in {"uint16","int16"} and len(sensor.registers) != 1:
-			raise ValueError(f"Sensor {sensor.key}: {sensor.register_type} requires exactly one register")
-		if sensor.register_type in {"uint32","int32"} and len(sensor.registers) != 2:
-			raise ValueError(f"Sensor {sensor.key}: {sensor.register_type} requires exactly two registers")
+			if sensor.register_type != FORMULA_REGISTER_TYPE or not sensor.formula:
+				raise ValueError(f"Sensor {sensor.key}: unsupported type {sensor.register_type!r}")
+		if sensor.formula:
+			if sensor.register_type != FORMULA_REGISTER_TYPE:
+				raise ValueError(f"Sensor {sensor.key}: formula requires type auto")
+			if sensor.registers:
+				raise ValueError(f"Sensor {sensor.key}: formula cannot declare direct registers")
+			validate_formula(sensor.formula)
+		else:
+			if not sensor.registers or any(type(register) is not int or register < 0 or register > 65535 for register in sensor.registers):
+				raise ValueError(f"Sensor {sensor.key}: registers must contain values from 0 to 65535")
+			if sensor.register_type in {"uint16","int16"} and len(sensor.registers) != 1:
+				raise ValueError(f"Sensor {sensor.key}: {sensor.register_type} requires exactly one register")
+			if sensor.register_type in {"uint32","int32"} and len(sensor.registers) != 2:
+				raise ValueError(f"Sensor {sensor.key}: {sensor.register_type} requires exactly two registers")
 		if sensor.word_order not in {"high_low","low_high"}:
 			raise ValueError(f"Sensor {sensor.key}: unsupported word_order {sensor.word_order!r}")
 		if sensor.schedule not in {"default","slow"}:
@@ -122,12 +157,18 @@ def _validate_sensor_definitions(sensors: list[SensorDefinition]) -> list[Sensor
 	return sensors
 
 
-def _sensor_from_override(payload: dict[str, Any]) -> SensorDefinition:
+def sensor_from_payload(payload: dict[str, Any], enabled: bool=True) -> SensorDefinition:
+	formula=payload.get("formula","")
+	if not isinstance(formula,str):
+		raise ValueError("Sensor formula must be text")
+	registers=payload.get("registers",[] if formula else None)
+	if not isinstance(registers,list):
+		raise ValueError("Sensor registers must be a list")
 	return SensorDefinition(
 		key=payload["key"],
 		name=payload.get("name", payload["key"].replace("_"," ").title()),
-		registers=list(payload["registers"]),
-		register_type=payload.get("type","uint16"),
+		registers=list(registers),
+		register_type=payload.get("type",FORMULA_REGISTER_TYPE if formula else "uint16"),
 		multiplier=float(payload.get("multiplier",1.0)),
 		offset=float(payload.get("offset",0.0)),
 		unit=payload.get("unit",""),
@@ -136,12 +177,17 @@ def _sensor_from_override(payload: dict[str, Any]) -> SensorDefinition:
 		read_every=int(payload.get("read_every",60)),
 		report_every=int(payload.get("report_every",300)),
 		change_by=float(payload.get("change_by",0.0)),
-		enabled=bool(payload.get("enabled",True)),
+		enabled=enabled,
 		retain=bool(payload.get("retain",True)),
 		device_class=payload.get("device_class",""),
 		state_class=payload.get("state_class",""),
 		icon=payload.get("icon",""),
 		category=payload.get("category",""),
 		topic_suffix=payload.get("topic_suffix",payload["key"]),
+		formula=formula,
 		attributes=dict(payload.get("attributes",{})),
 	)
+
+
+def _sensor_from_override(payload: dict[str, Any]) -> SensorDefinition:
+	return sensor_from_payload(payload,enabled=bool(payload.get("enabled",True)))

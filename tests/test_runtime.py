@@ -17,9 +17,13 @@ APP_ROOT=Path(__file__).resolve().parents[1] / "deye-solarman-diagnostics" / "ro
 sys.path.insert(0, str(APP_ROOT))
 
 from deye_solarman_diagnostics.config import load_config
+from deye_solarman_diagnostics.custom_sensors import load_custom_sensors
+from deye_solarman_diagnostics.custom_sensors import save_custom_sensors
 from deye_solarman_diagnostics.codec import decode_registers
 from deye_solarman_diagnostics.codec import registers_to_ascii
 from deye_solarman_diagnostics.definitions import load_sensor_definitions
+from deye_solarman_diagnostics.formula import FormulaError
+from deye_solarman_diagnostics.formula import FormulaExecutor
 from deye_solarman_diagnostics.main import _handle_sensor
 from deye_solarman_diagnostics.main import _is_due
 from deye_solarman_diagnostics.main import run_iteration
@@ -84,6 +88,16 @@ class FakeSolarman:
 class FailingSolarman:
 	def read_holding_registers(self, register: int, count: int) -> list[int]:
 		raise RuntimeError("Modbus exception: illegal data address")
+
+
+class RegisterSolarman:
+	def __init__(self, registers: dict[int,int]) -> None:
+		self.registers=registers
+		self.calls: list[tuple[int,int]]=[]
+
+	def read_holding_registers(self, register: int, count: int) -> list[int]:
+		self.calls.append((register,count))
+		return [self.registers[address] for address in range(register,register+count)]
 
 
 class ClosedSolarman:
@@ -171,6 +185,164 @@ def make_polling() -> PollingConfig:
 
 
 class RuntimeTests(unittest.TestCase):
+	def test_formula_sensor_and_raw_decode_direct_registers(self) -> None:
+		registers={587:5420,591:65536-238}
+		executor=FormulaExecutor(lambda address,count: [registers[index] for index in range(address,address+count)])
+		result=executor.execute(
+			"voltage=sensor(R587,uint16,0.01)\n"
+			"current=sensor(R591,int16,0.01)\n"
+			"raw_current=RAW(R591)\n"
+			"return round(abs(voltage*current)+raw_current*0,3)"
+		)
+
+		self.assertEqual(result.value,128.996)
+		self.assertEqual([read.address for read in result.reads],[587,591,591])
+		self.assertEqual(result.reads[1].value,-2.38)
+		self.assertEqual(result.reads[2].register_type,"raw")
+
+	def test_formula_supports_local_function_if_match_and_limited_for(self) -> None:
+		registers={10040:1,10041:2,10042:3}
+		executor=FormulaExecutor(lambda address,count: [registers[index] for index in range(address,address+count)])
+		result=executor.execute(
+			"def scale(value):\n"
+			"\treturn value*2\n"
+			"total=0\n"
+			"for address in range(10040,10043):\n"
+			"\ttotal+=RAW(address)\n"
+			"match total:\n"
+			"\tcase 6:\n"
+			"\t\treturn scale(total)\n"
+			"\tcase _:\n"
+			"\t\treturn 0"
+		)
+
+		self.assertEqual(result.value,12)
+
+	def test_formula_supports_raw_bitwise_checks_and_word_order_symbol(self) -> None:
+		registers={500:3,504:2,505:0}
+		executor=FormulaExecutor(lambda address,count: [registers[index] for index in range(address,address+count)])
+		result=executor.execute(
+			"raw_status=RAW(R500)\n"
+			"energy=sensor(R504,uint32,0.1,0,low_high)\n"
+			"if raw_status & 1:\n"
+			"\treturn energy\n"
+			"return None"
+		)
+
+		self.assertEqual(result.value,0.2)
+
+	def test_formula_rejects_unsafe_or_unbounded_syntax(self) -> None:
+		for source in [
+			"import os\nreturn 1",
+			"while True:\n\treturn 1\nreturn 0",
+			"return __import__('os')",
+			"for index in range(65):\n\tpass\nreturn 0",
+		]:
+			with self.assertRaises(FormulaError):
+				FormulaExecutor(lambda address,count: [0]*count).execute(source)
+
+	def test_custom_formula_persistence_and_runtime_publication(self) -> None:
+		with tempfile.TemporaryDirectory() as directory:
+			custom_path=Path(directory) / "custom_sensors.yaml"
+			saved=save_custom_sensors(
+				str(custom_path),
+				[
+					{
+						"key": "battery_1_apparent_power",
+						"monitor": True,
+						"definition": {
+							"key": "battery_1_apparent_power",
+							"name": "Battery 1 Apparent Power",
+							"registers": [],
+							"type": "auto",
+							"unit": "VA",
+							"read_every": 60,
+							"report_every": 300,
+							"change_by": 0,
+							"topic_suffix": "battery_1_apparent_power",
+							"formula": "return abs(sensor(R587,uint16,0.01)*sensor(R591,int16,0.01))",
+						},
+					}
+				],
+			)
+			self.assertEqual(saved["sensors"][0]["definition"]["type"],"auto")
+			self.assertEqual(load_custom_sensors(str(custom_path))["sensors"][0]["key"],"battery_1_apparent_power")
+			sensors=load_sensor_definitions(["deye_battery_packs"],str(Path(directory) / "user_sensors.yaml"),None,str(custom_path))
+			formula_sensor=next(sensor for sensor in sensors if sensor.key == "battery_1_apparent_power")
+			mqtt=FakeMqtt()
+			run_iteration(
+				[formula_sensor],
+				{formula_sensor.key: SensorState()},
+				RegisterSolarman({587:5420,591:65536-238}),
+				mqtt,
+				make_polling(),
+				True,
+			)
+
+			self.assertEqual(mqtt.states[0][0],"battery_1_apparent_power")
+			self.assertEqual(mqtt.states[0][1],128.996)
+			self.assertEqual(mqtt.states[0][2]["type"],"auto")
+
+	def test_ingress_panel_manages_and_tests_custom_sensors(self) -> None:
+		with tempfile.TemporaryDirectory() as directory:
+			detected_path=Path(directory) / "detected_sensors.yaml"
+			custom_path=Path(directory) / "custom_sensors.yaml"
+			configuration_changes=[]
+			test_requests=[]
+			panel=IngressPanel(
+				str(detected_path),
+				lambda: {"count": 0},
+				configuration_changed_handler=lambda: configuration_changes.append(True),
+				custom_sensors_file=str(custom_path),
+				custom_test_handler=lambda definition: test_requests.append(definition) or {"value": 12,"reads": []},
+				port=0,
+			)
+			panel.start()
+			try:
+				assert panel._server is not None
+				address=f"http://127.0.0.1:{panel._server.server_address[1]}"
+				entry={
+					"key": "custom_raw_status",
+					"monitor": True,
+					"definition": {
+						"key": "custom_raw_status",
+						"name": "Custom Raw Status",
+						"registers": [],
+						"type": "auto",
+						"read_every": 60,
+						"report_every": 300,
+						"change_by": 0,
+						"formula": "return RAW(R500)",
+					},
+				}
+				request=Request(
+					f"{address}/api/custom-sensors",
+					data=json.dumps({"sensors": [entry]}).encode("utf-8"),
+					headers={"Content-Type": "application/json"},
+					method="POST",
+				)
+				with urlopen(request) as response:
+					saved=json.loads(response.read())
+				self.assertEqual(saved["sensors"][0]["definition"]["type"],"auto")
+				self.assertEqual(len(configuration_changes),1)
+
+				request=Request(
+					f"{address}/api/custom-sensors/test",
+					data=json.dumps({"definition": entry["definition"]}).encode("utf-8"),
+					headers={"Content-Type": "application/json"},
+					method="POST",
+				)
+				with urlopen(request) as response:
+					self.assertEqual(json.loads(response.read())["value"],12)
+				self.assertEqual(test_requests[0]["key"],"custom_raw_status")
+
+				request=Request(f"{address}/api/custom-sensors/custom_raw_status",method="DELETE")
+				with urlopen(request) as response:
+					self.assertEqual(json.loads(response.read())["sensors"],[])
+				self.assertEqual(len(configuration_changes),2)
+			finally:
+				panel.stop()
+
 	def test_config_accepts_profile_editor_scalar(self) -> None:
 		with tempfile.TemporaryDirectory() as directory:
 			options_path=Path(directory) / "options.json"

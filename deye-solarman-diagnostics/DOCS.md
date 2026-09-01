@@ -150,6 +150,25 @@ Skan uruchamia sie wylacznie recznie. Nie jest wykonywany w normalnym cyklu odcz
 
 Opcja `scan_and_monitor` wykonuje skan podczas startu, aktualizuje oba pliki, a nastepnie przechodzi od razu do normalnego MQTT. Uzywaj jej tylko wtedy, gdy istniejace zaznaczenia sa juz poprawne. `scan_only` wykonuje skan podczas startu, nie laczy sie z MQTT i pozostawia uruchomiony panel Ingress do wyboru encji.
 
+## Wlasne sensory i formuly
+
+Pulpit `Wlasne sensory` przechowuje definicje niezaleznie od wyniku skanu w `/config/custom_sensors.yaml`. Przycisk `+ Dodaj sensor` tworzy standardowy, reczny sensor Modbus. Bez zaznaczenia `Wlasna formula` dziala on jak pozostale definicje: uzywa rejestrow, typu, mnoznika, offsetu oraz kolejnosci slow z formularza.
+
+Po zaznaczeniu `Wlasna formula` formularz pokazuje edytor skryptu. Typ widoczny jako `-` jest zapisywany wewnetrznie jako `auto`: wynik `return` jest publikowany bez drugiego dekodowania rejestrow. Pole `Powieksz` otwiera duzy edytor, a `Test` laczy sie jednorazowo z loggerem, pokazuje RAW/HEX oraz wynik bez publikowania MQTT.
+
+Przyklad mocy pozornej pakietu baterii:
+
+```python
+voltage=sensor(R587,uint16,0.01)
+current=sensor(R591,int16,0.01)
+
+return abs(voltage*current)
+```
+
+`sensor(adres,typ,mnoznik[,offset[,kolejnosc_slow]])` odczytuje rejestr bezposrednio przez logger, dekoduje go i zwraca wartosc po przeliczeniu. `RAW(adres)` zwraca surowa, liczbowa wartosc pojedynczego rejestru `uint16`. Skrypt moze uzywac lokalnych zmiennych, `def`, `return`, `if` / `elif` / `else`, `match` / `case`, funkcji `abs`, `min`, `max`, `round`, `sqrt`, `clamp` oraz ograniczonego `for ... in range(...)`.
+
+Nie sa dozwolone importy, `eval`, `exec`, dostep do plikow lub sieci, atrybuty obiektow, `while`, rekurencja ani dowolne funkcje Pythona. Interpreter ogranicza formule do 300 wezlow skladni, 64 iteracji petli i 128 bezposrednich odczytow rejestrow w jednym wykonaniu.
+
 Po kolejnym skanie zachowywane sa pola `monitor` oraz wlasne ustawienia `definition` z `detected_sensors.yaml`.
 
 Przyklad zaznaczonej i dostrojonej encji:

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.0
+
+- Add the `Wlasne sensory` Ingress workspace with standard manual Modbus sensors, MQTT selection, individual deletion, formula testing, a scrollable editor, and a centered expanded editor.
+- Add persistent `/config/custom_sensors.yaml` definitions and automatic MQTT Discovery removal for deleted or deselected custom sensors.
+- Add a restricted local formula interpreter with direct-register `sensor(...)` and `RAW(...)`, local variables and functions, `if`, `match/case`, and bounded `for ... in range(...)`.
+- Add internal formula type `auto`, presented as `-` in the panel, so `return` values are published without a second register decoder.
+
 ## 0.7.0
 
 - Apply saved MQTT selections, sensor reset, list deletion, and completed scans by reloading only the add-on polling and MQTT runtime, without restarting the add-on container.
