@@ -140,7 +140,7 @@ scan:
 
 catalog:
   refresh_on_start: true
-  url: https://raw.githubusercontent.com/Wilk33/deye-solarman-ha-addon/main/deye-solarman-diagnostics/catalog-overrides.yaml
+  url: https://raw.githubusercontent.com/Wilk33/deye-solarman-ha-addon/main/deye-solarman-diagnostics/deye_sg04_sg05_3ph_lv_catalog.yaml
   cache_file: /config/deye_solarman_catalog.yaml
   timeout: 5
 ```
@@ -193,11 +193,11 @@ Gdy sensor zostanie odznaczony lub usuniety, dodatek publikuje retained pusty pa
 
 ## Katalog rejestrow
 
-Kanoniczna mapa jest w [catalog-overrides.yaml](deye-solarman-diagnostics/catalog-overrides.yaml). Mimo historycznej nazwy nie jest juz pusta nakladka: format `version: 2` zawiera pelne 68 definicji telemetrycznych oraz jeden szablon 14 pozycji BMS. Szablon wylicza adresy dla `bms_pack_count` od 1 do 10. Przy `bms_pack_count: 4` panel ma 124 kandydatow, a przy `10` - 208.
+Kanoniczna mapa jest w [deye_sg04_sg05_3ph_lv_catalog.yaml](deye-solarman-diagnostics/deye_sg04_sg05_3ph_lv_catalog.yaml). Nazwa opisuje rodziny `SG04LP3` i `SG05LP3`, falownik trojfazowy oraz low-voltage. Format `version: 2` zawiera pelne 68 definicji telemetrycznych oraz jeden szablon 14 pozycji BMS. Szablon wylicza adresy dla `bms_pack_count` od 1 do 10. Przy `bms_pack_count: 4` panel ma 124 kandydatow, a przy `10` - 208.
 
 Katalog z `catalog.url` jest pobierany podczas startu. Dodatek akceptuje tylko dane YAML, waliduje je i zapisuje poprawna kopie do `catalog.cache_file`. Format `version: 2` jest autorytatywny: gdy GitHub albo cache jest dostepny, brak wpisu w YAML oznacza brak tego kandydata w skanie. Jezeli GitHub jest niedostepny, uzywa ostatniej poprawnej kopii cache. Jezeli cache nie istnieje lub jest niepoprawny, dziala na wbudowanym katalogu awaryjnym [catalog.py](deye-solarman-diagnostics/rootfs/usr/src/app/deye_solarman_diagnostics/catalog.py). Katalog awaryjny jest objety testem zgodnosci z YAML.
 
-Aktualizuj mape przez commit do `catalog-overrides.yaml` w tym repozytorium. Nie edytuj `/config/deye_solarman_catalog.yaml`, poniewaz jest to cache nadpisywany po poprawnym pobraniu. Aktualizacja katalogu nie usuwa samodzielnie lokalnego wyniku skanu ani wyborow MQTT. Przycisk `Usun sensory` wymusza odswiezenie katalogu przy czyszczeniu listy wykryc.
+Aktualizuj mape przez commit do `deye_sg04_sg05_3ph_lv_catalog.yaml` w tym repozytorium. Nie edytuj `/config/deye_solarman_catalog.yaml`, poniewaz jest to cache nadpisywany po poprawnym pobraniu. Plik `catalog-overrides.yaml` pozostaje pusta, zgodna wstecz nakladka dla juz zainstalowanych konfiguracji i nie jest miejscem rozwoju mapy. Aktualizacja katalogu nie usuwa samodzielnie lokalnego wyniku skanu ani wyborow MQTT. Przycisk `Usun sensory` wymusza odswiezenie katalogu przy czyszczeniu listy wykryc.
 
 Szczegolowy przeglad typow rejestrow jest w [REGISTER_TYPE_AUDIT.md](deye-solarman-diagnostics/REGISTER_TYPE_AUDIT.md).
 

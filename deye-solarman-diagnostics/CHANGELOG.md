@@ -2,7 +2,7 @@
 
 ## 1.1.0
 
-- Move the complete remote register map into `catalog-overrides.yaml` version 2: 68 live inverter definitions and a validated BMS-pack template for one to ten packs are now editable on GitHub without a new add-on image.
+- Move the complete remote register map into `deye_sg04_sg05_3ph_lv_catalog.yaml` version 2: 68 live inverter definitions and a validated BMS-pack template for one to ten packs are now editable on GitHub without a new add-on image.
 - Keep `catalog.py` as an offline emergency fallback and add a regression test that proves the remote map matches the built-in map for four packs and expands correctly to ten packs.
 
 ## 1.0.0

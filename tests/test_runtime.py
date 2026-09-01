@@ -445,7 +445,7 @@ class RuntimeTests(unittest.TestCase):
 		self.assertEqual(by_key["battery_4_bms_serial"].register_type,"ascii")
 
 	def test_remote_full_register_catalog_matches_builtin_fallback(self) -> None:
-		path=APP_ROOT.parents[3] / "catalog-overrides.yaml"
+		path=APP_ROOT.parents[3] / "deye_sg04_sg05_3ph_lv_catalog.yaml"
 		payload=yaml.safe_load(path.read_text(encoding="utf-8"))
 		catalog=RemoteCatalog(payload["sensors"],"repository",payload["bms_pack"],payload["version"])
 

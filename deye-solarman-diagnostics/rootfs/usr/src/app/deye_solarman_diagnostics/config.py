@@ -48,7 +48,7 @@ def load_config(path: Path=OPTIONS_PATH) -> AppConfig:
 		"catalog",
 		{
 			"refresh_on_start": True,
-			"url": "https://raw.githubusercontent.com/Wilk33/deye-solarman-ha-addon/main/deye-solarman-diagnostics/catalog-overrides.yaml",
+			"url": "https://raw.githubusercontent.com/Wilk33/deye-solarman-ha-addon/main/deye-solarman-diagnostics/deye_sg04_sg05_3ph_lv_catalog.yaml",
 			"cache_file": "/config/deye_solarman_catalog.yaml",
 			"timeout": 5,
 		},

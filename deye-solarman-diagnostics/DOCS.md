@@ -72,7 +72,7 @@ scan:
 
 catalog:
   refresh_on_start: true
-  url: https://raw.githubusercontent.com/Wilk33/deye-solarman-ha-addon/main/deye-solarman-diagnostics/catalog-overrides.yaml
+  url: https://raw.githubusercontent.com/Wilk33/deye-solarman-ha-addon/main/deye-solarman-diagnostics/deye_sg04_sg05_3ph_lv_catalog.yaml
   cache_file: /config/deye_solarman_catalog.yaml
   timeout: 5
 ```
@@ -81,7 +81,7 @@ Parametry loggera musza wskazywac logger Solarman, nie adres IP samego falownika
 
 ### Katalog rejestrow z GitHub
 
-Przy starcie dodatek pobiera plik YAML `catalog-overrides.yaml` z `catalog.url`. Od wersji `1.1.0` jest to pelna mapa `version: 2`: zawiera 68 definicji telemetrycznych oraz szablon 14 pozycji BMS, ktory jest rozwijany zgodnie z `bms_pack_count`. Pobierane sa wylacznie dane YAML - dodatek nie wykonuje zdalnego kodu. Po udanej walidacji kopia jest atomowo zapisywana w `catalog.cache_file`. Przycisk `Usun sensory` wymusza takie samo pobranie niezaleznie od opcji `refresh_on_start`.
+Przy starcie dodatek pobiera plik YAML `deye_sg04_sg05_3ph_lv_catalog.yaml` z `catalog.url`. Od wersji `1.1.0` jest to pelna mapa `version: 2`: zawiera 68 definicji telemetrycznych oraz szablon 14 pozycji BMS, ktory jest rozwijany zgodnie z `bms_pack_count`. Pobierane sa wylacznie dane YAML - dodatek nie wykonuje zdalnego kodu. Po udanej walidacji kopia jest atomowo zapisywana w `catalog.cache_file`. Przycisk `Usun sensory` wymusza takie samo pobranie niezaleznie od opcji `refresh_on_start`.
 
 Gdy GitHub lub Internet jest niedostepny, dodatek wykorzystuje ostatnia poprawna kopie z cache. Gdy cache takze nie istnieje albo jest bledny, uzywany jest katalog wbudowany w obraz dodatku. Nie zmienia to pliku `/config/detected_sensors.yaml` ani istniejacych wyborow MQTT.
 
