@@ -44,6 +44,8 @@ def load_custom_sensor_definitions(path: str) -> list[SensorDefinition]:
 	entries=payload.get("sensors",[])
 	if not isinstance(entries,list):
 		raise ValueError("custom_sensors.yaml: sensors must be a list")
+	if not entries:
+		return []
 	sensors=[]
 	for index, entry in enumerate(entries):
 		if not isinstance(entry,dict):

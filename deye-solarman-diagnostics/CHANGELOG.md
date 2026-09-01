@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.1
+
+- Treat an empty `/config/custom_sensors.yaml` list as a valid initial state, so the add-on starts before the first custom sensor is created.
+
 ## 0.8.0
 
 - Add the `Wlasne sensory` Ingress workspace with standard manual Modbus sensors, MQTT selection, individual deletion, formula testing, a scrollable editor, and a centered expanded editor.

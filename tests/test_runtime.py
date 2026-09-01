@@ -283,6 +283,21 @@ class RuntimeTests(unittest.TestCase):
 			self.assertEqual(mqtt.states[0][1],128.996)
 			self.assertEqual(mqtt.states[0][2]["type"],"auto")
 
+	def test_empty_custom_sensor_file_is_a_valid_startup_state(self) -> None:
+		with tempfile.TemporaryDirectory() as directory:
+			custom_path=Path(directory) / "custom_sensors.yaml"
+			custom_path.write_text("version: 1\nsensors: []\n",encoding="utf-8")
+
+			sensors=load_sensor_definitions(
+				["deye_battery_packs"],
+				str(Path(directory) / "user_sensors.yaml"),
+				None,
+				str(custom_path),
+			)
+
+			self.assertTrue(sensors)
+			self.assertTrue(all(sensor.enabled is False for sensor in sensors))
+
 	def test_ingress_panel_manages_and_tests_custom_sensors(self) -> None:
 		with tempfile.TemporaryDirectory() as directory:
 			detected_path=Path(directory) / "detected_sensors.yaml"
