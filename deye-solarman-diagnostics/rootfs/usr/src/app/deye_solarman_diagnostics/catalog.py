@@ -125,7 +125,7 @@ def build_bms_pack_sensors(pack_count: int) -> list[SensorDefinition]:
 		name_prefix=f"Battery {pack}"
 		sensors.extend(
 			[
-				SensorDefinition(f"{prefix}_bms_serial",f"{name_prefix} BMS Serial",list(range(base,base+8)),"hex",schedule="slow",read_every=3600,report_every=3600),
+				SensorDefinition(f"{prefix}_bms_serial",f"{name_prefix} BMS Serial",list(range(base,base+8)),"ascii",schedule="slow",read_every=3600,report_every=3600),
 				SensorDefinition(f"{prefix}_voltage",f"{name_prefix} Voltage",[base+8],"uint16",0.1,unit="V",device_class="voltage",state_class="measurement",topic_suffix=f"battery_{pack}/voltage"),
 				SensorDefinition(f"{prefix}_current",f"{name_prefix} Current",[base+9],"int16",0.1,unit="A",device_class="current",state_class="measurement",topic_suffix=f"battery_{pack}/current"),
 				SensorDefinition(f"{prefix}_temperature",f"{name_prefix} Temperature",[base+10],"uint16",0.1,-100.0,"°C",device_class="temperature",state_class="measurement",topic_suffix=f"battery_{pack}/temperature"),

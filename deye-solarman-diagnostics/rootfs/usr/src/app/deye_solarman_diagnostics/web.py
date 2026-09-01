@@ -13,6 +13,7 @@ from typing import Any
 
 from .scanner import load_detected_sensors
 from .scanner import update_detected_sensors
+from .logging_utils import success
 
 
 LOGGER=logging.getLogger(__name__)
@@ -56,7 +57,7 @@ class IngressPanel:
 			daemon=True,
 		)
 		self._thread.start()
-		LOGGER.info("Ingress configuration panel listening on port %s",self._port)
+		success(LOGGER,"Ingress configuration panel listening on port %s",self._port)
 
 	def stop(self) -> None:
 		if self._server is None:
@@ -254,7 +255,7 @@ body {
   background: var(--paper);
   font-family: var(--paper-font-body1_-_font-family, Roboto, sans-serif);
 }
-button, input, select { font: inherit; }
+button, input { font: inherit; }
 button { cursor: pointer; }
 .shell { max-width: 1480px; margin: 0 auto; padding: 34px 28px 64px; }
 .masthead { display: flex; justify-content: space-between; gap: 24px; align-items: end; border-bottom: 2px solid var(--ink); padding-bottom: 22px; }
@@ -276,7 +277,7 @@ h1 { margin: 0; font-size: clamp(2rem, 5vw, 4.2rem); letter-spacing: -.055em; li
 .metric b { display: block; font-family: "Courier New", monospace; font-size: 1.8rem; color: var(--solar); }
 .metric span { color: var(--muted); font-size: .85rem; }
 .filters { margin-top: 28px; display: grid; grid-template-columns: minmax(0, 1fr) 180px; gap: 12px; }
-.filters input, .filters select { width: 100%; border: 1px solid var(--line); background: var(--field); padding: 12px; color: var(--ink); }
+.filters input { width: 100%; border: 1px solid var(--line); background: var(--field); padding: 12px; color: var(--ink); }
 #empty { margin: 32px 0; color: var(--muted); font-style: italic; }
 .group { margin-top: 34px; }
 .group-title { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; font-size: 1.25rem; }
@@ -287,8 +288,12 @@ h1 { margin: 0; font-size: clamp(2rem, 5vw, 4.2rem); letter-spacing: -.055em; li
 .sensor-head { display: grid; grid-template-columns: 1fr auto; gap: 10px; padding: 15px; }
 .sensor h3 { margin: 0; font-size: 1.05rem; }
 .key { display: block; margin-top: 5px; color: var(--muted); font-family: "Courier New", monospace; font-size: .72rem; overflow-wrap: anywhere; }
-.reading { margin-top: 13px; font-family: "Courier New", monospace; font-size: .9rem; }
+.reading { margin-top: 13px; font-family: "Courier New", monospace; font-size: .9rem; line-height: 1.45; }
 .reading b { color: var(--solar); }
+.raw-line { display: flex; gap: 8px; align-items: baseline; overflow-wrap: anywhere; }
+.raw-label { min-width: 38px; color: var(--muted); font-size: .68rem; font-weight: bold; }
+.raw-line code { color: var(--ink); font: inherit; }
+.raw-line.ascii code { color: var(--sun); letter-spacing: .04em; }
 .badges { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 11px; }
 .badge { padding: 3px 6px; border: 1px solid var(--line); color: var(--muted); font-family: "Courier New", monospace; font-size: .66rem; text-transform: uppercase; }
 .badge.supported, .badge.verified_local { border-color: var(--green); color: var(--green); }
@@ -299,8 +304,20 @@ details { border-top: 1px solid var(--line); padding: 0 15px 14px; }
 summary { padding: 11px 0; color: var(--green); cursor: pointer; font-family: "Courier New", monospace; font-size: .75rem; }
 .fields { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 9px; }
 .field { display: grid; gap: 4px; color: var(--muted); font-family: "Courier New", monospace; font-size: .68rem; text-transform: uppercase; }
-.field input, .field select { min-width: 0; border: 1px solid var(--line); background: var(--field); padding: 7px; color: var(--ink); font-family: "Courier New", monospace; font-size: .8rem; text-transform: none; }
+.field input { min-width: 0; border: 1px solid var(--line); background: var(--field); padding: 7px; color: var(--ink); font-family: "Courier New", monospace; font-size: .8rem; text-transform: none; }
 .field.wide { grid-column: 1 / -1; }
+.select-control { position: relative; min-width: 0; font-family: "Courier New", monospace; font-size: .8rem; text-transform: none; }
+.select-trigger { display: flex; width: 100%; min-height: 34px; align-items: center; justify-content: space-between; gap: 8px; border: 1px solid var(--line); background: var(--field); color: var(--ink); padding: 7px; text-align: left; }
+.filters .select-trigger { min-height: 44px; padding: 12px; font-family: inherit; font-size: 1rem; }
+.select-trigger:hover, .select-control.open .select-trigger { border-color: var(--solar); }
+.select-chevron { color: var(--solar); font-size: .9rem; transition: transform .15s ease; }
+.select-control.open .select-chevron { transform: rotate(180deg); }
+.select-options { position: absolute; z-index: 20; top: calc(100% + 4px); right: 0; left: 0; display: none; max-height: 230px; overflow-y: auto; border: 1px solid var(--solar); background: var(--panel); box-shadow: var(--shadow); }
+.select-control.open .select-options { display: grid; }
+.select-option { border: 0; border-bottom: 1px solid var(--line); background: var(--panel); color: var(--ink); padding: 9px; text-align: left; font: inherit; }
+.select-option:last-child { border-bottom: 0; }
+.select-option:hover, .select-option:focus-visible, .select-option.selected { background: var(--solar); color: var(--text-primary-color, #fff); outline: 0; }
+.sensor.select-open { position: relative; z-index: 4; }
 .notice { margin-top: 34px; border-top: 1px solid var(--line); padding-top: 15px; color: var(--muted); line-height: 1.5; }
 @media (max-width: 760px) {
   .shell { padding: 22px 16px 44px; }
@@ -339,11 +356,15 @@ summary { padding: 11px 0; color: var(--green); cursor: pointer; font-family: "C
 
   <section class="filters">
     <input id="search" type="search" placeholder="Filtruj po nazwie, kluczu, kategorii, rejestrze lub jednostce">
-    <select id="status-filter"><option value="all">Wszystkie statusy</option><option value="supported">Supported</option><option value="unsupported">Unsupported</option><option value="timeout">Timeout</option><option value="invalid_value">Invalid value</option></select>
+    <div class="select-control" data-select-control>
+      <input id="status-filter" type="hidden" value="all">
+      <button class="select-trigger" type="button" data-select-trigger aria-haspopup="listbox" aria-expanded="false"><span class="select-value">Wszystkie statusy</span><span class="select-chevron">&#9662;</span></button>
+      <div class="select-options" role="listbox"><button class="select-option selected" type="button" data-select-option data-value="all">Wszystkie statusy</button><button class="select-option" type="button" data-select-option data-value="supported">Supported</button><button class="select-option" type="button" data-select-option data-value="unsupported">Unsupported</button><button class="select-option" type="button" data-select-option data-value="timeout">Timeout</button><button class="select-option" type="button" data-select-option data-value="invalid_value">Invalid value</button></div>
+    </div>
   </section>
   <p id="empty" hidden>Brak danych skanu. Uzyj Skanuj teraz po skonfigurowaniu polaczenia loggera w zakladce Konfiguracja dodatku.</p>
   <section id="sensor-groups"></section>
-  <p class="notice"><b>Zastosowanie zmian:</b> zapis aktualizuje trwaly plik wyboru. Po zapisie zrestartuj dodatek w Home Assistant, aby petla MQTT zaladowala wybrane czujniki. Poprawny odczyt BMS potwierdza dostep transportowy, ale niekoniecznie znaczenie rejestru.</p>
+  <p class="notice"><b>Zastosowanie zmian:</b> zapis aktualizuje trwaly plik wyboru. Wiersz ASCII pokazuje dwa znaki z kazdego rejestru, a znaki niedrukowalne jako kropki. Po zapisie zrestartuj dodatek w Home Assistant, aby petla MQTT zaladowala wybrane czujniki. Poprawny odczyt BMS potwierdza dostep transportowy, ale niekoniecznie znaczenie rejestru.</p>
 </main>
 <script src="panel.js"></script>
 <script>
@@ -423,12 +444,17 @@ async function request(path,options={}) {
 }
 
 function statusBadge(status) { return `<span class="badge ${esc(status)}">${esc(status || "not_scanned")}</span>`; }
-function option(value,current) { return `<option value="${esc(value)}"${value === current ? " selected" : ""}>${esc(value)}</option>`; }
 function input(key,field,label,value,type="text",wide=false) {
   return `<label class="field ${wide ? "wide" : ""}">${label}<input data-field="${esc(field)}" data-key="${esc(key)}" type="${type}" value="${esc(value)}"></label>`;
 }
 function select(key,field,label,current,values) {
-  return `<label class="field">${label}<select data-field="${esc(field)}" data-key="${esc(key)}">${values.map(value=>option(value,current)).join("")}</select></label>`;
+	const selected=values.includes(current) ? current : values[0];
+	return `<label class="field">${label}<div class="select-control" data-select-control><input data-field="${esc(field)}" data-key="${esc(key)}" type="hidden" value="${esc(selected)}"><button class="select-trigger" type="button" data-select-trigger aria-haspopup="listbox" aria-expanded="false"><span class="select-value">${esc(selected)}</span><span class="select-chevron">&#9662;</span></button><div class="select-options" role="listbox">${values.map(value=>`<button class="select-option ${value === selected ? "selected" : ""}" type="button" data-select-option data-value="${esc(value)}">${esc(value)}</button>`).join("")}</div></div></label>`;
+}
+
+function asciiFromRaw(registers) {
+	if (!Array.isArray(registers) || !registers.length) return "";
+	return registers.flatMap(register=>[(register >> 8)&255,register&255]).map(byte=>byte >= 32 && byte <= 126 ? String.fromCharCode(byte) : ".").join("");
 }
 
 function sensorCard(entry) {
@@ -436,10 +462,11 @@ function sensorCard(entry) {
   const scan=entry.last_scan || {};
   const value=scan.value === null || scan.value === undefined ? "-" : `${esc(scan.value)} ${esc(definition.unit)}`;
   const raw=(scan.raw_hex || []).join(", ") || "-";
+  const rawAscii=scan.raw_ascii || asciiFromRaw(scan.raw_registers) || "-";
   return `<article class="sensor ${entry.monitor ? "selected" : ""}" data-sensor="${esc(entry.key)}">
     <div class="sensor-head">
       <div><h3>${esc(definition.name || entry.key)}</h3><span class="key">${esc(entry.key)} / R${esc((definition.registers || []).join(","))}</span>
-        <div class="reading"><b>${value}</b><br><span>RAW ${esc(raw)}</span></div>
+        <div class="reading"><b>${value}</b><div class="raw-line"><span class="raw-label">HEX</span><code>${esc(raw)}</code></div><div class="raw-line ascii"><span class="raw-label">ASCII</span><code>${esc(rawAscii)}</code></div></div>
         <div class="badges">${statusBadge(scan.status)}<span class="badge ${esc(scan.verification)}">${esc(scan.verification || "unknown")}</span><span class="badge">${esc(definition.type)}</span></div>
       </div>
       <label class="toggle"><input data-monitor="${esc(entry.key)}" type="checkbox" ${entry.monitor ? "checked" : ""}> MQTT</label>
@@ -449,7 +476,7 @@ function sensorCard(entry) {
       ${input(entry.key,"multiplier","Mnoznik",definition.multiplier,"number")}
       ${input(entry.key,"offset","Offset",definition.offset,"number")}
       ${input(entry.key,"unit","Jednostka",definition.unit)}
-      ${select(entry.key,"type","Typ rejestru",definition.type,["uint16","int16","uint32","int32","hex"])}
+      ${select(entry.key,"type","Typ rejestru",definition.type,["uint16","int16","uint32","int32","hex","ascii"])}
       ${select(entry.key,"word_order","Kolejnosc slow",definition.word_order,["high_low","low_high"])}
       ${select(entry.key,"schedule","Harmonogram",definition.schedule,["default","slow"])}
       ${input(entry.key,"read_every","Odczyt co sekundy",definition.read_every,"number")}
@@ -486,6 +513,48 @@ function render() {
   byId("count-selected").textContent=sensors.filter(entry=>entry.monitor).length;
   byId("count-other").textContent=sensors.filter(entry=>entry.last_scan?.status && entry.last_scan.status !== "supported").length;
 }
+
+function closeSelectControls(except=null) {
+  for (const control of document.querySelectorAll("[data-select-control].open")) {
+    if (control === except) continue;
+    control.classList.remove("open");
+    control.querySelector("[data-select-trigger]").setAttribute("aria-expanded","false");
+    control.closest(".sensor")?.classList.remove("select-open");
+  }
+}
+
+function chooseSelectOption(option) {
+  const control=option.closest("[data-select-control]");
+  const input=control.querySelector("input");
+  input.value=option.dataset.value || "";
+  control.querySelector(".select-value").textContent=option.textContent;
+  for (const candidate of control.querySelectorAll("[data-select-option]")) candidate.classList.toggle("selected",candidate === option);
+  closeSelectControls();
+  input.dispatchEvent(new Event("change",{bubbles:true}));
+}
+
+document.addEventListener("click",event=>{
+  const option=event.target.closest("[data-select-option]");
+  if (option) {
+    chooseSelectOption(option);
+    return;
+  }
+  const trigger=event.target.closest("[data-select-trigger]");
+  if (!trigger) {
+    closeSelectControls();
+    return;
+  }
+  const control=trigger.closest("[data-select-control]");
+  const opening=!control.classList.contains("open");
+  closeSelectControls(control);
+  control.classList.toggle("open",opening);
+  trigger.setAttribute("aria-expanded",String(opening));
+  control.closest(".sensor")?.classList.toggle("select-open",opening);
+});
+
+document.addEventListener("keydown",event=>{
+  if (event.key === "Escape") closeSelectControls();
+});
 
 async function loadSensors() {
   const payload=await request("api/sensors");

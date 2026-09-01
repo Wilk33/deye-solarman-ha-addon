@@ -8,9 +8,11 @@ from typing import Any
 
 from .codec import apply_transform
 from .codec import decode_registers
+from .codec import registers_to_ascii
 from .config import load_config
 from .definitions import load_sensor_definitions
 from .logging_utils import configure_logging
+from .logging_utils import success
 from .models import SensorDefinition
 from .models import SensorState
 from .models import PollingConfig
@@ -76,7 +78,8 @@ def _run_addon(config: Any, access_lock: Any, remote_catalog: RemoteCatalog) -> 
 
 	for sensor in sensors:
 		state.setdefault(sensor.key, SensorState())
-	LOGGER.info(
+	success(
+		LOGGER,
 		"Sensor configuration loaded total=%s enabled=%s selected_file=%s",
 		len(sensors),
 		sum(sensor.enabled for sensor in sensors),
@@ -93,7 +96,8 @@ def _run_addon(config: Any, access_lock: Any, remote_catalog: RemoteCatalog) -> 
 					config.polling.startup_probe_register,
 					config.polling.startup_probe_count,
 				)
-			LOGGER.info(
+			success(
+				LOGGER,
 				"Startup probe ok register=%s count=%s values=%s",
 				config.polling.startup_probe_register,
 				config.polling.startup_probe_count,
@@ -126,7 +130,7 @@ def _run_addon(config: Any, access_lock: Any, remote_catalog: RemoteCatalog) -> 
 				mqtt.remove_discovery(sensor_key)
 			if pending_removals:
 				clear_pending_discovery_removals(config.scan.detected_sensors_file)
-				LOGGER.info("Removed MQTT Discovery entities=%s",len(pending_removals))
+				success(LOGGER,"Removed MQTT Discovery entities=%s",len(pending_removals))
 			enabled_sensors=[sensor for sensor in sensors if sensor.enabled]
 			LOGGER.info(
 				"Publishing MQTT Discovery sensors=%s prefix=%s inverter_serial=%s",
@@ -176,7 +180,7 @@ def _run_manual_scan(config: Any, access_lock: Any, remote_catalog: RemoteCatalo
 				config.polling.startup_probe_register,
 				config.polling.startup_probe_count,
 			)
-			LOGGER.info("Manual panel scan probe values=%s",probe_values)
+			success(LOGGER,"Manual panel scan probe values=%s",probe_values)
 			scan_report=scan_candidates(
 				load_scan_candidates(config.scan.bms_pack_count,remote_catalog),
 				solarman,
@@ -199,7 +203,8 @@ def _reset_panel_configuration(config: Any, remote_catalog: RemoteCatalog) -> di
 		config.scan.detected_sensors_file,
 		load_scan_candidates(config.scan.bms_pack_count,remote_catalog),
 	)
-	LOGGER.info(
+	success(
+		LOGGER,
 		"Panel reset detected sensor configuration sensors=%s catalog_source=%s",
 		len(payload["available_sensors"]),
 		remote_catalog.source,
@@ -209,7 +214,7 @@ def _reset_panel_configuration(config: Any, remote_catalog: RemoteCatalog) -> di
 
 def _clear_panel_sensors(config: Any, remote_catalog: RemoteCatalog) -> dict[str, Any]:
 	payload=clear_detected_sensors(config.scan.detected_sensors_file)
-	LOGGER.info("Panel cleared detected sensors catalog_source=%s",remote_catalog.source)
+	success(LOGGER,"Panel cleared detected sensors catalog_source=%s",remote_catalog.source)
 	return payload
 
 
@@ -223,7 +228,8 @@ def _log_scan_summary(report: list[dict[str, Any]], detected_sensors_file: str) 
 	for result in report:
 		status=str(result["status"])
 		statuses[status]=statuses.get(status,0)+1
-	LOGGER.info(
+	success(
+		LOGGER,
 		"Candidate scan complete results=%s file=%s",
 		", ".join(f"{status}={count}" for status,count in sorted(statuses.items())),
 		detected_sensors_file,
@@ -334,6 +340,7 @@ def _handle_sensor(
 	if should_publish:
 		attributes={
 			"raw_registers": raw_values,
+			"raw_ascii": registers_to_ascii(raw_values),
 			"decoded": decoded,
 			"registers": sensor.registers,
 			"type": sensor.register_type,

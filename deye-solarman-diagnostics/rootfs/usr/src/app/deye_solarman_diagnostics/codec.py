@@ -13,6 +13,8 @@ def decode_registers(registers: list[int], register_type: str, word_order: str) 
 	ordered=combine_words(registers, word_order)
 	if register_type == "hex":
 		return " ".join(f"0x{value:04X}" for value in ordered)
+	if register_type == "ascii":
+		return registers_to_ascii(ordered)
 	if register_type == "uint16":
 		return ordered[0]
 	if register_type == "int16":
@@ -24,6 +26,15 @@ def decode_registers(registers: list[int], register_type: str, word_order: str) 
 			return value-4294967296
 		return value
 	raise ValueError(f"Unsupported register type: {register_type}")
+
+
+def registers_to_ascii(registers: list[int]) -> str:
+	"""Decode Modbus words as printable ASCII without emitting control characters."""
+	characters=[]
+	for register in registers:
+		for byte in ((register >> 8)&0xFF,register&0xFF):
+			characters.append(chr(byte) if 32 <= byte <= 126 else ".")
+	return "".join(characters)
 
 
 def apply_transform(decoded_value: int | str, multiplier: float, offset: float) -> int | float | str:

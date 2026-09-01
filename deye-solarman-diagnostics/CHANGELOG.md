@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.0
+
+- Replace native Ingress select popups with theme-aware custom controls for filters and sensor decoding settings.
+- Add `ascii` as a sensor type, use it for BMS serial candidates, and show printable ASCII beside every raw hexadecimal register sequence.
+- Use compact terminal log rows with visible OK, warning, and error markers. Success is green, warning is dark yellow, errors are red, and informational rows keep the terminal theme color.
+
 ## 0.5.0
 
 - Synchronize the Ingress document with Home Assistant theme variables at runtime, including theme changes after the panel is open.

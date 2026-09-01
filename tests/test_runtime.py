@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import sys
 import tempfile
 import unittest
@@ -16,10 +17,14 @@ APP_ROOT=Path(__file__).resolve().parents[1] / "deye-solarman-diagnostics" / "ro
 sys.path.insert(0, str(APP_ROOT))
 
 from deye_solarman_diagnostics.config import load_config
+from deye_solarman_diagnostics.codec import decode_registers
+from deye_solarman_diagnostics.codec import registers_to_ascii
 from deye_solarman_diagnostics.definitions import load_sensor_definitions
 from deye_solarman_diagnostics.main import _handle_sensor
 from deye_solarman_diagnostics.main import _is_due
 from deye_solarman_diagnostics.main import run_iteration
+from deye_solarman_diagnostics.logging_utils import AddonLogFormatter
+from deye_solarman_diagnostics.logging_utils import SUCCESS
 from deye_solarman_diagnostics.models import InverterConfig
 from deye_solarman_diagnostics.models import CatalogConfig
 from deye_solarman_diagnostics.models import MqttConfig
@@ -249,6 +254,13 @@ class RuntimeTests(unittest.TestCase):
 		self.assertEqual(by_key["battery_1_temperature"].offset, -100.0)
 		self.assertEqual(by_key["battery_1_temperature"].unit, "°C")
 		self.assertEqual(by_key["battery_1_soc"].multiplier, 0.1)
+		self.assertEqual(by_key["battery_4_bms_serial"].register_type,"ascii")
+
+	def test_ascii_type_decodes_modbus_words_and_replaces_control_bytes(self) -> None:
+		registers=[0x3530,0x3034,0x3034,0x3030,0x4244,0x3432,0x3130,0x3237]
+
+		self.assertEqual(decode_registers(registers,"ascii","high_low"),"50040400BD421027")
+		self.assertEqual(registers_to_ascii([0x4100,0x1F42]),"A..B")
 
 	def test_remote_catalog_can_patch_and_extend_scan_candidates(self) -> None:
 		catalog=RemoteCatalog(
@@ -306,6 +318,7 @@ class RuntimeTests(unittest.TestCase):
 		self.assertEqual(report[0]["status"], "supported")
 		self.assertEqual(report[0]["raw_hex"], ["0x1478"])
 		self.assertEqual(report[0]["value"], 52.4)
+		self.assertEqual(report[0]["raw_ascii"],".x")
 
 	def test_candidate_scan_identifies_unsupported_modbus_address(self) -> None:
 		candidate=ScanCandidate(
@@ -537,6 +550,9 @@ class RuntimeTests(unittest.TestCase):
 				self.assertIn("Home Assistant theme synchronized",page)
 				self.assertIn("Reset konfiguracji",page)
 				self.assertIn("Usun sensory",page)
+				self.assertIn("data-select-control",page)
+				self.assertIn("asciiFromRaw",page)
+				self.assertIn('"ascii"',page)
 				self.assertNotIn('"""',page)
 				with urlopen(f"{address}/panel.js") as response:
 					diagnostics_script=response.read().decode("utf-8")
@@ -675,6 +691,16 @@ class RuntimeTests(unittest.TestCase):
 		self.assertEqual(topic,"homeassistant/sensor/deye_solarman_2507092018_battery_voltage/config")
 		self.assertEqual(payload,"")
 		self.assertTrue(retain)
+
+	def test_log_formatter_has_readable_colored_status_markers(self) -> None:
+		formatter=AddonLogFormatter(color=True)
+		record=logging.LogRecord("deye_solarman_diagnostics.main",SUCCESS,"",0,"Connected %s",("logger",),None)
+		warning=logging.LogRecord("deye_solarman_diagnostics.main",logging.WARNING,"",0,"Read timeout",(),None)
+
+		self.assertIn("\033[32m",formatter.format(record))
+		self.assertIn("[ OK  ] main",formatter.format(record))
+		self.assertIn("\033[33m",formatter.format(warning))
+		self.assertIn("[WARN ] main",formatter.format(warning))
 
 	def test_invalid_state_file_is_ignored_and_replaced_safely(self) -> None:
 		with tempfile.TemporaryDirectory() as directory:

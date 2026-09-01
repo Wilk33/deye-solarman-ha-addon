@@ -132,7 +132,7 @@ Wersja `0.3.4` zapisuje kazde zadanie panelu w logu dodatku, na przyklad `Ingres
 
 Przy starcie MQTT log powinien zawierac `Using MQTT service credentials supplied by Home Assistant Supervisor`, `Sensor configuration loaded`, `MQTT connection confirmed`, `Publishing MQTT Discovery` i po jednym wpisie `MQTT discovery published` dla kazdej wybranej encji. Brak tych wpisow jednoznacznie wskazuje etap, na ktorym konfiguracja nie przechodzi do Home Assistant.
 
-Wersja `0.4.0` rozpoznaje `Connection closed on read` i `Connection already closed` jako utrate sesji Solarman. Zamiast kontynuowac nieskuteczne odczyty, zamyka klienta i po `logger.reconnect_delay` nawiazuje nowe polaczenie. Temperatura w Discovery jest publikowana z jednostka `°C`, wymagana dla `device_class: temperature`.
+Wersja `0.4.0` rozpoznaje `Connection closed on read` i `Connection already closed` jako utrate sesji Solarman. Zamiast kontynuowac nieskuteczne odczyty, zamyka klienta i po `logger.reconnect_delay` nawiazuje nowe polaczenie. Temperatura w Discovery jest publikowana z jednostka `°C`, wymagana dla `device_class: temperature`. Wersja `0.6.0` formatuje log jako krotkie wiersze ze znacznikami `[OK]`, `[WARN]`, `[ERROR]` i `[INFO]`; odpowiednio zielonym, ciemno-zoltym, czerwonym i domyslnym kolorem terminala. Aby calkowicie wylaczyc ANSI, ustaw zmienna srodowiskowa `DEYE_LOG_COLOR=false`.
 
 Jesli panel nie reaguje, otworz narzedzia programistyczne przegladarki, wybierz `Console`, odswiez panel i skopiuj wszystkie wpisy `[Deye Solarman]` oraz ewentualne czerwone bledy. Rownoczesnie skopiuj log dodatku z chwili otwarcia panelu i klikniecia `Skanuj teraz`.
 
@@ -182,7 +182,7 @@ available_sensors:
       attributes: {}
 ```
 
-Mozna zmienic miedzy innymi `type`, `multiplier`, `offset`, `unit`, `word_order`, `schedule`, `read_every`, `report_every`, `change_by`, `retain` i pola MQTT. Dla wartosci BMS nie zmieniaj przelicznika ani typu przed porownaniem z realnym odczytem urzadzenia.
+Mozna zmienic miedzy innymi `type`, `multiplier`, `offset`, `unit`, `word_order`, `schedule`, `read_every`, `report_every`, `change_by`, `retain` i pola MQTT. Typ `ascii` dekoduje dwa znaki ASCII z kazdego rejestru i zastepuje znaki niedrukowalne kropkami. Jest uzyty domyslnie dla numerow seryjnych BMS. Dla wartosci BMS nie zmieniaj przelicznika ani typu przed porownaniem z realnym odczytem urzadzenia.
 
 Domyslny profil zawiera definicje BMS, ale wszystkie sa wylaczone. W normalnym trybie MQTT publikuje wiec wylacznie pozycje z `monitor: true` w `/config/detected_sensors.yaml` albo wpisy jawnie wlaczone w `/config/user_sensors.yaml`.
 

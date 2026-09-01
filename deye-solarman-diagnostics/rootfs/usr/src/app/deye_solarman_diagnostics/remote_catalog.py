@@ -12,6 +12,7 @@ import yaml
 
 from .models import CatalogConfig
 from .models import SensorDefinition
+from .logging_utils import success
 
 
 LOGGER=logging.getLogger(__name__)
@@ -29,14 +30,14 @@ def load_remote_catalog(config: CatalogConfig, force_refresh: bool=False) -> Rem
 			payload=_download(config.url,config.timeout)
 			_validate_payload(payload)
 			_save_cache(config.cache_file,payload)
-			LOGGER.info("Remote register catalog loaded source=github entries=%s",len(payload["sensors"]))
+			success(LOGGER,"Remote register catalog loaded source=github entries=%s",len(payload["sensors"]))
 			return RemoteCatalog(payload["sensors"],"github")
 		except (OSError,ValueError,yaml.YAMLError) as error:
 			LOGGER.warning("Remote register catalog refresh failed: %s",error)
 
 	cached=_load_cache(config.cache_file)
 	if cached is not None:
-		LOGGER.info("Remote register catalog loaded source=cache entries=%s",len(cached["sensors"]))
+		success(LOGGER,"Remote register catalog loaded source=cache entries=%s",len(cached["sensors"]))
 		return RemoteCatalog(cached["sensors"],"cache")
 	LOGGER.info("Remote register catalog unavailable; using built-in catalog")
 	return RemoteCatalog([],"built-in")

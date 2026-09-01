@@ -12,6 +12,7 @@ import yaml
 
 from .codec import apply_transform
 from .codec import decode_registers
+from .codec import registers_to_ascii
 from .models import PollingConfig
 from .scan_catalog import ScanCandidate
 from .scheduler import group_sensors_for_read
@@ -117,6 +118,7 @@ def save_detected_sensors(path: str, report: list[dict[str, Any]]) -> None:
 					"status": result["status"],
 					"raw_registers": result.get("raw_registers",[]),
 					"raw_hex": result.get("raw_hex",[]),
+					"raw_ascii": result.get("raw_ascii",""),
 					"decoded": result.get("decoded"),
 					"value": result.get("value"),
 					"latency_ms": result.get("latency_ms"),
@@ -298,6 +300,7 @@ def _scan_value(
 		"status": "supported",
 		"raw_registers": raw_values,
 		"raw_hex": [f"0x{value:04X}" for value in raw_values],
+		"raw_ascii": registers_to_ascii(raw_values),
 		"decoded": decoded,
 		"value": value,
 		"latency_ms": round(latency_ms,2),
@@ -320,6 +323,7 @@ def _scan_error(
 		"status": status,
 		"raw_registers": [],
 		"raw_hex": [],
+		"raw_ascii": "",
 		"latency_ms": round(latency_ms,2) if latency_ms is not None else None,
 		"error": error,
 		"verification": candidate.verification,
@@ -363,7 +367,7 @@ def _validate_definition_value(key: str, field: str, value: Any) -> Any:
 			raise ValueError(f"Update {key}: retain must be a boolean")
 		return value
 	if field == "type":
-		if value not in {"uint16","int16","uint32","int32","hex"}:
+		if value not in {"uint16","int16","uint32","int32","hex","ascii"}:
 			raise ValueError(f"Update {key}: unsupported type")
 		return value
 	if field == "word_order":

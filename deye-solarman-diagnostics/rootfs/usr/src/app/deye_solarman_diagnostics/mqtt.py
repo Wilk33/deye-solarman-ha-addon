@@ -11,6 +11,7 @@ import paho.mqtt.client as mqtt
 from .models import InverterConfig
 from .models import MqttConfig
 from .models import SensorDefinition
+from .logging_utils import success
 
 
 LOGGER=logging.getLogger(__name__)
@@ -119,7 +120,7 @@ class MqttPublisher:
 		_properties: Any,
 	) -> None:
 		if reason_code == 0:
-			LOGGER.info("MQTT connection confirmed")
+			success(LOGGER,"MQTT connection confirmed")
 		else:
 			self._connection_error=f"MQTT broker rejected the connection reason={reason_code}"
 			LOGGER.error(self._connection_error)
@@ -142,4 +143,4 @@ class MqttPublisher:
 			info.wait_for_publish(timeout=10)
 			if not info.is_published():
 				raise ConnectionError(f"MQTT {kind} publish timed out topic={topic}")
-		LOGGER.info("MQTT %s published topic=%s retain=%s",kind,topic,retain)
+		success(LOGGER,"MQTT %s published topic=%s retain=%s",kind,topic,retain)

@@ -12,7 +12,7 @@ from .models import SensorDefinition
 from .scanner import load_monitored_definitions
 
 
-SUPPORTED_REGISTER_TYPES={"uint16","int16","uint32","int32","hex"}
+SUPPORTED_REGISTER_TYPES={"uint16","int16","uint32","int32","hex","ascii"}
 
 
 def load_sensor_definitions(
