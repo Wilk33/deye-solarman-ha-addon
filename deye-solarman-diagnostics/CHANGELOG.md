@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.0
+
+- Apply saved MQTT selections, sensor reset, list deletion, and completed scans by reloading only the add-on polling and MQTT runtime, without restarting the add-on container.
+- Queue MQTT Discovery removal when an individual panel sensor is deselected, so stale Home Assistant entities are removed during the automatic runtime reload.
+- Audit all 68 built-in SG04LP3/SG05LP3 live register definitions against the public three-phase map and document the type, signedness, word-order, and temperature conversion result.
+
 ## 0.6.0
 
 - Replace native Ingress select popups with theme-aware custom controls for filters and sensor decoding settings.

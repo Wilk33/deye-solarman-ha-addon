@@ -445,6 +445,12 @@ class RuntimeTests(unittest.TestCase):
 			self.assertEqual(entry["definition"]["read_every"],120)
 			self.assertFalse(entry["definition"]["retain"])
 
+			update_detected_sensors(
+				str(detected_path),
+				[{"key": "battery_2_voltage","monitor": False,"definition": {}}],
+			)
+			self.assertEqual(load_pending_discovery_removals(str(detected_path)),["battery_2_voltage"])
+
 	def test_detected_sensors_can_be_reset_to_catalog_defaults_or_cleared(self) -> None:
 		candidate=ScanCandidate(
 			SensorDefinition("battery_voltage","Battery Voltage",[10040],"uint16",0.1,unit="V",read_every=60),
@@ -525,11 +531,13 @@ class RuntimeTests(unittest.TestCase):
 			save_detected_sensors(str(detected_path),report)
 			reset_calls=[]
 			clear_calls=[]
+			configuration_changes=[]
 			panel=IngressPanel(
 				str(detected_path),
 				lambda: {"count": 1},
 				lambda: reset_calls.append(True) or {"available_sensors": []},
 				lambda: clear_calls.append(True) or {"available_sensors": []},
+				lambda: configuration_changes.append(True),
 				port=0,
 			)
 			panel.start()
@@ -582,6 +590,7 @@ class RuntimeTests(unittest.TestCase):
 					updated=json.loads(response.read())
 				self.assertTrue(updated["available_sensors"][0]["monitor"])
 				self.assertEqual(updated["available_sensors"][0]["definition"]["read_every"],120)
+				self.assertEqual(len(configuration_changes),1)
 
 				for endpoint,calls in [("/api/reset",reset_calls),("/api/sensors/delete",clear_calls)]:
 					request=Request(
@@ -594,6 +603,10 @@ class RuntimeTests(unittest.TestCase):
 						response_payload=json.loads(response.read())
 					self.assertEqual(response_payload["available_sensors"],[])
 					self.assertEqual(len(calls),1)
+				self.assertEqual(len(configuration_changes),3)
+
+				panel._run_scan()
+				self.assertEqual(len(configuration_changes),4)
 			finally:
 				panel.stop()
 

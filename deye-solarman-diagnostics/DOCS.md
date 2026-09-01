@@ -124,7 +124,7 @@ Panel umozliwia:
 - filtrowanie wedlug statusu i wyszukiwanie po nazwie, kluczu, kategorii lub rejestrze;
 - zaznaczenie encji do MQTT przeznikiem `MQTT`;
 - zmiane nazwy, typu, mnoznika, offsetu, jednostki, slow order, interwalow, progu zmiany, retain i metadanych Home Assistant;
-- atomowy zapis konfiguracji przyciskiem `Zapisz wybor MQTT`.
+- atomowy zapis konfiguracji przyciskiem `Zapisz wybor MQTT`, z automatycznym przeladowaniem tylko petli MQTT i odczytow.
 
 ## Diagnostyka panelu
 
@@ -136,7 +136,7 @@ Wersja `0.4.0` rozpoznaje `Connection closed on read` i `Connection already clos
 
 Jesli panel nie reaguje, otworz narzedzia programistyczne przegladarki, wybierz `Console`, odswiez panel i skopiuj wszystkie wpisy `[Deye Solarman]` oraz ewentualne czerwone bledy. Rownoczesnie skopiuj log dodatku z chwili otwarcia panelu i klikniecia `Skanuj teraz`.
 
-Adresy rejestrow, klucze encji i ich lista nie sa edytowalne w panelu. Chroni to katalog przed przypadkowa zmiana definicji Modbus. `Reset konfiguracji` zachowuje ostatni wynik odczytu, przywraca domyslne definicje katalogowe i wylacza wszystkie przelaczniki `MQTT`. `Usun sensory` usuwa lokalny plik wykryc `/config/detected_sensors.yaml`; po nim uruchom nowy skan. Reset i usuniecie dopisuja wczesniej wybrane encje do lokalnej kolejki usuniecia Discovery. Po restarcie dodatek publikuje retained, pusty komunikat `.../config` dla tych encji, aby Home Assistant je usunal. Restart jest wymagany, aby petla MQTT zaladowala nowy wybor i wykonala te usuniecia.
+Adresy rejestrow, klucze encji i ich lista nie sa edytowalne w panelu. Chroni to katalog przed przypadkowa zmiana definicji Modbus. `Reset konfiguracji` zachowuje ostatni wynik odczytu, przywraca domyslne definicje katalogowe i wylacza wszystkie przelaczniki `MQTT`. `Usun sensory` usuwa lokalny plik wykryc `/config/detected_sensors.yaml`; po nim uruchom nowy skan. Reset i usuniecie dopisuja wczesniej wybrane encje do lokalnej kolejki usuniecia Discovery. Dodatek automatycznie zamyka i odtwarza tylko polaczenia Solarman TCP oraz MQTT, a nastepnie publikuje retained, pusty komunikat `.../config` dla tych encji, aby Home Assistant je usunal. Restart calego dodatku nie jest wymagany.
 
 ## Skanowanie i wybor encji
 
@@ -146,7 +146,7 @@ Skan uruchamia sie wylacznie recznie. Nie jest wykonywany w normalnym cyklu odcz
 2. Otworz panel `Deye Solarman` z paska bocznego Home Assistant.
 3. Wybierz `Skanuj teraz`. Dodatek wykona probe polaczenia i odczyta katalog rejestrow sekwencyjnie. Nie tworzy przy tym encji MQTT.
 4. W panelu wlacz `MQTT` tylko przy pozycjach o statusie `supported`, ktore chcesz publikowac. Dostosuj parametry w `Konfiguruj dekodowanie i odpytywanie`, jesli sa potrzebne.
-5. Wybierz `Zapisz wybor MQTT`, a nastepnie zrestartuj dodatek. Od tej chwili tylko zaznaczone encje sa odpytywane oraz publikowane do MQTT.
+5. Wybierz `Zapisz wybor MQTT`. Dodatek sam zamknie i odtworzy tylko polaczenia Solarman i MQTT, wczyta nowy wybor oraz opublikuje aktualne MQTT Discovery. Od tej chwili tylko zaznaczone encje sa odpytywane oraz publikowane do MQTT. Restart calego dodatku nie jest wymagany.
 
 Opcja `scan_and_monitor` wykonuje skan podczas startu, aktualizuje oba pliki, a nastepnie przechodzi od razu do normalnego MQTT. Uzywaj jej tylko wtedy, gdy istniejace zaznaczenia sa juz poprawne. `scan_only` wykonuje skan podczas startu, nie laczy sie z MQTT i pozostawia uruchomiony panel Ingress do wyboru encji.
 

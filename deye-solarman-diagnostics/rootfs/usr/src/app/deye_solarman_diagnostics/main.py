@@ -42,6 +42,7 @@ def main() -> None:
 	configure_logging()
 	config=load_config()
 	access_lock=threading.Lock()
+	configuration_changed=threading.Event()
 	catalog_lock=threading.Lock()
 	catalog_state={"current": load_remote_catalog(config.catalog)}
 
@@ -60,33 +61,40 @@ def main() -> None:
 		lambda: _run_manual_scan(config,access_lock,current_catalog()),
 		lambda: _reset_panel_configuration(config,current_catalog()),
 		lambda: _clear_panel_sensors(config,refresh_catalog()),
+		configuration_changed.set,
 	)
 	panel.start()
 	try:
-		_run_addon(config,access_lock,current_catalog())
+		_run_addon(config,access_lock,current_catalog(),configuration_changed)
 	finally:
 		panel.stop()
 
 
-def _run_addon(config: Any, access_lock: Any, remote_catalog: RemoteCatalog) -> None:
-	sensors=load_sensor_definitions(
-		config.profiles.default_profile,
-		config.profiles.overrides_file,
-		config.scan.detected_sensors_file,
-	)
+def _run_addon(
+	config: Any,
+	access_lock: Any,
+	remote_catalog: RemoteCatalog,
+	configuration_changed: threading.Event | None=None,
+) -> None:
 	state=load_state(config.profiles.state_file)
-
-	for sensor in sensors:
-		state.setdefault(sensor.key, SensorState())
-	success(
-		LOGGER,
-		"Sensor configuration loaded total=%s enabled=%s selected_file=%s",
-		len(sensors),
-		sum(sensor.enabled for sensor in sensors),
-		config.scan.detected_sensors_file,
-	)
+	change_event=configuration_changed or threading.Event()
 
 	while True:
+		change_event.clear()
+		sensors=load_sensor_definitions(
+			config.profiles.default_profile,
+			config.profiles.overrides_file,
+			config.scan.detected_sensors_file,
+		)
+		for sensor in sensors:
+			state.setdefault(sensor.key, SensorState())
+		success(
+			LOGGER,
+			"Sensor configuration loaded total=%s enabled=%s selected_file=%s",
+			len(sensors),
+			sum(sensor.enabled for sensor in sensors),
+			config.scan.detected_sensors_file,
+		)
 		solarman=SolarmanClient(config.logger)
 		mqtt=MqttPublisher(config.mqtt, config.inverter)
 		try:
@@ -141,6 +149,7 @@ def _run_addon(config: Any, access_lock: Any, remote_catalog: RemoteCatalog) -> 
 			for sensor in enabled_sensors:
 				mqtt.publish_discovery(sensor)
 
+			runtime_reload=False
 			while True:
 				iteration_report=run_iteration(
 					sensors,
@@ -154,7 +163,12 @@ def _run_addon(config: Any, access_lock: Any, remote_catalog: RemoteCatalog) -> 
 				save_state(config.profiles.state_file, state)
 				if config.advanced.emit_scan_report:
 					save_scan_report(config.profiles.scan_report_file, iteration_report)
-				time.sleep(config.polling.default_interval)
+				if change_event.wait(config.polling.default_interval):
+					runtime_reload=True
+					break
+			if runtime_reload:
+				success(LOGGER,"Applying updated panel configuration without add-on restart")
+				continue
 		except KeyboardInterrupt:
 			LOGGER.info("Stopping add-on")
 			return
@@ -168,7 +182,7 @@ def _run_addon(config: Any, access_lock: Any, remote_catalog: RemoteCatalog) -> 
 			solarman.disconnect()
 
 		if config.polling.allow_reconnect:
-			time.sleep(config.logger.reconnect_delay)
+			change_event.wait(config.logger.reconnect_delay)
 
 
 def _run_manual_scan(config: Any, access_lock: Any, remote_catalog: RemoteCatalog) -> dict[str, Any]:

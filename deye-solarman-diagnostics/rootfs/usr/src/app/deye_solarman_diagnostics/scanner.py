@@ -252,6 +252,7 @@ def update_detected_sensors(path: str, updates: list[dict[str, Any]]) -> dict[st
 		if isinstance(entry, dict) and isinstance(entry.get("key"), str)
 	}
 
+	removed_keys: set[str]=set()
 	for index, update in enumerate(updates):
 		if not isinstance(update, dict):
 			raise ValueError(f"Update {index} must be an object")
@@ -269,12 +270,15 @@ def update_detected_sensors(path: str, updates: list[dict[str, Any]]) -> dict[st
 		if not isinstance(definition, dict):
 			raise ValueError(f"detected_sensors.yaml: {key} has no definition")
 
+		if entry.get("monitor") is True and not monitor:
+			removed_keys.add(key)
 		entry["monitor"]=monitor
 		for field, value in definition_update.items():
 			if field not in EDITABLE_DEFINITION_FIELDS:
 				continue
 			definition[field]=_validate_definition_value(key, field, value)
 
+	_queue_discovery_removal_keys(target,removed_keys)
 	_write_yaml(target, payload)
 	return payload
 
@@ -407,6 +411,10 @@ def _queue_discovery_removals(target: Path, entries: list[Any]) -> None:
 		for entry in entries
 		if isinstance(entry,dict) and entry.get("monitor") is True and isinstance(entry.get("key"),str)
 	}
+	_queue_discovery_removal_keys(target,keys)
+
+
+def _queue_discovery_removal_keys(target: Path, keys: set[str]) -> None:
 	if not keys:
 		return
 	queue_path=_discovery_removals_path(target)

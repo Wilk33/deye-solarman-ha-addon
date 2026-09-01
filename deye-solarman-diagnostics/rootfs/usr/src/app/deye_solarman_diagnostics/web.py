@@ -28,12 +28,14 @@ class IngressPanel:
 		scan_handler: Callable[[], dict[str, Any]],
 		reset_handler: Callable[[], dict[str, Any]] | None=None,
 		clear_handler: Callable[[], dict[str, Any]] | None=None,
+		configuration_changed_handler: Callable[[], None] | None=None,
 		port: int=8099,
 	) -> None:
 		self._detected_sensors_file=detected_sensors_file
 		self._scan_handler=scan_handler
 		self._reset_handler=reset_handler
 		self._clear_handler=clear_handler
+		self._configuration_changed_handler=configuration_changed_handler
 		self._port=port
 		self._job_lock=threading.Lock()
 		self._job={
@@ -105,6 +107,7 @@ class IngressPanel:
 						if not isinstance(updates,list):
 							raise ValueError("sensors must be a list")
 						updated=update_detected_sensors(panel._detected_sensors_file,updates)
+						panel._notify_configuration_changed()
 						self._send_json(updated)
 						return
 					if path == "/api/reset":
@@ -217,12 +220,21 @@ class IngressPanel:
 				"message": "Skan zakonczony. Wybierz wartosci do publikacji i zapisz konfiguracje.",
 				"result": result,
 			}
+		self._notify_configuration_changed()
 
 	def _run_configuration_action(self, handler: Callable[[], dict[str, Any]]) -> dict[str, Any]:
 		with self._job_lock:
 			if self._job["status"] == "running":
 				raise ValueError("Poczekaj na zakonczenie aktualnego skanu")
-			return handler()
+			result=handler()
+			self._notify_configuration_changed()
+			return result
+
+	def _notify_configuration_changed(self) -> None:
+		if self._configuration_changed_handler is None:
+			return
+		self._configuration_changed_handler()
+		LOGGER.info("Runtime configuration reload requested")
 
 
 PANEL_HTML="""<!doctype html>
@@ -364,7 +376,7 @@ summary { padding: 11px 0; color: var(--green); cursor: pointer; font-family: "C
   </section>
   <p id="empty" hidden>Brak danych skanu. Uzyj Skanuj teraz po skonfigurowaniu polaczenia loggera w zakladce Konfiguracja dodatku.</p>
   <section id="sensor-groups"></section>
-  <p class="notice"><b>Zastosowanie zmian:</b> zapis aktualizuje trwaly plik wyboru. Wiersz ASCII pokazuje dwa znaki z kazdego rejestru, a znaki niedrukowalne jako kropki. Po zapisie zrestartuj dodatek w Home Assistant, aby petla MQTT zaladowala wybrane czujniki. Poprawny odczyt BMS potwierdza dostep transportowy, ale niekoniecznie znaczenie rejestru.</p>
+  <p class="notice"><b>Zastosowanie zmian:</b> zapis aktualizuje trwaly plik wyboru. Dodatek automatycznie przeladowuje tylko polaczenia Solarman i MQTT oraz odczyt wybranych czujnikow. Wiersz ASCII pokazuje dwa znaki z kazdego rejestru, a znaki niedrukowalne jako kropki. Poprawny odczyt BMS potwierdza dostep transportowy, ale niekoniecznie znaczenie rejestru.</p>
 </main>
 <script src="panel.js"></script>
 <script>
@@ -581,7 +593,8 @@ async function save() {
   try {
     const payload=await request("api/sensors",{method:"POST",body:JSON.stringify({sensors:collectUpdates()})});
     sensors=payload.available_sensors || [];
-    message.textContent="Zapisano. Zrestartuj dodatek, aby zastosowac zmiany odpytywania MQTT.";
+    message.style.color="var(--green)";
+    message.textContent="Zapisano. Polaczenia Solarman i MQTT zostaly automatycznie przeladowane.";
     render();
   } catch (error) { message.textContent=`Blad zapisu: ${error.message}`; message.style.color="var(--red)"; }
 }
@@ -593,7 +606,7 @@ async function resetConfiguration() {
     const payload=await request("api/reset",{method:"POST",body:"{}"});
     sensors=payload.available_sensors || [];
     message.style.color="var(--green)";
-    message.textContent="Przywrocono domyslna konfiguracje. Zrestartuj dodatek, aby zatrzymac poprzednio wybrane publikacje MQTT.";
+    message.textContent="Przywrocono domyslna konfiguracje. Poprzednie encje MQTT Discovery zostana automatycznie usuniete.";
     render();
   } catch (error) { message.style.color="var(--red)"; message.textContent=`Blad resetu: ${error.message}`; }
 }
@@ -605,7 +618,7 @@ async function deleteSensors() {
     const payload=await request("api/sensors/delete",{method:"POST",body:"{}"});
     sensors=payload.available_sensors || [];
     message.style.color="var(--green)";
-    message.textContent="Usunieto lokalna liste. Katalog zostal odswiezony - uruchom skan, aby utworzyc nowa liste.";
+    message.textContent="Usunieto lokalna liste. Katalog zostal odswiezony, a poprzednie encje MQTT Discovery zostana automatycznie usuniete. Uruchom skan, aby utworzyc nowa liste.";
     render();
   } catch (error) { message.style.color="var(--red)"; message.textContent=`Blad usuwania: ${error.message}`; }
 }
