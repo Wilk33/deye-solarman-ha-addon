@@ -201,6 +201,10 @@ Aktualizuj mape przez commit do `deye_sg04_sg05_3ph_lv_catalog.yaml` w tym repoz
 
 Szczegolowy przeglad typow rejestrow jest w [REGISTER_TYPE_AUDIT.md](deye-solarman-diagnostics/REGISTER_TYPE_AUDIT.md).
 
+## Kierunek rozwoju
+
+Repozytorium jest przygotowane do przyszlego modelu dwoch add-onow z jednym wspolnym rdzeniem: lokalnego Solarman TCP i bezposredniego RS485. Biezacy dodatek pozostaje jedyna aktywna aplikacja w repozytorium. Szczegolowa propozycja architektury oraz rozdzialu map `telemetry`, `telemetry_plus` i `control` jest w [MULTI_ADDON_AND_CATALOGS.md](docs/architecture/MULTI_ADDON_AND_CATALOGS.md).
+
 ## MQTT Discovery i tematy
 
 Dla kazdego aktywnego sensora dodatek publikuje konfiguracje Discovery:
