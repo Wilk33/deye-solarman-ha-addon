@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.2.0
+
+- Extract the runtime into `packages/deye_inverter_core` and inject the Solarman adapter from `apps/deye-solarman/src` through shared read/write contracts.
+- Split canonical model maps into telemetry, telemetry-plus and control with a checksummed catalog index. Generate the existing HAOS build context and legacy telemetry URL from canonical sources; verify generated files in CI.
+
+- Add the Ingress `Encje sterowania` workspace with a separate scan, filters, MQTT selection, polling settings, reset, deletion, and per-entity read-only Test.
+- Bundle 119 control definitions from the pinned Sunsynk three-phase LV profile, including numbers, switches, selects, program times and system time.
+- Publish selected controls through MQTT Discovery and process commands through the shared Solarman lock, preserving register bitmasks and checking dynamic limits and read-back.
+- Reject retained, stale, invalid and deselected commands. Do not retry uncertain writes; disable further writes until configuration is saved again or the add-on restarts.
+- Correct the tab label to `Własne sensory`.
+
 ## 1.1.1
 
 - Expand the SG04LP3 / SG05LP3 read-only map to 94 inverter definitions and 23 BMS definitions per pack, including separate BMS alarm and fault words, BMS temperatures and limits, phase measurements, generator measurements, and status flags.

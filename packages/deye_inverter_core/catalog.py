@@ -28,15 +28,8 @@ def _packaged_catalog() -> RemoteCatalog:
 
 
 def _load_packaged_catalog_payload() -> dict[str, Any]:
-	for parent in Path(__file__).resolve().parents:
-		candidate=parent / CATALOG_FILENAME
-		if candidate.is_file():
-			with candidate.open("r",encoding="utf-8") as handle:
-				payload=yaml.safe_load(handle)
-			if isinstance(payload,dict):
-				return payload
-			raise ValueError(f"Packaged catalog {candidate} must contain an object")
-	raise FileNotFoundError(f"Packaged catalog {CATALOG_FILENAME} is missing")
+	from .catalog_bundle import legacy_telemetry_payload
+	return legacy_telemetry_payload()
 
 
 def build_live_telemetry() -> list[SensorDefinition]:

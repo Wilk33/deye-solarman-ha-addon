@@ -1,0 +1,18 @@
+name: Validate add-on
+on:
+  push:
+  pull_request:
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: python -m pip install -r deye-solarman-diagnostics/rootfs/requirements.txt
+      - run: python tools/package_addon.py --check
+      - run: python -m unittest discover -s tests -v
+      - run: python -W error::SyntaxWarning -m compileall -q packages apps/deye-solarman/src deye-solarman-diagnostics/rootfs/usr/src/app
+      - run: node --check packages/deye_inverter_core/control_panel.js
+      - run: node --check packages/deye_inverter_core/custom_panel.js

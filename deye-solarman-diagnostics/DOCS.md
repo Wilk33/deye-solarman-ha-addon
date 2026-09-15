@@ -9,7 +9,7 @@ Katalog skanowania zawiera bezpieczne rejestry tylko do odczytu:
 - 94 kandydatow telemetrycznych dla rodziny Deye SUN-*-SG04LP3 / SG05LP3: stan falownika, PV1-PV4, bateria, siec, CT, obciazenie, wyjscie, UPS, generator, temperatury i energia.
 - 23 pola diagnostyczne dla kazdego skonfigurowanego pakietu BMS: numer seryjny, temperatury, SOC, SOH, pojemnosci, limity, napiecia cel, cykle oraz rozdzielone dane BMS alarm i fault.
 
-Nie sa skanowane rejestry konfiguracji ani sterowania, wiec skan nie powinien modyfikowac ustawien falownika. "Powodzenie" skanu oznacza, ze logger zwrocil wartosc. Nie potwierdza ono jeszcze znaczenia kazdego pola BMS - wartosci oznaczone w raporcie jako `candidate` trzeba porownac z wyswietlaczem falownika lub BMS.
+Zakładka Wykryte sensory skanuje telemetrię. Osobna zakładka **Encje sterowania** odczytuje aktualne ustawienia według mapy Sunsynk. Skan i Test w obu przypadkach nie zapisują rejestrów. "Powodzenie" skanu oznacza, że logger zwrócił wartość; nie potwierdza znaczenia każdego pola BMS ani zgodności zapisu ustawień z firmware. Zaznaczenie MQTT w zakładce sterowania udostępnia działające encje zmiany nastaw. Szczegóły: [Encje sterowania](CONTROL_ENTITIES.md).
 
 ## Konfiguracja
 

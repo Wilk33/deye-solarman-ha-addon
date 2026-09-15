@@ -13,47 +13,47 @@ from unittest.mock import patch
 import yaml
 
 
-APP_ROOT=Path(__file__).resolve().parents[1] / "deye-solarman-diagnostics" / "rootfs" / "usr" / "src" / "app"
+APP_ROOT=Path(__file__).resolve().parents[1]/"packages"
 sys.path.insert(0, str(APP_ROOT))
 
-from deye_solarman_diagnostics.config import load_config
-from deye_solarman_diagnostics.custom_sensors import load_custom_sensors
-from deye_solarman_diagnostics.custom_sensors import save_custom_sensors
-from deye_solarman_diagnostics.codec import decode_registers
-from deye_solarman_diagnostics.codec import registers_to_ascii
-from deye_solarman_diagnostics.definitions import load_sensor_definitions
-from deye_solarman_diagnostics.formula import FormulaError
-from deye_solarman_diagnostics.formula import FormulaExecutor
-from deye_solarman_diagnostics.main import _handle_sensor
-from deye_solarman_diagnostics.main import _is_due
-from deye_solarman_diagnostics.main import run_iteration
-from deye_solarman_diagnostics.logging_utils import AddonLogFormatter
-from deye_solarman_diagnostics.logging_utils import SUCCESS
-from deye_solarman_diagnostics.models import InverterConfig
-from deye_solarman_diagnostics.models import CatalogConfig
-from deye_solarman_diagnostics.models import MqttConfig
-from deye_solarman_diagnostics.models import PollingConfig
-from deye_solarman_diagnostics.models import SensorDefinition
-from deye_solarman_diagnostics.models import SensorState
-from deye_solarman_diagnostics.mqtt import MqttPublisher
-from deye_solarman_diagnostics.scheduler import group_sensors_for_read
-from deye_solarman_diagnostics.scan_catalog import ScanCandidate
-from deye_solarman_diagnostics.scan_catalog import load_scan_candidates
-from deye_solarman_diagnostics.remote_catalog import RemoteCatalog
-from deye_solarman_diagnostics.remote_catalog import apply_remote_catalog
-from deye_solarman_diagnostics.remote_catalog import load_remote_catalog
-from deye_solarman_diagnostics.supervisor import discover_mqtt_service
-from deye_solarman_diagnostics.solarman import SolarmanConnectionClosedError
-from deye_solarman_diagnostics.scanner import load_monitored_definitions
-from deye_solarman_diagnostics.scanner import clear_detected_sensors
-from deye_solarman_diagnostics.scanner import load_pending_discovery_removals
-from deye_solarman_diagnostics.scanner import reset_detected_sensors
-from deye_solarman_diagnostics.scanner import save_detected_sensors
-from deye_solarman_diagnostics.scanner import scan_candidates
-from deye_solarman_diagnostics.scanner import update_detected_sensors
-from deye_solarman_diagnostics.storage import load_state
-from deye_solarman_diagnostics.storage import save_state
-from deye_solarman_diagnostics.web import IngressPanel
+from deye_inverter_core.config import load_config
+from deye_inverter_core.custom_sensors import load_custom_sensors
+from deye_inverter_core.custom_sensors import save_custom_sensors
+from deye_inverter_core.codec import decode_registers
+from deye_inverter_core.codec import registers_to_ascii
+from deye_inverter_core.definitions import load_sensor_definitions
+from deye_inverter_core.formula import FormulaError
+from deye_inverter_core.formula import FormulaExecutor
+from deye_inverter_core.main import _handle_sensor
+from deye_inverter_core.main import _is_due
+from deye_inverter_core.main import run_iteration
+from deye_inverter_core.logging_utils import AddonLogFormatter
+from deye_inverter_core.logging_utils import SUCCESS
+from deye_inverter_core.models import InverterConfig
+from deye_inverter_core.models import CatalogConfig
+from deye_inverter_core.models import MqttConfig
+from deye_inverter_core.models import PollingConfig
+from deye_inverter_core.models import SensorDefinition
+from deye_inverter_core.models import SensorState
+from deye_inverter_core.mqtt import MqttPublisher
+from deye_inverter_core.scheduler import group_sensors_for_read
+from deye_inverter_core.scan_catalog import ScanCandidate
+from deye_inverter_core.scan_catalog import load_scan_candidates
+from deye_inverter_core.remote_catalog import RemoteCatalog
+from deye_inverter_core.remote_catalog import apply_remote_catalog
+from deye_inverter_core.remote_catalog import load_remote_catalog
+from deye_inverter_core.supervisor import discover_mqtt_service
+from deye_inverter_core.transport import TransportConnectionClosedError as SolarmanConnectionClosedError
+from deye_inverter_core.scanner import load_monitored_definitions
+from deye_inverter_core.scanner import clear_detected_sensors
+from deye_inverter_core.scanner import load_pending_discovery_removals
+from deye_inverter_core.scanner import reset_detected_sensors
+from deye_inverter_core.scanner import save_detected_sensors
+from deye_inverter_core.scanner import scan_candidates
+from deye_inverter_core.scanner import update_detected_sensors
+from deye_inverter_core.storage import load_state
+from deye_inverter_core.storage import save_state
+from deye_inverter_core.web import IngressPanel
 
 
 class FakeMqtt:
@@ -407,7 +407,7 @@ class RuntimeTests(unittest.TestCase):
 		with tempfile.TemporaryDirectory() as directory:
 			options_path=Path(directory) / "options.json"
 			options_path.write_text(json.dumps(options), encoding="utf-8")
-			with patch("deye_solarman_diagnostics.supervisor.urlopen",return_value=FakeSupervisorResponse(service)):
+			with patch("deye_inverter_core.supervisor.urlopen",return_value=FakeSupervisorResponse(service)):
 				config=load_config(options_path)
 
 		self.assertEqual(config.mqtt.host, "172.30.33.4")
@@ -416,7 +416,7 @@ class RuntimeTests(unittest.TestCase):
 		self.assertEqual(config.mqtt.source, "supervisor")
 
 	def test_supervisor_mqtt_failure_keeps_manual_configuration(self) -> None:
-		with patch("deye_solarman_diagnostics.supervisor.urlopen",side_effect=OSError("unavailable")):
+		with patch("deye_inverter_core.supervisor.urlopen",side_effect=OSError("unavailable")):
 			self.assertIsNone(discover_mqtt_service())
 
 	def test_config_rejects_placeholder_logger_serial(self) -> None:
@@ -456,7 +456,7 @@ class RuntimeTests(unittest.TestCase):
 		self.assertEqual(by_key["battery_1_heat_memory_temperature"].registers,[10046])
 
 	def test_remote_full_register_catalog_matches_builtin_fallback(self) -> None:
-		path=APP_ROOT.parents[3] / "deye_sg04_sg05_3ph_lv_catalog.yaml"
+		path=APP_ROOT.parent/"deye-solarman-diagnostics/deye_sg04_sg05_3ph_lv_catalog.yaml"
 		payload=yaml.safe_load(path.read_text(encoding="utf-8"))
 		catalog=RemoteCatalog(payload["sensors"],"repository",payload["bms_pack"],payload["version"])
 
@@ -506,9 +506,9 @@ class RuntimeTests(unittest.TestCase):
 		payload={"version": 1,"sensors": [{"key": "ac_temperature","definition": {"unit": "°C"}}]}
 		with tempfile.TemporaryDirectory() as directory:
 			config=CatalogConfig(True,"https://example.invalid/catalog.yaml",str(Path(directory) / "catalog.yaml"),1)
-			with patch("deye_solarman_diagnostics.remote_catalog.urlopen",return_value=FakeSupervisorResponse(payload)):
+			with patch("deye_inverter_core.remote_catalog.urlopen",return_value=FakeSupervisorResponse(payload)):
 				downloaded=load_remote_catalog(config)
-			with patch("deye_solarman_diagnostics.remote_catalog.urlopen",side_effect=OSError("offline")):
+			with patch("deye_inverter_core.remote_catalog.urlopen",side_effect=OSError("offline")):
 				cached=load_remote_catalog(config)
 
 		self.assertEqual(downloaded.source,"github")
@@ -519,7 +519,7 @@ class RuntimeTests(unittest.TestCase):
 		payload={"version": 1,"sensors": []}
 		with tempfile.TemporaryDirectory() as directory:
 			config=CatalogConfig(False,"https://example.invalid/catalog.yaml",str(Path(directory) / "catalog.yaml"),1)
-			with patch("deye_solarman_diagnostics.remote_catalog.urlopen",return_value=FakeSupervisorResponse(payload)):
+			with patch("deye_inverter_core.remote_catalog.urlopen",return_value=FakeSupervisorResponse(payload)):
 				catalog=load_remote_catalog(config,force_refresh=True)
 
 		self.assertEqual(catalog.source,"github")
@@ -930,7 +930,7 @@ class RuntimeTests(unittest.TestCase):
 		sensor=SensorDefinition("soc", "SOC", [10047], "uint16", schedule="slow", read_every=30)
 		state=SensorState(last_read_at=450)
 
-		with patch("deye_solarman_diagnostics.main.time.time", return_value=1000):
+		with patch("deye_inverter_core.main.time.time", return_value=1000):
 			self.assertFalse(_is_due(sensor, state, make_polling()))
 
 	def test_mqtt_global_retain_setting_overrides_sensor_setting(self) -> None:
@@ -978,8 +978,8 @@ class RuntimeTests(unittest.TestCase):
 
 	def test_log_formatter_has_readable_colored_status_markers(self) -> None:
 		formatter=AddonLogFormatter(color=True)
-		record=logging.LogRecord("deye_solarman_diagnostics.main",SUCCESS,"",0,"Connected %s",("logger",),None)
-		warning=logging.LogRecord("deye_solarman_diagnostics.main",logging.WARNING,"",0,"Read timeout",(),None)
+		record=logging.LogRecord("deye_inverter_core.main",SUCCESS,"",0,"Connected %s",("logger",),None)
+		warning=logging.LogRecord("deye_inverter_core.main",logging.WARNING,"",0,"Read timeout",(),None)
 
 		self.assertIn("\033[32m",formatter.format(record))
 		self.assertIn("[ OK  ] main",formatter.format(record))

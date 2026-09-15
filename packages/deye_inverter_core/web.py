@@ -24,6 +24,7 @@ LOGGER=logging.getLogger(__name__)
 MAX_REQUEST_BYTES=1_000_000
 PANEL_SCRIPT=Path(__file__).with_name("panel.js").read_text(encoding="utf-8")
 CUSTOM_PANEL_SCRIPT=Path(__file__).with_name("custom_panel.js").read_text(encoding="utf-8")
+CONTROL_PANEL_SCRIPT=Path(__file__).with_name("control_panel.js").read_text(encoding="utf-8")
 
 
 class IngressPanel:
@@ -38,6 +39,7 @@ class IngressPanel:
 		custom_test_handler: Callable[[dict[str, Any]], dict[str, Any]] | None=None,
 		custom_save_handler: Callable[[list[dict[str, Any]]], dict[str, Any]] | None=None,
 		port: int=8099,
+		control_service: Any=None,
 	) -> None:
 		self._detected_sensors_file=detected_sensors_file
 		self._scan_handler=scan_handler
@@ -48,6 +50,7 @@ class IngressPanel:
 		self._custom_test_handler=custom_test_handler
 		self._custom_save_handler=custom_save_handler
 		self._port=port
+		self._controls=control_service
 		self._job_lock=threading.Lock()
 		self._job={
 			"status": "idle",
@@ -93,6 +96,13 @@ class IngressPanel:
 				if path == "/panel.js":
 					self._send_script(PANEL_SCRIPT)
 					return
+				if path == "/control-panel.js":
+					self._send_script(CONTROL_PANEL_SCRIPT)
+					return
+				if path in {"/api/controls","/api/controls/scan-status"} and panel._controls is not None:
+					with panel._controls.lock:
+						self._send_json(panel._controls.load() if path == "/api/controls" else dict(panel._controls.job))
+					return
 				if path == "/custom-panel.js":
 					self._send_script(CUSTOM_PANEL_SCRIPT)
 					return
@@ -115,6 +125,29 @@ class IngressPanel:
 				path=self.path.split("?",1)[0]
 				self._log_request(path)
 				try:
+					if path.startswith("/api/controls") and panel._controls is not None:
+						payload=self._read_json()
+						if not isinstance(payload,dict):
+							raise ValueError("Expected JSON object")
+						if path == "/api/controls/scan":
+							if not panel._controls.start_scan(panel._notify_configuration_changed):
+								self._send_json({"error":"Scan already running"},HTTPStatus.CONFLICT)
+							else:
+								self._send_json({"status":"started"},HTTPStatus.ACCEPTED)
+							return
+						if path == "/api/controls/test":
+							self._send_json(panel._controls.test(payload.get("key","")))
+							return
+						if path == "/api/controls":
+							result=panel._controls.update(payload.get("sensors"))
+						elif path in {"/api/controls/reset","/api/controls/delete"}:
+							result=panel._controls.reset(clear=path.endswith("/delete"))
+						else:
+							self._send_json({"error":"Not found"},HTTPStatus.NOT_FOUND)
+							return
+						panel._notify_configuration_changed()
+						self._send_json(result)
+						return
 					if path == "/api/scan":
 						if not panel._start_scan():
 							self._send_json({"error": "A scan is already running"},HTTPStatus.CONFLICT)
@@ -172,6 +205,10 @@ class IngressPanel:
 						return
 				except ValueError as error:
 					self._send_json({"error": str(error)},HTTPStatus.BAD_REQUEST)
+					return
+				except Exception as error:
+					LOGGER.exception("Ingress operation failed")
+					self._send_json({"error":str(error)},HTTPStatus.BAD_GATEWAY)
 					return
 				self._send_json({"error": "Not found"},HTTPStatus.NOT_FOUND)
 
@@ -434,14 +471,15 @@ summary { padding: 11px 0; color: var(--green); cursor: pointer; font-family: "C
     <div>
       <p class="eyebrow">Home Assistant Ingress / local Solarman TCP</p>
       <h1>Konfigurator encji</h1>
-      <p class="lede">Skanuj tylko-do-odczytu telemetrie Deye, porownaj zwrocone wartosci i wybierz dokladnie to, co Home Assistant ma otrzymywac przez MQTT.</p>
+      <p class="lede">Odczytaj stan falownika Deye, porównaj wartości i wybierz sensory oraz encje sterowania udostępniane w Home Assistant przez MQTT.</p>
     </div>
     <div class="status"><strong id="scan-state">Ladowanie panelu</strong><span id="scan-message">Odczyt zapisanego wyniku skanu.</span></div>
   </header>
 
   <nav class="tabs" aria-label="Pulpity konfiguracji">
     <button class="tab active" type="button" data-tab="detected">Wykryte sensory</button>
-    <button class="tab" type="button" data-tab="custom">Wlasne sensory</button>
+    <button class="tab" type="button" data-tab="control">Encje sterowania</button>
+    <button class="tab" type="button" data-tab="custom">Własne sensory</button>
   </nav>
 
   <section id="detected-tab" class="tab-panel">
@@ -481,6 +519,32 @@ summary { padding: 11px 0; color: var(--green); cursor: pointer; font-family: "C
     </section>
     <section id="custom-sensor-list" class="custom-grid"></section>
     <p id="custom-empty" hidden>Nie utworzono jeszcze wlasnych sensorow. Uzyj przycisku + Dodaj sensor.</p>
+  </section>
+  <section id="control-tab" class="tab-panel" hidden>
+    <p class="custom-intro">Skan i Test pobierają aktualny stan. Zaznaczenie MQTT udostępnia sterowanie wybraną encją w Home Assistant.</p>
+    <section class="actions">
+      <button class="button" id="control-scan" type="button">Skanuj teraz</button>
+      <button class="button secondary" id="control-reset" type="button">Reset konfiguracji</button>
+      <button class="button danger" id="control-delete" type="button">Usuń encje</button>
+      <button class="button secondary" id="control-save" type="button">Zapisz wybór MQTT</button>
+      <span id="control-message" role="status"></span>
+    </section>
+    <section class="summary">
+      <div class="metric"><b id="control-total">0</b><span>encji sterowania</span></div>
+      <div class="metric"><b id="control-supported">0</b><span>poprawnych odpowiedzi</span></div>
+      <div class="metric"><b id="control-selected">0</b><span>wybranych do MQTT</span></div>
+      <div class="metric"><b id="control-other">0</b><span>niedostępnych lub błędnych</span></div>
+    </section>
+    <section class="filters">
+      <input id="control-search" type="search" placeholder="Filtruj po nazwie, kluczu, rejestrze lub metodzie sterowania">
+      <div class="select-control" data-select-control>
+        <input id="control-filter" type="hidden" value="all">
+        <button class="select-trigger" type="button" data-select-trigger aria-haspopup="listbox" aria-expanded="false"><span class="select-value">Wszystkie statusy</span><span class="select-chevron">&#9662;</span></button>
+        <div class="select-options" role="listbox"><button class="select-option selected" type="button" data-select-option data-value="all">Wszystkie statusy</button><button class="select-option" type="button" data-select-option data-value="supported">Supported</button><button class="select-option" type="button" data-select-option data-value="timeout">Timeout</button><button class="select-option" type="button" data-select-option data-value="invalid_value">Invalid value</button></div>
+      </div>
+    </section>
+    <p id="control-empty">Brak danych skanu. Użyj Skanuj teraz.</p>
+    <section id="control-groups"></section>
   </section>
 </main>
 <section id="formula-modal" class="formula-modal" hidden aria-modal="true" role="dialog" aria-label="Edytor formuly">
@@ -772,6 +836,7 @@ Promise.all([loadSensors(),refreshScanStatus()]).catch(error=>{
 });
 </script>
 <script src="custom-panel.js"></script>
+<script src="control-panel.js"></script>
 </body>
 </html>
 """

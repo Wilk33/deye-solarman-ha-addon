@@ -1,0 +1,1968 @@
+{
+  "version": 1,
+  "source_revision": "e2466b6505c1990aced1f18c12a42ded638aee9b",
+  "source": "https://github.com/kellerza/sunsynk/tree/e2466b6505c1990aced1f18c12a42ded638aee9b/src/sunsynk",
+  "profile": "three_phase_lv",
+  "commands": [
+    {
+      "key": "control_aux_port_usage",
+      "name": "AUX port usage",
+      "registers": [
+        133
+      ],
+      "method": "SelectRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 0,
+      "options": {
+        "0": "Generator",
+        "1": "Smartload",
+        "2": "Micro Inverter"
+      }
+    },
+    {
+      "key": "control_date_time",
+      "name": "Date Time",
+      "registers": [
+        62,
+        63,
+        64
+      ],
+      "method": "SystemTimeRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 0,
+      "year_offset": 2000
+    },
+    {
+      "key": "control_inverter_enabled",
+      "name": "Inverter enabled",
+      "registers": [
+        80
+      ],
+      "method": "SwitchRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 0,
+      "on": 1,
+      "off": 0
+    },
+    {
+      "key": "control_off_grid_mode",
+      "name": "Off Grid mode",
+      "registers": [
+        179
+      ],
+      "method": "SwitchRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 1,
+      "on": 1,
+      "off": 0
+    },
+    {
+      "key": "control_grid_charge_battery_current",
+      "name": "Grid Charge Battery current",
+      "registers": [
+        128
+      ],
+      "method": "NumberRWSensor",
+      "factor": 1,
+      "unit": "A",
+      "bitmask": 0,
+      "min": 0,
+      "max": 185
+    },
+    {
+      "key": "control_grid_charge_start_battery_voltage",
+      "name": "Grid Charge Start Battery Voltage",
+      "registers": [
+        126
+      ],
+      "method": "NumberRWSensor",
+      "factor": 0.01,
+      "unit": "V",
+      "bitmask": 0,
+      "min": 0,
+      "max": 6300
+    },
+    {
+      "key": "control_grid_charge_start_battery_soc",
+      "name": "Grid Charge Start Battery SOC",
+      "registers": [
+        127
+      ],
+      "method": "NumberRWSensor",
+      "factor": 1,
+      "unit": "%",
+      "bitmask": 0,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "key": "control_grid_charge_enabled",
+      "name": "Grid Charge enabled",
+      "registers": [
+        130
+      ],
+      "method": "SwitchRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 0,
+      "on": 1,
+      "off": 0
+    },
+    {
+      "key": "control_solar_export",
+      "name": "Solar Export",
+      "registers": [
+        145
+      ],
+      "method": "SwitchRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 0,
+      "on": 1,
+      "off": 0
+    },
+    {
+      "key": "control_export_limit_power",
+      "name": "Export Limit power",
+      "registers": [
+        143
+      ],
+      "method": "NumberRWSensor",
+      "factor": 1,
+      "unit": "W",
+      "bitmask": 0,
+      "min": 0,
+      "max": {
+        "registers": [
+          20,
+          21
+        ],
+        "factor": 0.1,
+        "name": "Rated power"
+      }
+    },
+    {
+      "key": "control_battery_max_charge_current",
+      "name": "Battery Max Charge current",
+      "registers": [
+        108
+      ],
+      "method": "NumberRWSensor",
+      "factor": 1,
+      "unit": "A",
+      "bitmask": 0,
+      "min": 0,
+      "max": 240
+    },
+    {
+      "key": "control_battery_max_discharge_current",
+      "name": "Battery Max Discharge current",
+      "registers": [
+        109
+      ],
+      "method": "NumberRWSensor",
+      "factor": 1,
+      "unit": "A",
+      "bitmask": 0,
+      "min": 0,
+      "max": 240
+    },
+    {
+      "key": "control_battery_capacity_current",
+      "name": "Battery Capacity current",
+      "registers": [
+        102
+      ],
+      "method": "NumberRWSensor",
+      "factor": 1,
+      "unit": "A",
+      "bitmask": 0,
+      "min": 0,
+      "max": 2000
+    },
+    {
+      "key": "control_grid_peak_shaving_power",
+      "name": "Grid Peak Shaving power",
+      "registers": [
+        191
+      ],
+      "method": "NumberRWSensor",
+      "factor": 1,
+      "unit": "W",
+      "bitmask": 0,
+      "min": 0,
+      "max": 100000
+    },
+    {
+      "key": "control_max_solar_power",
+      "name": "Max Solar POWER",
+      "registers": [
+        340
+      ],
+      "method": "NumberRWSensor",
+      "factor": 1,
+      "unit": "W",
+      "bitmask": 0,
+      "min": 0,
+      "max": 32000
+    },
+    {
+      "key": "control_battery_low_voltage",
+      "name": "Battery Low voltage",
+      "registers": [
+        120
+      ],
+      "method": "NumberRWSensor",
+      "factor": 0.01,
+      "unit": "V",
+      "bitmask": 0,
+      "min": {
+        "registers": [
+          118
+        ],
+        "factor": 0.01,
+        "name": "Battery Shutdown voltage"
+      },
+      "max": 60
+    },
+    {
+      "key": "control_system_zero_export_power",
+      "name": "System Zero Export power",
+      "registers": [
+        104
+      ],
+      "method": "NumberRWSensor",
+      "factor": -1,
+      "unit": "W",
+      "bitmask": 0,
+      "min": -500,
+      "max": 500
+    },
+    {
+      "key": "control_battery_equalization_days",
+      "name": "Battery Equalization Days",
+      "registers": [
+        105
+      ],
+      "method": "NumberRWSensor",
+      "factor": -1,
+      "unit": "days",
+      "bitmask": 0,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "key": "control_battery_equalization_hours",
+      "name": "Battery Equalization Hours",
+      "registers": [
+        106
+      ],
+      "method": "NumberRWSensor",
+      "factor": -1,
+      "unit": "h",
+      "bitmask": 0,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "key": "control_generator_charge_battery_current",
+      "name": "Generator Charge Battery current",
+      "registers": [
+        125
+      ],
+      "method": "NumberRWSensor",
+      "factor": 1,
+      "unit": "A",
+      "bitmask": 0,
+      "min": 0,
+      "max": 185
+    },
+    {
+      "key": "control_generator_charge_start_battery_voltage",
+      "name": "Generator Charge Start Battery Voltage",
+      "registers": [
+        123
+      ],
+      "method": "NumberRWSensor",
+      "factor": 0.01,
+      "unit": "V",
+      "bitmask": 0,
+      "min": 0,
+      "max": 6300
+    },
+    {
+      "key": "control_generator_charge_start_battery_soc",
+      "name": "Generator Charge Start Battery SOC",
+      "registers": [
+        124
+      ],
+      "method": "NumberRWSensor",
+      "factor": 1,
+      "unit": "%",
+      "bitmask": 0,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "key": "control_generator_charge_enabled",
+      "name": "Generator Charge enabled",
+      "registers": [
+        129
+      ],
+      "method": "SwitchRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 0,
+      "on": null,
+      "off": 0
+    },
+    {
+      "key": "control_battery_type",
+      "name": "Battery Type",
+      "registers": [
+        111
+      ],
+      "method": "SelectRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 0,
+      "options": {
+        "0": "Use Battery Voltage",
+        "1": "Lithium (Use BMS)",
+        "2": "No Battery"
+      }
+    },
+    {
+      "key": "control_battery_wake_up",
+      "name": "Battery Wake Up",
+      "registers": [
+        112
+      ],
+      "method": "SelectRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 1,
+      "options": {
+        "0": "Disabled",
+        "1": "Enabled"
+      }
+    },
+    {
+      "key": "control_battery_resistance",
+      "name": "Battery Resistance",
+      "registers": [
+        113
+      ],
+      "method": "NumberRWSensor",
+      "factor": 1,
+      "unit": "mΩ",
+      "bitmask": 0,
+      "min": 0,
+      "max": 6000
+    },
+    {
+      "key": "control_battery_equalization_voltage",
+      "name": "Battery Equalization voltage",
+      "registers": [
+        99
+      ],
+      "method": "NumberRWSensor",
+      "factor": 0.01,
+      "unit": "V",
+      "bitmask": 0,
+      "min": 41,
+      "max": 60
+    },
+    {
+      "key": "control_battery_absorption_voltage",
+      "name": "Battery Absorption voltage",
+      "registers": [
+        100
+      ],
+      "method": "NumberRWSensor",
+      "factor": 0.01,
+      "unit": "V",
+      "bitmask": 0,
+      "min": 41,
+      "max": 60
+    },
+    {
+      "key": "control_battery_float_voltage",
+      "name": "Battery Float voltage",
+      "registers": [
+        101
+      ],
+      "method": "NumberRWSensor",
+      "factor": 0.01,
+      "unit": "V",
+      "bitmask": 0,
+      "min": 41,
+      "max": 60
+    },
+    {
+      "key": "control_battery_shutdown_capacity",
+      "name": "Battery Shutdown Capacity",
+      "registers": [
+        115
+      ],
+      "method": "NumberRWSensor",
+      "factor": 1,
+      "unit": "%",
+      "bitmask": 0,
+      "min": 0,
+      "max": {
+        "registers": [
+          117
+        ],
+        "factor": 1,
+        "name": "Battery Low Capacity"
+      }
+    },
+    {
+      "key": "control_battery_restart_capacity",
+      "name": "Battery Restart Capacity",
+      "registers": [
+        116
+      ],
+      "method": "NumberRWSensor",
+      "factor": 1,
+      "unit": "%",
+      "bitmask": 0,
+      "min": {
+        "registers": [
+          117
+        ],
+        "factor": 1,
+        "name": "Battery Low Capacity"
+      },
+      "max": 100
+    },
+    {
+      "key": "control_battery_low_capacity",
+      "name": "Battery Low Capacity",
+      "registers": [
+        117
+      ],
+      "method": "NumberRWSensor",
+      "factor": 1,
+      "unit": "%",
+      "bitmask": 0,
+      "min": {
+        "registers": [
+          115
+        ],
+        "factor": 1,
+        "name": "Battery Shutdown Capacity"
+      },
+      "max": {
+        "registers": [
+          116
+        ],
+        "factor": 1,
+        "name": "Battery Restart Capacity"
+      }
+    },
+    {
+      "key": "control_battery_shutdown_voltage",
+      "name": "Battery Shutdown voltage",
+      "registers": [
+        118
+      ],
+      "method": "NumberRWSensor",
+      "factor": 0.01,
+      "unit": "V",
+      "bitmask": 0,
+      "min": 41,
+      "max": {
+        "registers": [
+          120
+        ],
+        "factor": 0.01,
+        "name": "Battery Low voltage"
+      }
+    },
+    {
+      "key": "control_battery_restart_voltage",
+      "name": "Battery Restart voltage",
+      "registers": [
+        119
+      ],
+      "method": "NumberRWSensor",
+      "factor": 0.01,
+      "unit": "V",
+      "bitmask": 0,
+      "min": {
+        "registers": [
+          120
+        ],
+        "factor": 0.01,
+        "name": "Battery Low voltage"
+      },
+      "max": 60
+    },
+    {
+      "key": "control_priority_load",
+      "name": "Priority Load",
+      "registers": [
+        141
+      ],
+      "method": "SwitchRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 0,
+      "on": null,
+      "off": 0
+    },
+    {
+      "key": "control_load_limit",
+      "name": "Load Limit",
+      "registers": [
+        142
+      ],
+      "method": "SelectRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 0,
+      "options": {
+        "0": "Allow Export",
+        "1": "Essentials",
+        "2": "Zero Export"
+      }
+    },
+    {
+      "key": "control_prog1_time",
+      "name": "Prog1 Time",
+      "registers": [
+        148
+      ],
+      "method": "TimeRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 0,
+      "min": {
+        "registers": [
+          153
+        ],
+        "factor": 1,
+        "name": "Prog6 Time"
+      },
+      "max": {
+        "registers": [
+          149
+        ],
+        "factor": 1,
+        "name": "Prog2 Time"
+      }
+    },
+    {
+      "key": "control_prog2_time",
+      "name": "Prog2 Time",
+      "registers": [
+        149
+      ],
+      "method": "TimeRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 0,
+      "min": {
+        "registers": [
+          148
+        ],
+        "factor": 1,
+        "name": "Prog1 Time"
+      },
+      "max": {
+        "registers": [
+          150
+        ],
+        "factor": 1,
+        "name": "Prog3 Time"
+      }
+    },
+    {
+      "key": "control_prog3_time",
+      "name": "Prog3 Time",
+      "registers": [
+        150
+      ],
+      "method": "TimeRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 0,
+      "min": {
+        "registers": [
+          149
+        ],
+        "factor": 1,
+        "name": "Prog2 Time"
+      },
+      "max": {
+        "registers": [
+          151
+        ],
+        "factor": 1,
+        "name": "Prog4 Time"
+      }
+    },
+    {
+      "key": "control_prog4_time",
+      "name": "Prog4 Time",
+      "registers": [
+        151
+      ],
+      "method": "TimeRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 0,
+      "min": {
+        "registers": [
+          150
+        ],
+        "factor": 1,
+        "name": "Prog3 Time"
+      },
+      "max": {
+        "registers": [
+          152
+        ],
+        "factor": 1,
+        "name": "Prog5 Time"
+      }
+    },
+    {
+      "key": "control_prog5_time",
+      "name": "Prog5 Time",
+      "registers": [
+        152
+      ],
+      "method": "TimeRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 0,
+      "min": {
+        "registers": [
+          151
+        ],
+        "factor": 1,
+        "name": "Prog4 Time"
+      },
+      "max": {
+        "registers": [
+          153
+        ],
+        "factor": 1,
+        "name": "Prog6 Time"
+      }
+    },
+    {
+      "key": "control_prog6_time",
+      "name": "Prog6 Time",
+      "registers": [
+        153
+      ],
+      "method": "TimeRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 0,
+      "min": {
+        "registers": [
+          152
+        ],
+        "factor": 1,
+        "name": "Prog5 Time"
+      },
+      "max": {
+        "registers": [
+          148
+        ],
+        "factor": 1,
+        "name": "Prog1 Time"
+      }
+    },
+    {
+      "key": "control_prog_time_of_use_enabled",
+      "name": "Prog Time Of Use Enabled",
+      "registers": [
+        146
+      ],
+      "method": "SwitchRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 1,
+      "on": 1,
+      "off": 0
+    },
+    {
+      "key": "control_prog_monday_enabled",
+      "name": "Prog Monday Enabled",
+      "registers": [
+        146
+      ],
+      "method": "SwitchRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 2,
+      "on": 2,
+      "off": 0
+    },
+    {
+      "key": "control_prog_tuesday_enabled",
+      "name": "Prog Tuesday Enabled",
+      "registers": [
+        146
+      ],
+      "method": "SwitchRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 4,
+      "on": 4,
+      "off": 0
+    },
+    {
+      "key": "control_prog_wednesday_enabled",
+      "name": "Prog Wednesday Enabled",
+      "registers": [
+        146
+      ],
+      "method": "SwitchRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 8,
+      "on": 8,
+      "off": 0
+    },
+    {
+      "key": "control_prog_thursday_enabled",
+      "name": "Prog Thursday Enabled",
+      "registers": [
+        146
+      ],
+      "method": "SwitchRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 16,
+      "on": 16,
+      "off": 0
+    },
+    {
+      "key": "control_prog_friday_enabled",
+      "name": "Prog Friday Enabled",
+      "registers": [
+        146
+      ],
+      "method": "SwitchRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 32,
+      "on": 32,
+      "off": 0
+    },
+    {
+      "key": "control_prog_saturday_enabled",
+      "name": "Prog Saturday Enabled",
+      "registers": [
+        146
+      ],
+      "method": "SwitchRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 64,
+      "on": 64,
+      "off": 0
+    },
+    {
+      "key": "control_prog_sunday_enabled",
+      "name": "Prog Sunday Enabled",
+      "registers": [
+        146
+      ],
+      "method": "SwitchRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 128,
+      "on": 128,
+      "off": 0
+    },
+    {
+      "key": "control_prog1_power",
+      "name": "Prog1 power",
+      "registers": [
+        154
+      ],
+      "method": "NumberRWSensor",
+      "factor": 1,
+      "unit": "W",
+      "bitmask": 0,
+      "min": 0,
+      "max": {
+        "registers": [
+          20,
+          21
+        ],
+        "factor": 0.1,
+        "name": "Rated power"
+      }
+    },
+    {
+      "key": "control_prog2_power",
+      "name": "Prog2 power",
+      "registers": [
+        155
+      ],
+      "method": "NumberRWSensor",
+      "factor": 1,
+      "unit": "W",
+      "bitmask": 0,
+      "min": 0,
+      "max": {
+        "registers": [
+          20,
+          21
+        ],
+        "factor": 0.1,
+        "name": "Rated power"
+      }
+    },
+    {
+      "key": "control_prog3_power",
+      "name": "Prog3 power",
+      "registers": [
+        156
+      ],
+      "method": "NumberRWSensor",
+      "factor": 1,
+      "unit": "W",
+      "bitmask": 0,
+      "min": 0,
+      "max": {
+        "registers": [
+          20,
+          21
+        ],
+        "factor": 0.1,
+        "name": "Rated power"
+      }
+    },
+    {
+      "key": "control_prog4_power",
+      "name": "Prog4 power",
+      "registers": [
+        157
+      ],
+      "method": "NumberRWSensor",
+      "factor": 1,
+      "unit": "W",
+      "bitmask": 0,
+      "min": 0,
+      "max": {
+        "registers": [
+          20,
+          21
+        ],
+        "factor": 0.1,
+        "name": "Rated power"
+      }
+    },
+    {
+      "key": "control_prog5_power",
+      "name": "Prog5 power",
+      "registers": [
+        158
+      ],
+      "method": "NumberRWSensor",
+      "factor": 1,
+      "unit": "W",
+      "bitmask": 0,
+      "min": 0,
+      "max": {
+        "registers": [
+          20,
+          21
+        ],
+        "factor": 0.1,
+        "name": "Rated power"
+      }
+    },
+    {
+      "key": "control_prog6_power",
+      "name": "Prog6 power",
+      "registers": [
+        159
+      ],
+      "method": "NumberRWSensor",
+      "factor": 1,
+      "unit": "W",
+      "bitmask": 0,
+      "min": 0,
+      "max": {
+        "registers": [
+          20,
+          21
+        ],
+        "factor": 0.1,
+        "name": "Rated power"
+      }
+    },
+    {
+      "key": "control_prog1_capacity",
+      "name": "Prog1 Capacity",
+      "registers": [
+        166
+      ],
+      "method": "NumberRWSensor",
+      "factor": 1,
+      "unit": "%",
+      "bitmask": 0,
+      "min": {
+        "registers": [
+          117
+        ],
+        "factor": 1,
+        "name": "Battery Low Capacity"
+      },
+      "max": 100
+    },
+    {
+      "key": "control_prog2_capacity",
+      "name": "Prog2 Capacity",
+      "registers": [
+        167
+      ],
+      "method": "NumberRWSensor",
+      "factor": 1,
+      "unit": "%",
+      "bitmask": 0,
+      "min": {
+        "registers": [
+          117
+        ],
+        "factor": 1,
+        "name": "Battery Low Capacity"
+      },
+      "max": 100
+    },
+    {
+      "key": "control_prog3_capacity",
+      "name": "Prog3 Capacity",
+      "registers": [
+        168
+      ],
+      "method": "NumberRWSensor",
+      "factor": 1,
+      "unit": "%",
+      "bitmask": 0,
+      "min": {
+        "registers": [
+          117
+        ],
+        "factor": 1,
+        "name": "Battery Low Capacity"
+      },
+      "max": 100
+    },
+    {
+      "key": "control_prog4_capacity",
+      "name": "Prog4 Capacity",
+      "registers": [
+        169
+      ],
+      "method": "NumberRWSensor",
+      "factor": 1,
+      "unit": "%",
+      "bitmask": 0,
+      "min": {
+        "registers": [
+          117
+        ],
+        "factor": 1,
+        "name": "Battery Low Capacity"
+      },
+      "max": 100
+    },
+    {
+      "key": "control_prog5_capacity",
+      "name": "Prog5 Capacity",
+      "registers": [
+        170
+      ],
+      "method": "NumberRWSensor",
+      "factor": 1,
+      "unit": "%",
+      "bitmask": 0,
+      "min": {
+        "registers": [
+          117
+        ],
+        "factor": 1,
+        "name": "Battery Low Capacity"
+      },
+      "max": 100
+    },
+    {
+      "key": "control_prog6_capacity",
+      "name": "Prog6 Capacity",
+      "registers": [
+        171
+      ],
+      "method": "NumberRWSensor",
+      "factor": 1,
+      "unit": "%",
+      "bitmask": 0,
+      "min": {
+        "registers": [
+          117
+        ],
+        "factor": 1,
+        "name": "Battery Low Capacity"
+      },
+      "max": 100
+    },
+    {
+      "key": "control_prog1_charge",
+      "name": "Prog1 charge",
+      "registers": [
+        172
+      ],
+      "method": "SelectRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 3,
+      "options": {
+        "0": "No Grid or Gen",
+        "1": "Allow Grid",
+        "2": "Allow Gen",
+        "3": "Allow Grid & Gen"
+      }
+    },
+    {
+      "key": "control_prog2_charge",
+      "name": "Prog2 charge",
+      "registers": [
+        173
+      ],
+      "method": "SelectRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 3,
+      "options": {
+        "0": "No Grid or Gen",
+        "1": "Allow Grid",
+        "2": "Allow Gen",
+        "3": "Allow Grid & Gen"
+      }
+    },
+    {
+      "key": "control_prog3_charge",
+      "name": "Prog3 charge",
+      "registers": [
+        174
+      ],
+      "method": "SelectRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 3,
+      "options": {
+        "0": "No Grid or Gen",
+        "1": "Allow Grid",
+        "2": "Allow Gen",
+        "3": "Allow Grid & Gen"
+      }
+    },
+    {
+      "key": "control_prog4_charge",
+      "name": "Prog4 charge",
+      "registers": [
+        175
+      ],
+      "method": "SelectRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 3,
+      "options": {
+        "0": "No Grid or Gen",
+        "1": "Allow Grid",
+        "2": "Allow Gen",
+        "3": "Allow Grid & Gen"
+      }
+    },
+    {
+      "key": "control_prog5_charge",
+      "name": "Prog5 charge",
+      "registers": [
+        176
+      ],
+      "method": "SelectRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 3,
+      "options": {
+        "0": "No Grid or Gen",
+        "1": "Allow Grid",
+        "2": "Allow Gen",
+        "3": "Allow Grid & Gen"
+      }
+    },
+    {
+      "key": "control_prog6_charge",
+      "name": "Prog6 charge",
+      "registers": [
+        177
+      ],
+      "method": "SelectRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 3,
+      "options": {
+        "0": "No Grid or Gen",
+        "1": "Allow Grid",
+        "2": "Allow Gen",
+        "3": "Allow Grid & Gen"
+      }
+    },
+    {
+      "key": "control_prog1_mode",
+      "name": "Prog1 mode",
+      "registers": [
+        172
+      ],
+      "method": "SelectRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 28,
+      "options": {
+        "0": "None",
+        "4": "General",
+        "8": "Backup",
+        "12": "Charge"
+      }
+    },
+    {
+      "key": "control_prog2_mode",
+      "name": "Prog2 mode",
+      "registers": [
+        173
+      ],
+      "method": "SelectRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 28,
+      "options": {
+        "0": "None",
+        "4": "General",
+        "8": "Backup",
+        "12": "Charge"
+      }
+    },
+    {
+      "key": "control_prog3_mode",
+      "name": "Prog3 mode",
+      "registers": [
+        174
+      ],
+      "method": "SelectRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 28,
+      "options": {
+        "0": "None",
+        "4": "General",
+        "8": "Backup",
+        "12": "Charge"
+      }
+    },
+    {
+      "key": "control_prog4_mode",
+      "name": "Prog4 mode",
+      "registers": [
+        175
+      ],
+      "method": "SelectRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 28,
+      "options": {
+        "0": "None",
+        "4": "General",
+        "8": "Backup",
+        "12": "Charge"
+      }
+    },
+    {
+      "key": "control_prog5_mode",
+      "name": "Prog5 mode",
+      "registers": [
+        176
+      ],
+      "method": "SelectRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 28,
+      "options": {
+        "0": "None",
+        "4": "General",
+        "8": "Backup",
+        "12": "Charge"
+      }
+    },
+    {
+      "key": "control_prog6_mode",
+      "name": "Prog6 mode",
+      "registers": [
+        177
+      ],
+      "method": "SelectRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 28,
+      "options": {
+        "0": "None",
+        "4": "General",
+        "8": "Backup",
+        "12": "Charge"
+      }
+    },
+    {
+      "key": "control_prog1_voltage",
+      "name": "Prog1 voltage",
+      "registers": [
+        160
+      ],
+      "method": "NumberRWSensor",
+      "factor": 0.01,
+      "unit": "V",
+      "bitmask": 0,
+      "min": {
+        "registers": [
+          120
+        ],
+        "factor": 0.01,
+        "name": "Battery Low voltage"
+      },
+      "max": {
+        "registers": [
+          101
+        ],
+        "factor": 0.01,
+        "name": "Battery Float voltage"
+      }
+    },
+    {
+      "key": "control_prog2_voltage",
+      "name": "Prog2 voltage",
+      "registers": [
+        161
+      ],
+      "method": "NumberRWSensor",
+      "factor": 0.01,
+      "unit": "V",
+      "bitmask": 0,
+      "min": {
+        "registers": [
+          120
+        ],
+        "factor": 0.01,
+        "name": "Battery Low voltage"
+      },
+      "max": {
+        "registers": [
+          101
+        ],
+        "factor": 0.01,
+        "name": "Battery Float voltage"
+      }
+    },
+    {
+      "key": "control_prog3_voltage",
+      "name": "Prog3 voltage",
+      "registers": [
+        162
+      ],
+      "method": "NumberRWSensor",
+      "factor": 0.01,
+      "unit": "V",
+      "bitmask": 0,
+      "min": {
+        "registers": [
+          120
+        ],
+        "factor": 0.01,
+        "name": "Battery Low voltage"
+      },
+      "max": {
+        "registers": [
+          101
+        ],
+        "factor": 0.01,
+        "name": "Battery Float voltage"
+      }
+    },
+    {
+      "key": "control_prog4_voltage",
+      "name": "Prog4 voltage",
+      "registers": [
+        163
+      ],
+      "method": "NumberRWSensor",
+      "factor": 0.01,
+      "unit": "V",
+      "bitmask": 0,
+      "min": {
+        "registers": [
+          120
+        ],
+        "factor": 0.01,
+        "name": "Battery Low voltage"
+      },
+      "max": {
+        "registers": [
+          101
+        ],
+        "factor": 0.01,
+        "name": "Battery Float voltage"
+      }
+    },
+    {
+      "key": "control_prog5_voltage",
+      "name": "Prog5 voltage",
+      "registers": [
+        164
+      ],
+      "method": "NumberRWSensor",
+      "factor": 0.01,
+      "unit": "V",
+      "bitmask": 0,
+      "min": {
+        "registers": [
+          120
+        ],
+        "factor": 0.01,
+        "name": "Battery Low voltage"
+      },
+      "max": {
+        "registers": [
+          101
+        ],
+        "factor": 0.01,
+        "name": "Battery Float voltage"
+      }
+    },
+    {
+      "key": "control_prog6_voltage",
+      "name": "Prog6 voltage",
+      "registers": [
+        165
+      ],
+      "method": "NumberRWSensor",
+      "factor": 0.01,
+      "unit": "V",
+      "bitmask": 0,
+      "min": {
+        "registers": [
+          120
+        ],
+        "factor": 0.01,
+        "name": "Battery Low voltage"
+      },
+      "max": {
+        "registers": [
+          101
+        ],
+        "factor": 0.01,
+        "name": "Battery Float voltage"
+      }
+    },
+    {
+      "key": "control_prog1_sell",
+      "name": "Prog1 sell",
+      "registers": [
+        172
+      ],
+      "method": "SwitchRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 32,
+      "on": 32,
+      "off": 0
+    },
+    {
+      "key": "control_prog2_sell",
+      "name": "Prog2 sell",
+      "registers": [
+        173
+      ],
+      "method": "SwitchRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 32,
+      "on": 32,
+      "off": 0
+    },
+    {
+      "key": "control_prog3_sell",
+      "name": "Prog3 sell",
+      "registers": [
+        174
+      ],
+      "method": "SwitchRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 32,
+      "on": 32,
+      "off": 0
+    },
+    {
+      "key": "control_prog4_sell",
+      "name": "Prog4 sell",
+      "registers": [
+        175
+      ],
+      "method": "SwitchRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 32,
+      "on": 32,
+      "off": 0
+    },
+    {
+      "key": "control_prog5_sell",
+      "name": "Prog5 sell",
+      "registers": [
+        176
+      ],
+      "method": "SwitchRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 32,
+      "on": 32,
+      "off": 0
+    },
+    {
+      "key": "control_prog6_sell",
+      "name": "Prog6 sell",
+      "registers": [
+        177
+      ],
+      "method": "SwitchRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 32,
+      "on": 32,
+      "off": 0
+    },
+    {
+      "key": "control_microinverter_export_to_grid_cutoff",
+      "name": "Microinverter export to grid cutoff",
+      "registers": [
+        178
+      ],
+      "method": "SelectRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 3,
+      "options": {
+        "2": "Disable",
+        "3": "Enable"
+      }
+    },
+    {
+      "key": "control_gen_peak_shaving",
+      "name": "Gen peak-shaving",
+      "registers": [
+        178
+      ],
+      "method": "SelectRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 12,
+      "options": {
+        "8": "Disable",
+        "12": "Enable"
+      }
+    },
+    {
+      "key": "control_grid_peak_shaving",
+      "name": "Grid peak-shaving",
+      "registers": [
+        178
+      ],
+      "method": "SelectRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 48,
+      "options": {
+        "32": "Disable",
+        "48": "Enable"
+      }
+    },
+    {
+      "key": "control_on_grid_always_on",
+      "name": "On Grid always on",
+      "registers": [
+        178
+      ],
+      "method": "SelectRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 192,
+      "options": {
+        "128": "Disable",
+        "192": "Enable"
+      }
+    },
+    {
+      "key": "control_external_relay",
+      "name": "External relay",
+      "registers": [
+        178
+      ],
+      "method": "SelectRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 768,
+      "options": {
+        "512": "Disable",
+        "768": "Enable"
+      }
+    },
+    {
+      "key": "control_loss_of_lithium_battery_report_fault",
+      "name": "Loss of lithium battery report fault",
+      "registers": [
+        178
+      ],
+      "method": "SelectRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 3072,
+      "options": {
+        "2048": "Disable",
+        "3072": "Enable"
+      }
+    },
+    {
+      "key": "control_drm",
+      "name": "DRM",
+      "registers": [
+        178
+      ],
+      "method": "SelectRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 12288,
+      "options": {
+        "8192": "Disable",
+        "12288": "Enable"
+      }
+    },
+    {
+      "key": "control_us_version_grounding_fault",
+      "name": "US version grounding fault",
+      "registers": [
+        178
+      ],
+      "method": "SelectRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 49152,
+      "options": {
+        "32768": "Disable",
+        "49152": "Enable"
+      }
+    },
+    {
+      "key": "control_generator_ac_couple_frz_high",
+      "name": "Generator AC Couple Frz High",
+      "registers": [
+        131
+      ],
+      "method": "NumberRWSensor",
+      "factor": 0.01,
+      "unit": "Hz",
+      "bitmask": 0,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "key": "control_generator_off_soc",
+      "name": "Generator Off SOC",
+      "registers": [
+        135
+      ],
+      "method": "NumberRWSensor",
+      "factor": 1,
+      "unit": "%",
+      "bitmask": 0,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "key": "control_generator_on_soc",
+      "name": "Generator On SOC",
+      "registers": [
+        137
+      ],
+      "method": "NumberRWSensor",
+      "factor": 1,
+      "unit": "%",
+      "bitmask": 0,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "key": "control_generator_max_operating_time",
+      "name": "Generator Max Operating Time",
+      "registers": [
+        121
+      ],
+      "method": "NumberRWSensor",
+      "factor": 0.1,
+      "unit": "Hours",
+      "bitmask": 0,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "key": "control_generator_cooling_time",
+      "name": "Generator Cooling Time",
+      "registers": [
+        122
+      ],
+      "method": "NumberRWSensor",
+      "factor": 0.1,
+      "unit": "Hours",
+      "bitmask": 0,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "key": "control_min_pv_power_for_gen_start",
+      "name": "Min PV Power for Gen Start",
+      "registers": [
+        139
+      ],
+      "method": "NumberRWSensor",
+      "factor": 1,
+      "unit": "W",
+      "bitmask": 0,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "key": "control_grid_signal_on",
+      "name": "Grid Signal On",
+      "registers": [
+        140
+      ],
+      "method": "SwitchRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 1,
+      "on": 1,
+      "off": 0
+    },
+    {
+      "key": "control_gen_signal_on",
+      "name": "Gen Signal On",
+      "registers": [
+        140
+      ],
+      "method": "SwitchRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 2,
+      "on": 2,
+      "off": 0
+    },
+    {
+      "key": "control_force_on_generator_as_load_function",
+      "name": "Force on generator as load function",
+      "registers": [
+        132
+      ],
+      "method": "SwitchRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 0,
+      "on": 1,
+      "off": 0
+    },
+    {
+      "key": "control_generator_connected_to_grid_input",
+      "name": "Generator connected to grid input",
+      "registers": [
+        189
+      ],
+      "method": "SwitchRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 0,
+      "on": 1,
+      "off": 0
+    },
+    {
+      "key": "control_parallel_enable",
+      "name": "Parallel Enable",
+      "registers": [
+        336
+      ],
+      "method": "SwitchRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 1,
+      "on": 1,
+      "off": 0
+    },
+    {
+      "key": "control_parallel_mode",
+      "name": "Parallel Mode",
+      "registers": [
+        336
+      ],
+      "method": "SelectRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 2,
+      "options": {
+        "0": "Server",
+        "2": "Client"
+      }
+    },
+    {
+      "key": "control_parallel_phase",
+      "name": "Parallel Phase",
+      "registers": [
+        336
+      ],
+      "method": "SelectRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 768,
+      "options": {
+        "0": "Phase A",
+        "256": "Phase B",
+        "512": "Phase C",
+        "768": "Void"
+      }
+    },
+    {
+      "key": "control_parallel_modbus_sn",
+      "name": "Parallel Modbus SN",
+      "registers": [
+        336
+      ],
+      "method": "NumberRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 64512,
+      "min": 0,
+      "max": 63
+    },
+    {
+      "key": "control_grid_standard",
+      "name": "Grid Standard",
+      "registers": [
+        182
+      ],
+      "method": "SelectRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 0,
+      "options": {
+        "0": "Generic",
+        "1": "IEEE1547",
+        "2": "RULE21",
+        "3": "SRD_UL1741",
+        "4": "CEI_0_21",
+        "5": "EN50549_CZ",
+        "6": "AS4777_A",
+        "7": "AS4777_B",
+        "8": "AS4777_C",
+        "9": "AS4777_NewZealand",
+        "10": "VDE4105",
+        "11": "OVE_Directive_R25",
+        "12": "EN50549_CZ_PPDS_L16A"
+      }
+    },
+    {
+      "key": "control_configured_grid_frequency",
+      "name": "Configured Grid Frequency",
+      "registers": [
+        183
+      ],
+      "method": "SelectRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 0,
+      "options": {
+        "0": "50Hz",
+        "1": "60Hz"
+      }
+    },
+    {
+      "key": "control_configured_grid_phases",
+      "name": "Configured Grid Phases",
+      "registers": [
+        184
+      ],
+      "method": "SelectRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 0,
+      "options": {
+        "0": "Three Phase",
+        "1": "Single Phase",
+        "2": "Split Phase"
+      }
+    },
+    {
+      "key": "control_time_synchronization",
+      "name": "Time synchronization",
+      "registers": [
+        228
+      ],
+      "method": "SelectRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 3,
+      "options": {
+        "1": "No work",
+        "2": "Disable",
+        "3": "Enable"
+      }
+    },
+    {
+      "key": "control_beep",
+      "name": "Beep",
+      "registers": [
+        228
+      ],
+      "method": "SelectRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 12,
+      "options": {
+        "4": "No work",
+        "8": "Disable",
+        "12": "Enable"
+      }
+    },
+    {
+      "key": "control_am_pm",
+      "name": "AM PM",
+      "registers": [
+        228
+      ],
+      "method": "SelectRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 48,
+      "options": {
+        "16": "No work",
+        "32": "Disable",
+        "48": "Enable"
+      }
+    },
+    {
+      "key": "control_auto_dim",
+      "name": "Auto dim",
+      "registers": [
+        228
+      ],
+      "method": "SelectRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 192,
+      "options": {
+        "64": "No work",
+        "128": "Disable",
+        "192": "Enable"
+      }
+    },
+    {
+      "key": "control_allow_remote",
+      "name": "Allow Remote",
+      "registers": [
+        228
+      ],
+      "method": "SelectRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 49152,
+      "options": {
+        "16384": "No work",
+        "32768": "Disable",
+        "49152": "Enable"
+      }
+    },
+    {
+      "key": "control_track_grid_phase",
+      "name": "Track Grid Phase",
+      "registers": [
+        235
+      ],
+      "method": "SwitchRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 0,
+      "on": 1,
+      "off": 0
+    },
+    {
+      "key": "control_ups_delay_time",
+      "name": "UPS delay time",
+      "registers": [
+        209
+      ],
+      "method": "NumberRWSensor",
+      "factor": 1,
+      "unit": "s",
+      "bitmask": 0,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "key": "control_battery_1_manufacturer",
+      "name": "Battery 1 Manufacturer",
+      "registers": [
+        229
+      ],
+      "method": "SelectRWSensor",
+      "factor": 1,
+      "unit": "",
+      "bitmask": 0,
+      "options": {
+        "0": "HereYin",
+        "1": "PYLON",
+        "2": "SOLAX",
+        "3": "DYNESS_L",
+        "4": "CCGX",
+        "5": "Alpha_ESS",
+        "6": "SUNGO_CAN",
+        "7": "VISION_CAN",
+        "8": "WATTSONIC_CAN",
+        "9": "KUNLAN",
+        "10": "GSEnergy",
+        "11": "GS_HUB",
+        "12": "BYD_LV",
+        "13": "AOBO",
+        "14": "DEYE",
+        "15": "CFE",
+        "16": "DMEGC",
+        "17": "UZENERGY",
+        "18": "GROWATT"
+      }
+    }
+  ],
+  "format": 1,
+  "map_id": "control",
+  "catalog_set": "deye_sg04_sg05_3ph_lv",
+  "purpose": "control",
+  "writable": true,
+  "transports": [
+    "solarman_tcp"
+  ]
+}

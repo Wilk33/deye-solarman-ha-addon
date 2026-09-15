@@ -1,7 +1,7 @@
 # Deye Inverter Core
 
-Reserved source location for the transport-independent Python package shared by the Solarman and RS485 applications.
+Canonical source of the shared Python core, extracted in version 1.2.0.
 
-The package will own register decoding, map validation, scan orchestration, scheduling, MQTT Discovery, persistent selections, custom sensors, formulas, the web panel, and structured logging. It must not import a Solarman TCP or Modbus RTU client directly.
+The package owns register decoding, catalog loading, scan orchestration, scheduling, MQTT Discovery, persistent selections, custom sensors, formulas, controls, the web panel, and logging. It imports no Solarman TCP or Modbus RTU client. The application injects its transport factory into `main()`; contracts are in `transport.py`.
 
-Transport adapters will implement the common read interface documented in `docs/architecture/MULTI_ADDON_AND_CATALOGS.md`.
+Run `python tools/package_addon.py` after source changes. The compatibility add-on contains generated copies; CI checks them with `--check`. Catalog sources live in `catalogs/models/deye_sg04_sg05_3ph_lv` and are packaged with SHA-256 checksums.

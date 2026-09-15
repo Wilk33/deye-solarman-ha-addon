@@ -325,8 +325,7 @@ document.addEventListener("click",event=>{
 	const tab=event.target.closest("[data-tab]");
 	if (tab) {
 		const custom=tab.dataset.tab === "custom";
-		customById("detected-tab").hidden=custom;
-		customById("custom-tab").hidden=!custom;
+		for (const panel of document.querySelectorAll(".tab-panel")) panel.hidden=panel.id !== `${tab.dataset.tab}-tab`;
 		for (const item of document.querySelectorAll("[data-tab]")) item.classList.toggle("active",item === tab);
 		if (custom && !customSensors.length) loadCustomSensors().catch(error=>customMessage(error.message,true));
 	}

@@ -16,7 +16,7 @@ from .codec import registers_to_ascii
 from .models import PollingConfig
 from .scan_catalog import ScanCandidate
 from .scheduler import group_sensors_for_read
-from .solarman import SolarmanClientProtocol
+from .transport import RegisterTransport
 
 
 EDITABLE_DEFINITION_FIELDS={
@@ -42,7 +42,7 @@ EDITABLE_DEFINITION_FIELDS={
 
 def scan_candidates(
 	candidates: list[ScanCandidate],
-	solarman: SolarmanClientProtocol,
+	solarman: RegisterTransport,
 	polling: PollingConfig,
 ) -> list[dict[str, Any]]:
 	by_key={candidate.sensor.key: candidate for candidate in candidates}

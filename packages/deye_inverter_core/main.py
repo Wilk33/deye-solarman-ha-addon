@@ -5,6 +5,9 @@ import logging
 import threading
 import time
 from typing import Any
+from pathlib import Path
+
+from .controls import ControlService, ControlRuntime
 
 from .codec import apply_transform
 from .codec import decode_registers
@@ -30,8 +33,7 @@ from .scanner import load_pending_discovery_removals
 from .scanner import reset_detected_sensors
 from .scanner import save_detected_sensors
 from .scanner import scan_candidates
-from .solarman import SolarmanClient
-from .solarman import SolarmanConnectionClosedError
+from .transport import RegisterTransport, TransportFactory, TransportConnectionClosedError
 from .storage import load_state
 from .storage import save_scan_report
 from .storage import save_state
@@ -41,13 +43,14 @@ from .web import IngressPanel
 LOGGER=logging.getLogger(__name__)
 
 
-def main() -> None:
+def main(transport_factory: TransportFactory) -> None:
 	configure_logging()
 	config=load_config()
 	access_lock=threading.Lock()
 	configuration_changed=threading.Event()
 	catalog_lock=threading.Lock()
 	catalog_state={"current": load_remote_catalog(config.catalog)}
+	controls=ControlService(str(Path(config.scan.detected_sensors_file).with_name("control_sensors.json")),config.logger,access_lock,config.polling.read_message_spacing,transport_factory)
 
 	def current_catalog() -> RemoteCatalog:
 		with catalog_lock:
@@ -61,17 +64,18 @@ def main() -> None:
 
 	panel=IngressPanel(
 		config.scan.detected_sensors_file,
-		lambda: _run_manual_scan(config,access_lock,current_catalog()),
+		lambda: _run_manual_scan(config,access_lock,current_catalog(),transport_factory),
 		lambda: _reset_panel_configuration(config,current_catalog()),
 		lambda: _clear_panel_sensors(config,refresh_catalog()),
 		configuration_changed.set,
 		config.profiles.custom_sensors_file,
-		lambda definition: _test_custom_sensor(config,access_lock,definition),
+		lambda definition: _test_custom_sensor(config,access_lock,definition,transport_factory),
 		lambda entries: _save_custom_sensor_configuration(config,entries),
+		control_service=controls,
 	)
 	panel.start()
 	try:
-		_run_addon(config,access_lock,current_catalog(),configuration_changed)
+		_run_addon(config,access_lock,current_catalog(),transport_factory,configuration_changed,controls)
 	finally:
 		panel.stop()
 
@@ -80,7 +84,9 @@ def _run_addon(
 	config: Any,
 	access_lock: Any,
 	remote_catalog: RemoteCatalog,
+	transport_factory: TransportFactory,
 	configuration_changed: threading.Event | None=None,
+	control_service: ControlService | None=None,
 ) -> None:
 	state=load_state(config.profiles.state_file)
 	change_event=configuration_changed or threading.Event()
@@ -102,12 +108,12 @@ def _run_addon(
 			sum(sensor.enabled for sensor in sensors),
 			config.scan.detected_sensors_file,
 		)
-		solarman=SolarmanClient(config.logger)
+		solarman=transport_factory(config.logger)
 		mqtt=MqttPublisher(config.mqtt, config.inverter)
 		try:
 			with access_lock:
 				solarman.connect()
-				probe_values=solarman.probe(
+				probe_values=solarman.read_holding_registers(
 					config.polling.startup_probe_register,
 					config.polling.startup_probe_count,
 				)
@@ -167,6 +173,9 @@ def _run_addon(
 			)
 			for sensor in enabled_sensors:
 				mqtt.publish_discovery(sensor)
+			control_runtime=ControlRuntime(control_service,mqtt,solarman) if control_service is not None else None
+			if control_runtime is not None:
+				control_runtime.start()
 
 			runtime_reload=False
 			while True:
@@ -182,7 +191,12 @@ def _run_addon(
 				save_state(config.profiles.state_file, state)
 				if config.advanced.emit_scan_report:
 					save_scan_report(config.profiles.scan_report_file, iteration_report)
-				if change_event.wait(config.polling.default_interval):
+				deadline=time.monotonic()+config.polling.default_interval
+				while not change_event.is_set() and time.monotonic() < deadline:
+					if control_runtime is not None:
+						control_runtime.tick()
+					change_event.wait(min(0.25,max(0,deadline-time.monotonic())))
+				if change_event.is_set():
 					runtime_reload=True
 					break
 			if runtime_reload:
@@ -198,18 +212,18 @@ def _run_addon(
 			LOGGER.info("Retrying connection in %s seconds", config.logger.reconnect_delay)
 		finally:
 			mqtt.disconnect()
-			solarman.disconnect()
+			solarman.close()
 
 		if config.polling.allow_reconnect:
 			change_event.wait(config.logger.reconnect_delay)
 
 
-def _run_manual_scan(config: Any, access_lock: Any, remote_catalog: RemoteCatalog) -> dict[str, Any]:
-	solarman=SolarmanClient(config.logger)
+def _run_manual_scan(config: Any, access_lock: Any, remote_catalog: RemoteCatalog, transport_factory: TransportFactory) -> dict[str, Any]:
+	solarman=transport_factory(config.logger)
 	try:
 		with access_lock:
 			solarman.connect()
-			probe_values=solarman.probe(
+			probe_values=solarman.read_holding_registers(
 				config.polling.startup_probe_register,
 				config.polling.startup_probe_count,
 			)
@@ -228,7 +242,7 @@ def _run_manual_scan(config: Any, access_lock: Any, remote_catalog: RemoteCatalo
 			statuses[status]=statuses.get(status,0)+1
 		return {"count": len(scan_report),"statuses": statuses}
 	finally:
-		solarman.disconnect()
+		solarman.close()
 
 
 def _reset_panel_configuration(config: Any, remote_catalog: RemoteCatalog) -> dict[str, Any]:
@@ -269,12 +283,12 @@ def _save_custom_sensor_configuration(config: Any, entries: list[dict[str, Any]]
 	return save_custom_sensors(config.profiles.custom_sensors_file,entries)
 
 
-def _test_custom_sensor(config: Any, access_lock: Any, definition: dict[str, Any]) -> dict[str, Any]:
+def _test_custom_sensor(config: Any, access_lock: Any, definition: dict[str, Any], transport_factory: TransportFactory) -> dict[str, Any]:
 	sensor=sensor_from_payload(definition,enabled=True)
 	from .definitions import _validate_sensor_definitions
 
 	_validate_sensor_definitions([sensor])
-	solarman=SolarmanClient(config.logger)
+	solarman=transport_factory(config.logger)
 	try:
 		with access_lock:
 			solarman.connect()
@@ -296,7 +310,7 @@ def _test_custom_sensor(config: Any, access_lock: Any, definition: dict[str, Any
 				"latency_ms": round(latency_ms,2),
 			}
 	finally:
-		solarman.disconnect()
+		solarman.close()
 
 
 def _wait_for_stop() -> None:
@@ -320,7 +334,7 @@ def _log_scan_summary(report: list[dict[str, Any]], detected_sensors_file: str) 
 def run_iteration(
 	sensors: list[SensorDefinition],
 	state: dict[str, SensorState],
-	solarman: SolarmanClient,
+	solarman: RegisterTransport,
 	mqtt: MqttPublisher,
 	polling: PollingConfig,
 	emit_raw_topics: bool,
@@ -347,7 +361,7 @@ def run_iteration(
 			with read_lock if read_lock is not None else nullcontext():
 				values=solarman.read_holding_registers(group_start, count)
 			latency_ms=(time.perf_counter()-start)*1000
-		except SolarmanConnectionClosedError as error:
+		except TransportConnectionClosedError as error:
 			LOGGER.warning("Solarman TCP session closed start=%s count=%s; reconnecting",group_start,count)
 			raise error
 		except Exception as exc:
@@ -405,7 +419,7 @@ def run_iteration(
 					polling.publish_unchanged_every,
 				)
 			)
-		except SolarmanConnectionClosedError as error:
+		except TransportConnectionClosedError as error:
 			LOGGER.warning("Solarman TCP session closed for formula sensor=%s; reconnecting",sensor.key)
 			raise error
 		except Exception as error:
@@ -484,7 +498,7 @@ def _handle_sensor(
 	}
 
 
-def _evaluate_formula_sensor(sensor: SensorDefinition, solarman: SolarmanClient) -> FormulaResult:
+def _evaluate_formula_sensor(sensor: SensorDefinition, solarman: RegisterTransport) -> FormulaResult:
 	return FormulaExecutor(solarman.read_holding_registers).execute(sensor.formula)
 
 

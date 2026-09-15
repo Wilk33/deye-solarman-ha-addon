@@ -1,6 +1,17 @@
 # Deye Solarman HA Add-on
 
-Stabilne wydanie `1.1.1` dodatku Home Assistant OS do lokalnej, diagnostycznej komunikacji z falownikiem Deye przez logger Solarman TCP. Dodatek odczytuje rejestry Modbus tylko do odczytu, pozwala zweryfikowac ich dostepnosc w panelu Ingress i publikuje w Home Assistant wybrane encje przez MQTT Discovery.
+Wersja `1.2.0` dodatku Home Assistant OS do lokalnej komunikacji z falownikiem Deye przez logger Solarman TCP. Dodatek odczytuje telemetrię oraz aktualne ustawienia, pozwala zweryfikować ich dostępność w panelu Ingress i publikuje wybrane sensory oraz encje sterowania przez MQTT Discovery.
+
+Nowa zakładka **Encje sterowania** korzysta ze 119 definicji profilu Sunsynk `three_phase_lv`. Skan i przycisk **Test** wyłącznie odczytują stan. Dopiero komenda wysłana przez wybraną encję MQTT zmienia ustawienie. Szczegóły, źródła mapy i zasady walidacji opisuje [instrukcja encji sterowania](deye-solarman-diagnostics/CONTROL_ENTITIES.md).
+
+## Źródła i pakowanie od wersji 1.2.0
+
+- `packages/deye_inverter_core/` - wspólny rdzeń, panel, MQTT, skanowanie i obsługa sterowania.
+- `apps/deye-solarman/src/` - punkt startowy aplikacji i adapter transportu Solarman.
+- `catalogs/models/deye_sg04_sg05_3ph_lv/` - kanoniczne mapy `telemetry.yaml`, `telemetry-plus.yaml`, `control.yaml` i indeks z sumami SHA-256.
+- `deye-solarman-diagnostics/` - zgodny wstecz katalog instalacyjny HAOS. Kod runtime w `rootfs/usr/src/app` jest generowany; edytuj źródła w `packages` i `apps`.
+
+Po zmianach uruchom `python tools/package_addon.py`. CI sprawdza zgodność kopii przez `python tools/package_addon.py --check`. Dotychczasowy slug i ścieżka aktualizacji HAOS pozostają zachowane. RS485 jest następnym etapem, bez drugiego instalowalnego dodatku w tym wydaniu.
 
 Projekt jest przeznaczony dla falownikow z rodziny Deye SUN-*-SG04LP3 / SG05LP3 oraz loggerow Solarman dostepnych lokalnie przez TCP. Moze zbierac dane biezace falownika i dane per-pakiet BMS, ale nie zastepuje bezposredniej integracji RS485, np. `Sunsynk or Deye Inverter add-on (multi)`. RS485 pozostaje lepszym kanalem dla szybkiej telemetrii i sterowania.
 
@@ -54,7 +65,7 @@ Normalny cykl dodatku dziala nastepujaco:
 
 ## Zakres i ograniczenia
 
-Dodatek korzysta wylacznie z `read_holding_registers`. Nie zapisuje rejestrow, nie zmienia konfiguracji falownika, nie steruje bateria ani siecia i nie wymaga konta Solarman ani dostepu do chmury.
+Telemetria, formuły, skany oraz przyciski Test korzystają z odczytów `read_holding_registers`. Wybrane encje sterowania MQTT mogą wykonywać zapis FC16 przez `write_multiple_holding_registers`, z walidacją wartości, zachowaniem masek bitowych i odczytem kontrolnym. Dodatek nie wymaga konta Solarman ani dostępu do chmury.
 
 Skan potwierdza, ze logger zwrocil odpowiedz, lecz nie potwierdza semantyki kazdego rejestru. Dotyczy to szczegolnie danych BMS per-pack oznaczonych jako `candidate`. Przed wykorzystaniem ich w automatyzacji porownaj wartosci z wyswietlaczem falownika lub BMS.
 
@@ -299,7 +310,7 @@ Kod dodatku jest w [deye-solarman-diagnostics/rootfs/usr/src/app/deye_solarman_d
 Przed wydaniem uruchom:
 
 ```powershell
-python -m unittest -v tests/test_runtime.py
+python -m unittest discover -s tests -v
 python -W error::SyntaxWarning -m compileall -q deye-solarman-diagnostics/rootfs/usr/src/app
 git diff --check
 ```

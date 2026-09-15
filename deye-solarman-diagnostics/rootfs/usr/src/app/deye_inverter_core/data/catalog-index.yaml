@@ -1,0 +1,31 @@
+{
+  "format": 1,
+  "catalog_set": "deye_sg04_sg05_3ph_lv",
+  "revision": "1.2.0",
+  "maps": {
+    "telemetry": {
+      "file": "telemetry.yaml",
+      "sha256": "08d93875af3bbad15f92da6a247c7beba0f7996541fb2d3d862957429d4e5067",
+      "transports": [
+        "solarman_tcp"
+      ],
+      "writable": false
+    },
+    "telemetry_plus": {
+      "file": "telemetry-plus.yaml",
+      "sha256": "90ad5993d78d51f52314c044586676c1605ecdb7d4876574fa5a3368858f08a8",
+      "transports": [
+        "solarman_tcp"
+      ],
+      "writable": false
+    },
+    "control": {
+      "file": "control.yaml",
+      "sha256": "d69f6e610d4f63e0854959f699b43c1cfd4bf53f75c7ab7c6819615a8197d967",
+      "transports": [
+        "solarman_tcp"
+      ],
+      "writable": true
+    }
+  }
+}

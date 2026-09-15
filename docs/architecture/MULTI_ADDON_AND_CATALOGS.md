@@ -2,7 +2,11 @@
 
 ## Status and scope
 
-This is a design decision for the next development stage. It creates no second Home Assistant application, changes no current add-on configuration, and enables no register writes.
+Version 1.2.0 implements the shared-core extraction, injected Solarman adapter, separate model maps and reproducible packaging. `packages/deye_inverter_core` is the source of shared runtime code; `apps/deye-solarman/src` owns the transport adapter. CI rejects generated build artifacts that differ from these sources.
+
+The existing HAOS installation folder and slug remain the compatibility update path. RS485 is still reserved, not installable. The complete multi-map configuration UI and GHCR publishing described below remain future work. The current telemetry remote URL stays compatible with 1.1.x clients; its version-2 YAML is generated from the canonical telemetry maps.
+
+Control support in 1.2.0 follows the user's explicit requirement: selecting a control for MQTT enables its Home Assistant command entity, while scan and Test only read. The earlier proposal below for per-write confirmation and temporary arming is not the implemented policy. Commands validate bounds, preserve bitmasks, perform read-back and never retry uncertain writes. Current maps declare only verified transport scope `solarman_tcp`; no RS485 support is inferred.
 
 The repository will ultimately provide two Home Assistant add-ons:
 

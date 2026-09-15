@@ -26,6 +26,11 @@ class MqttPublisher:
 		self._client=mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=config.client_id)
 		self._client.on_connect=self._on_connect
 		self._client.on_disconnect=self._on_disconnect
+		self._control_handler=None
+		self._control_topics={}
+		self._control_discovery={}
+		self._client.on_message=self._on_control_message
+		self._client.will_set(self.control_base()+"/availability","offline",retain=True)
 		if config.tls:
 			self._client.tls_set(cert_reqs=ssl.CERT_REQUIRED)
 		if config.username:
@@ -51,6 +56,7 @@ class MqttPublisher:
 
 	def disconnect(self) -> None:
 		try:
+			self._publish_confirmed(self.control_base()+"/availability","offline",True,"control availability")
 			self._client.loop_stop()
 			self._client.disconnect()
 		except Exception:
@@ -121,10 +127,77 @@ class MqttPublisher:
 	) -> None:
 		if reason_code == 0:
 			success(LOGGER,"MQTT connection confirmed")
+			for topic in self._control_topics:
+				_client.subscribe(topic,qos=0)
+			_client.publish(self.control_base()+"/availability","online",retain=True)
 		else:
 			self._connection_error=f"MQTT broker rejected the connection reason={reason_code}"
 			LOGGER.error(self._connection_error)
 		self._connected.set()
+
+	def control_base(self) -> str:
+		return f"{self._config.base_topic}/{self._inverter.serial_number}/controls"
+
+	def configure_controls(self, handler: Any, keys: list[str]) -> None:
+		self._control_handler=handler
+		self._control_topics={f"{self.control_base()}/{key}/set":key for key in keys}
+		for topic in self._control_topics:
+			self._client.subscribe(topic,qos=0)
+
+	def _on_control_message(self, _client: Any, _userdata: Any, message: Any) -> None:
+		key=self._control_topics.get(message.topic)
+		if key is None or self._control_handler is None or len(message.payload) > 128:
+			return
+		try:
+			self._control_handler(key,message.payload.decode("utf-8"),message.retain)
+		except (UnicodeDecodeError,ValueError):
+			LOGGER.warning("Invalid control command payload")
+
+	def control_discovery_topic(self, definition: dict) -> str:
+		from .controls import component
+		return f"{self._config.discovery_prefix}/{component(definition)}/deye_solarman_{self._inverter.serial_number}_{definition['key']}/config"
+
+	def remove_control_discovery(self, definition: dict) -> None:
+		self._publish_confirmed(self.control_discovery_topic(definition),"",True,"control removal")
+		self.control_availability(definition["key"],False)
+
+	def publish_control_discovery(self, entry: dict, result: dict) -> None:
+		from .controls import CONTROLS, component
+		key=entry["key"]
+		definition=CONTROLS[key]
+		settings=entry["definition"]
+		base=f"{self.control_base()}/{key}"
+		payload={
+			"name":settings["name"],"unique_id":f"deye_solarman_{self._inverter.serial_number}_{key}",
+			"state_topic":base+"/state","command_topic":base+"/set","json_attributes_topic":base+"/attributes",
+			"retain":False,"optimistic":False,"entity_category":"config","icon":settings["icon"],
+			"availability":[{"topic":self.control_base()+"/availability"},{"topic":base+"/availability"}],"availability_mode":"all",
+			"device":{"identifiers":[f"deye_solarman_{self._inverter.serial_number}"],"name":self._inverter.name,"manufacturer":self._inverter.manufacturer,"model":self._inverter.model},
+		}
+		kind=component(definition)
+		if kind == "number":
+			payload.update(min=result["min"],max=result["max"],step=abs(definition["factor"]),mode="box")
+			if definition["unit"]:
+				payload["unit_of_measurement"]=definition["unit"]
+		elif kind == "select":
+			payload["options"]=result.get("options",list(definition.get("options",{}).values()))
+		elif kind == "switch":
+			payload.update(payload_on="ON",payload_off="OFF")
+		else:
+			payload.update(min=19,max=19,pattern=r"[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}")
+		encoded=json.dumps(payload)
+		if self._control_discovery.get(key) != encoded:
+			self._publish_confirmed(self.control_discovery_topic(definition),encoded,True,"control discovery")
+			self._control_discovery[key]=encoded
+
+	def publish_control_state(self, entry: dict, result: dict) -> None:
+		base=f"{self.control_base()}/{entry['key']}"
+		retain=self._config.retain and entry["definition"]["retain"]
+		self._client.publish(base+"/state",result["value"],retain=retain)
+		self._client.publish(base+"/attributes",json.dumps(result),retain=retain)
+
+	def control_availability(self, key: str, available: bool) -> None:
+		self._client.publish(f"{self.control_base()}/{key}/availability","online" if available else "offline",retain=True)
 
 	def _on_disconnect(
 		self,
