@@ -1,7 +1,7 @@
 {
   "format": 1,
   "catalog_set": "deye_sg04_sg05_3ph_lv",
-  "revision": "1.2.0",
+  "revision": "1.2.1",
   "maps": {
     "telemetry": {
       "file": "telemetry.yaml",
@@ -21,7 +21,7 @@
     },
     "control": {
       "file": "control.yaml",
-      "sha256": "d69f6e610d4f63e0854959f699b43c1cfd4bf53f75c7ab7c6819615a8197d967",
+      "sha256": "edc03896263933825546df3781bc93d91e7376db8b900d83038f96ff749ac1b1",
       "transports": [
         "solarman_tcp"
       ],

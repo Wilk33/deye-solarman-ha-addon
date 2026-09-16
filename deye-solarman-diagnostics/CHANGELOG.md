@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.2.1
+
+- Rename the Ingress tabs to `Sensory` and `Sterowanie`; remove per-control Test buttons.
+- Correct R102 to Battery Capacity in Ah while retaining its MQTT key and custom names.
+- Resolve R108/R109 limits from rated power: 120/150/190/210/240 A for 5/6/8/10/12 kW; reject writes when no verified limit is available.
+- Shift the R336 Parallel Modbus SN field by 10 bits on read and write, preserving neighboring fields.
+- Show R182/R184 as RAW/UNKNOWN and block writes pending firmware-specific mappings. Keep R139 readable without inventing an unverified maximum or permitting writes.
+- Represent unknown enum fields, including zero in R178/R228, as UNKNOWN rather than invalid reads. Reject writes from unknown states and mark selected MQTT controls unavailable until recognized.
+- Migrate saved catalog definitions and scan decoding while preserving user names and schedules. Remove previously published controls that are now read-only.
+- Preserve these corrections in a source-controlled overlay applied by the Sunsynk importer.
+
 ## 1.2.0
 
 - Extract the runtime into `packages/deye_inverter_core` and inject the Solarman adapter from `apps/deye-solarman/src` through shared read/write contracts.

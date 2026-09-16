@@ -2,6 +2,12 @@
   "version": 1,
   "source_revision": "e2466b6505c1990aced1f18c12a42ded638aee9b",
   "source": "https://github.com/kellerza/sunsynk/tree/e2466b6505c1990aced1f18c12a42ded638aee9b/src/sunsynk",
+  "project_revision": "1.2.1",
+  "correction_sources": [
+    "https://www.deyeinverter.com/deyeinverter/2026/03/19/BManualSUN-5-12K-SG04LP3-EU20260319en.pdf",
+    "https://pl.deyeinverter.com/deyeinverter/2024/08/05/datasheet_sun-8-12k-sg04lp3_240729_pl.pdf",
+    "User register observations reported 2026-09-16; write behavior is not hardware-verified"
+  ],
   "profile": "three_phase_lv",
   "commands": [
     {
@@ -156,7 +162,21 @@
       "unit": "A",
       "bitmask": 0,
       "min": 0,
-      "max": 240
+      "max": {
+        "registers": [
+          20,
+          21
+        ],
+        "factor": 0.1,
+        "name": "Rated power",
+        "values": {
+          "5000": 120,
+          "6000": 150,
+          "8000": 190,
+          "10000": 210,
+          "12000": 240
+        }
+      }
     },
     {
       "key": "control_battery_max_discharge_current",
@@ -169,20 +189,37 @@
       "unit": "A",
       "bitmask": 0,
       "min": 0,
-      "max": 240
+      "max": {
+        "registers": [
+          20,
+          21
+        ],
+        "factor": 0.1,
+        "name": "Rated power",
+        "values": {
+          "5000": 120,
+          "6000": 150,
+          "8000": 190,
+          "10000": 210,
+          "12000": 240
+        }
+      }
     },
     {
       "key": "control_battery_capacity_current",
-      "name": "Battery Capacity current",
+      "name": "Battery Capacity",
       "registers": [
         102
       ],
       "method": "NumberRWSensor",
       "factor": 1,
-      "unit": "A",
+      "unit": "Ah",
       "bitmask": 0,
       "min": 0,
-      "max": 2000
+      "max": 2000,
+      "legacy_names": [
+        "Battery Capacity current"
+      ]
     },
     {
       "key": "control_grid_peak_shaving_power",
@@ -1649,7 +1686,9 @@
       "unit": "W",
       "bitmask": 0,
       "min": 0,
-      "max": 100
+      "max": null,
+      "read_only": true,
+      "read_only_reason": "Maksimum R139 niepotwierdzone. Dostępny odczyt, zapis zablokowany."
     },
     {
       "key": "control_grid_signal_on",
@@ -1759,7 +1798,8 @@
       "unit": "",
       "bitmask": 64512,
       "min": 0,
-      "max": 63
+      "max": 63,
+      "shift": 10
     },
     {
       "key": "control_grid_standard",
@@ -1785,7 +1825,10 @@
         "10": "VDE4105",
         "11": "OVE_Directive_R25",
         "12": "EN50549_CZ_PPDS_L16A"
-      }
+      },
+      "raw_only": true,
+      "read_only": true,
+      "read_only_reason": "Mapa standardów sieci niepotwierdzona dla tego firmware. RAW/UNKNOWN, bez zapisu."
     },
     {
       "key": "control_configured_grid_frequency",
@@ -1816,7 +1859,10 @@
         "0": "Three Phase",
         "1": "Single Phase",
         "2": "Split Phase"
-      }
+      },
+      "raw_only": true,
+      "read_only": true,
+      "read_only_reason": "Kody konfiguracji faz niepotwierdzone dla tego firmware. RAW/UNKNOWN, bez zapisu."
     },
     {
       "key": "control_time_synchronization",

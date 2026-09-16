@@ -193,7 +193,9 @@ class MqttPublisher:
 	def publish_control_state(self, entry: dict, result: dict) -> None:
 		base=f"{self.control_base()}/{entry['key']}"
 		retain=self._config.retain and entry["definition"]["retain"]
-		self._client.publish(base+"/state",result["value"],retain=retain)
+		# Unknown enum labels are diagnostic attributes, never valid select options.
+		if result.get("status") != "unknown":
+			self._client.publish(base+"/state",result["value"],retain=retain)
 		self._client.publish(base+"/attributes",json.dumps(result),retain=retain)
 
 	def control_availability(self, key: str, available: bool) -> None:

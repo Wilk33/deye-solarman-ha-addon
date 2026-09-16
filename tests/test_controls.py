@@ -134,8 +134,143 @@ class ControlTests(unittest.TestCase):
 		entry=CONTROLS["control_date_time"]
 		words=encode(entry,"2026-09-15 21:30:12",Registers(),[0,0,0])
 		self.assertEqual(decode(entry,words),"2026-09-15 21:30:12")
+		self.assertIn("UNKNOWN",decode(CONTROLS["control_load_limit"],[99]))
+
+	def test_parallel_address_shifts_and_preserves_all_other_bits(self):
+		entry=CONTROLS["control_parallel_modbus_sn"]
+		self.assertEqual(decode(entry,[1024]),1)
+		for address in (0,1,17,63):
+			client=Registers({336:0x07AB})
+			result=write_control(client,entry,str(address))
+			self.assertEqual(client.values[336],(address<<10)|0x3AB)
+			self.assertEqual(result["value"],address)
 		with self.assertRaises(ValueError):
-			decode(CONTROLS["control_load_limit"],[99])
+			write_control(Registers({336:1024}),entry,"64")
+
+	def test_current_limits_follow_rated_power_and_reject_unknown_model(self):
+		for key in ("control_battery_max_charge_current","control_battery_max_discharge_current"):
+			entry=CONTROLS[key]
+			for power,maximum in ((5000,120),(6000,150),(8000,190),(10000,210),(12000,240)):
+				with self.subTest(key=key,power=power):
+					raw=power*10
+					client=Registers({20:raw&65535,21:raw>>16,entry["registers"][0]:100})
+					result=self.service.read(client,key)
+					self.assertEqual(result["max"],maximum)
+					with self.assertRaises(ValueError):
+						write_control(client,entry,str(maximum+1))
+					self.assertEqual(client.writes,[])
+					write_control(client,entry,str(maximum))
+					self.assertEqual(client.writes[-1][1],[maximum])
+			client=Registers({108:100,109:100})
+			result=self.service.read(client,key)
+			self.assertEqual(result["value"],100)
+			self.assertFalse(result["write_allowed"])
+			with self.assertRaises(ValueError):
+				write_control(client,entry,"100")
+			self.assertEqual(client.writes,[])
+
+	def test_unverified_definitions_are_read_only_with_raw_preserved(self):
+		for key,register,raw in (("control_min_pv_power_for_gen_start",139,500),("control_grid_standard",182,25),("control_configured_grid_phases",184,1)):
+			with self.subTest(key=key):
+				client=Registers({register:raw})
+				result=self.service.read(client,key)
+				self.assertEqual(result["raw_registers"],[raw])
+				self.assertFalse(result["write_allowed"])
+				if register == 139:
+					self.assertEqual(result["value"],500)
+					self.assertNotIn("max",result)
+				else:
+					self.assertEqual(result["status"],"unknown")
+					self.assertIn("UNKNOWN",result["value"])
+				with self.assertRaises(ValueError):
+					write_control(client,CONTROLS[key],"500" if register == 139 else next(iter(CONTROLS[key]["options"].values())))
+				self.assertEqual(client.writes,[])
+
+	def test_zero_enum_fields_are_unknown_and_cannot_be_written(self):
+		for key,entry in CONTROLS.items():
+			if entry["registers"] not in ([178],[228]):
+				continue
+			with self.subTest(key=key):
+				client=Registers({entry["registers"][0]:65535^entry["bitmask"]})
+				result=self.service.read(client,key)
+				self.assertEqual(result["status"],"unknown")
+				self.assertIn("UNKNOWN",result["value"])
+				self.assertFalse(result["write_allowed"])
+				for value in list(entry["options"].values())+[result["value"]]:
+					with self.assertRaises(ValueError):
+						write_control(client,entry,value)
+				self.assertEqual(client.writes,[])
+				# A known state still permits a masked write, preserving other fields.
+				client.values[entry["registers"][0]]=65535
+				option=next(iter(entry["options"].values()))
+				write_control(client,entry,option)
+				self.assertEqual(client.values[entry["registers"][0]]&(65535^entry["bitmask"]),65535^entry["bitmask"])
+
+	def test_saved_catalog_migrates_without_losing_custom_settings(self):
+		entry=self.service.entry("control_battery_capacity_current")
+		entry["definition"].update(name="Battery Capacity current",unit="A",read_every=123)
+		entry["monitor"]=True
+		self.service.store({"available_sensors":[entry],"published":[]})
+		updated=self.service.load()["available_sensors"][0]
+		self.assertEqual(updated["definition"]["name"],"Battery Capacity")
+		self.assertEqual(updated["definition"]["unit"],"Ah")
+		self.assertEqual(updated["definition"]["read_every"],123)
+		self.assertTrue(updated["monitor"])
+		updated["definition"]["name"]="Moja bateria"
+		self.service.store({"available_sensors":[updated],"published":[]})
+		self.assertEqual(self.service.load()["available_sensors"][0]["definition"]["name"],"Moja bateria")
+
+	def test_saved_unsafe_discovery_is_removed_and_cannot_receive_commands(self):
+		key="control_configured_grid_phases"
+		entry=self.select(key)
+		self.service.store({"available_sensors":[entry],"published":[key]})
+		mqtt=Mock()
+		client=Registers({184:1})
+		runtime=ControlRuntime(self.service,mqtt,client)
+		runtime.start()
+		mqtt.remove_control_discovery.assert_called_once_with(CONTROLS[key])
+		runtime.receive(key,"Three Phase",False)
+		runtime.tick()
+		self.assertEqual(client.writes,[])
+
+	def test_saved_parallel_scan_is_redecoded_after_upgrade(self):
+		entry=self.service.entry("control_parallel_modbus_sn")
+		entry["definition"].pop("shift",None)
+		entry["last_scan"]={"status":"supported","value":1024,"raw_registers":[1024],"min":0,"max":63}
+		self.service.store({"available_sensors":[entry],"published":[]})
+		updated=self.service.load()["available_sensors"][0]
+		self.assertEqual(updated["last_scan"]["value"],1)
+		self.assertEqual(updated["last_scan"]["raw_hex"],["0x0400"])
+		self.assertNotIn("max",updated["last_scan"])
+
+	def test_unknown_mqtt_state_is_attributes_only(self):
+		config=MqttConfig("broker",1883,"","","test","deye","homeassistant",True)
+		mqtt=MqttPublisher(config,InverterConfig("123","Inverter","Deye","SG05LP3"))
+		mqtt._client=Mock()
+		key="control_beep"
+		result=self.service.read(Registers({228:0}),key)
+		mqtt.publish_control_state(self.service.entry(key),result)
+		calls=mqtt._client.publish.call_args_list
+		self.assertEqual(len(calls),1)
+		self.assertTrue(calls[0].args[0].endswith("/attributes"))
+		self.assertEqual(json.loads(calls[0].args[1])["raw_registers"],[0])
+
+	def test_unknown_state_blocks_runtime_commands_until_known_state(self):
+		key="control_beep"
+		self.select(key)
+		client=Registers({228:0})
+		mqtt=Mock()
+		runtime=ControlRuntime(self.service,mqtt,client)
+		runtime.start()
+		self.assertFalse(mqtt.control_availability.call_args.args[1])
+		runtime.receive(key,"Enable",False)
+		runtime.tick()
+		self.assertEqual(client.writes,[])
+		self.assertFalse(runtime.blocked)
+		client.values[228]=8
+		runtime.receive(key,"Enable",False)
+		runtime.tick()
+		self.assertEqual(client.writes,[(228,[12])])
 
 	def test_uncertain_write_is_not_retried(self):
 		for failure in ("fail_write","mismatch"):

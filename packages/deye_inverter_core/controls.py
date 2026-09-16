@@ -39,12 +39,17 @@ def numeric(words: list[int], factor: float) -> float:
 	return round(value*abs(factor),6)
 
 
+def unknown_value(entry: dict, words: list[int]) -> bool:
+	value=words[0]&entry["bitmask"] if entry["bitmask"] else words[0]
+	return entry.get("raw_only",False) or (entry["method"] == "SelectRWSensor" and str(value) not in entry["options"])
+
+
 def decode(entry: dict, words: list[int]) -> Any:
 	masked=[word&entry["bitmask"] if entry["bitmask"] else word for word in words]
+	if unknown_value(entry,words):
+		return f"UNKNOWN / Not applicable (RAW={masked[0]})"
 	method=entry["method"]
 	if method == "SelectRWSensor":
-		if str(masked[0]) not in entry["options"]:
-			raise ValueError(f"Unknown option value: {masked[0]}")
 		return entry["options"][str(masked[0])]
 	if method == "SwitchRWSensor":
 		active=masked[0] == entry["on"] if entry["on"] is not None else masked[0] != entry["off"]
@@ -57,12 +62,26 @@ def decode(entry: dict, words: list[int]) -> Any:
 	if method == "SystemTimeRWSensor":
 		value=datetime((words[0]>>8)+entry["year_offset"],words[0]&255,words[1]>>8,words[1]&255,words[2]>>8,words[2]&255)
 		return value.strftime("%Y-%m-%d %H:%M:%S")
-	return numeric(masked,entry["factor"])
+	return numeric([word>>entry.get("shift",0) for word in masked],entry["factor"])
+
+
+def read_result(entry: dict, words: list[int]) -> dict:
+	unknown=unknown_value(entry,words)
+	result={"status":"unknown" if unknown else "supported","value":decode(entry,words),"raw_registers":words,"raw_hex":[f"0x{word:04X}" for word in words],"verification":"transport_verified","write_allowed":not (unknown or entry.get("read_only",False))}
+	if not result["write_allowed"]:
+		result["write_reason"]=entry.get("read_only_reason","Nieznany stan pola. Zapis zablokowany do czasu rozpoznania wartości.")
+	return result
 
 
 def resolve_bound(bound: Any, client: Any) -> float:
 	if isinstance(bound,dict):
-		return numeric(read_words(client,bound["registers"]),bound["factor"])
+		value=numeric(read_words(client,bound["registers"]),bound["factor"])
+		if "values" in bound:
+			key=str(int(value)) if float(value).is_integer() else str(value)
+			if key not in bound["values"]:
+				raise ValueError(f"Niepotwierdzony limit dla mocy znamionowej {value} W. Zapis zablokowany.")
+			return float(bound["values"][key])
+		return value
 	return float(bound)
 
 
@@ -92,6 +111,8 @@ def time_options(entry: dict, client: Any) -> list[str]:
 
 
 def encode(entry: dict, value: Any, client: Any, current: list[int]) -> list[int]:
+	if entry.get("read_only") or unknown_value(entry,current):
+		raise ValueError(entry.get("read_only_reason","Cannot write a field with UNKNOWN current state"))
 	method=entry["method"]
 	if method == "NumberRWSensor":
 		value=float(value)
@@ -101,7 +122,7 @@ def encode(entry: dict, value: Any, client: Any, current: list[int]) -> list[int
 		scaled=value/abs(entry["factor"])
 		if not math.isclose(scaled,round(scaled),abs_tol=1e-6,rel_tol=0):
 			raise ValueError(f"Value must use step {abs(entry['factor'])}")
-		integer=round(scaled)
+		integer=round(scaled)<<entry.get("shift",0)
 		words=[(integer>>(16*index))&65535 for index in range(len(current))]
 	elif method == "SelectRWSensor":
 		choices={label:int(raw) for raw,label in entry["options"].items()}
@@ -165,13 +186,16 @@ class ControlService:
 		self.spacing=spacing
 		self.lock=threading.RLock()
 		self.writes_blocked=False
-		self.job={"status":"idle","message":"Skan i Test odczytują aktualny stan."}
+		self.job={"status":"idle","message":"Skan odczytuje aktualny stan."}
 
 	def load(self) -> dict:
 		with self.lock:
 			if not self.path.exists():
 				return {"available_sensors":[],"published":[]}
-			return json.loads(self.path.read_text(encoding="utf-8"))
+			data=json.loads(self.path.read_text(encoding="utf-8"))
+			# Reapply canonical encoding after upgrades; retain only user-editable settings.
+			data["available_sensors"]=[self.entry(entry["key"],entry) for entry in data["available_sensors"] if entry["key"] in CONTROLS]
+			return data
 
 	def store(self, data: dict) -> None:
 		with self.lock:
@@ -185,7 +209,13 @@ class ControlService:
 		definition={**catalog,"name":catalog["name"],"read_every":60,"report_every":300,"change_by":0,"retain":True,"category":"config","icon":"mdi:tune"}
 		if previous:
 			definition.update({field:previous["definition"][field] for field in ("name","read_every","report_every","change_by","retain","icon") if field in previous["definition"]})
-		return {"key":key,"definition":definition,"monitor":previous.get("monitor",False) if previous else False,"last_scan":previous.get("last_scan",{}) if previous else {}}
+			if definition["name"] in catalog.get("legacy_names",[]):
+				definition["name"]=catalog["name"]
+		last_scan=deepcopy(previous.get("last_scan",{})) if previous else {}
+		if previous and any(previous["definition"].get(field) != catalog.get(field) for field in ("factor","bitmask","shift","min","max","options","read_only","raw_only","unit")):
+			words=last_scan.get("raw_registers",[])
+			last_scan=read_result(catalog,words) if len(words) == len(catalog["registers"]) else {}
+		return {"key":key,"definition":definition,"monitor":bool(previous and previous.get("monitor",False) and not catalog.get("read_only")),"last_scan":last_scan}
 
 	def update(self, updates: list) -> dict:
 		if not isinstance(updates,list):
@@ -204,7 +234,7 @@ class ControlService:
 				entry=by_key[key]
 				if type(update.get("monitor")) is not bool:
 					raise ValueError("monitor must be boolean")
-				if update["monitor"] and entry["last_scan"].get("status") != "supported":
+				if update["monitor"] and (CONTROLS[key].get("read_only") or (not entry["monitor"] and (entry["last_scan"].get("status") != "supported" or entry["last_scan"].get("write_allowed") is False))):
 					raise ValueError("Najpierw wykonaj poprawny odczyt encji")
 				entry["monitor"]=update["monitor"]
 				for field,value in update.get("definition",{}).items():
@@ -237,9 +267,12 @@ class ControlService:
 	def read(self, client: Any, key: str) -> dict:
 		entry=CONTROLS[key]
 		words=read_words(client,entry["registers"])
-		result={"status":"supported","value":decode(entry,words),"raw_registers":words,"raw_hex":[f"0x{word:04X}" for word in words],"verification":"transport_verified"}
-		if entry["method"] == "NumberRWSensor":
-			result["min"],result["max"]=limits(entry,client)
+		result=read_result(entry,words)
+		if entry["method"] == "NumberRWSensor" and not entry.get("read_only"):
+			try:
+				result["min"],result["max"]=limits(entry,client)
+			except ValueError as error:
+				result.update(write_allowed=False,write_reason=str(error))
 		if entry["method"] == "TimeRWSensor":
 			result["options"]=time_options(entry,client)
 		return result
@@ -371,7 +404,8 @@ class ControlRuntime:
 			try:
 				with self.service.access_lock:
 					result=self.service.read(self.client,key)
-				self.mqtt.publish_control_discovery(entry,result)
+				if result["write_allowed"]:
+					self.mqtt.publish_control_discovery(entry,result)
 				value=result["value"]
 				previous=self.last_value.get(key)
 				changed=value != previous
@@ -381,7 +415,7 @@ class ControlRuntime:
 					self.mqtt.publish_control_state(entry,result)
 					self.last_value[key]=value
 					self.last_publish[key]=now
-				self.mqtt.control_availability(key,not self.blocked)
+				self.mqtt.control_availability(key,not self.blocked and result["write_allowed"])
 			except TransportConnectionClosedError:
 				self.mqtt.control_availability(key,False)
 				raise

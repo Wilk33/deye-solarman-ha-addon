@@ -36,5 +36,9 @@ for key,sensor in SENSORS.all.items():
 		if hasattr(sensor,field):
 			entry[field]=reference(getattr(sensor,field))
 	entries.append(entry)
-TARGET.write_bytes((json.dumps({"version": 1,"source_revision": REVISION,"source": f"https://github.com/kellerza/sunsynk/tree/{REVISION}/src/sunsynk","profile": "three_phase_lv","commands": entries,"format":1,"map_id":"control","catalog_set":"deye_sg04_sg05_3ph_lv","purpose":"control","writable":True,"transports":["solarman_tcp"]},ensure_ascii=False,indent=2)+"\n").encode("utf-8"))
+overrides=json.loads(TARGET.with_name("control-overrides.json").read_text(encoding="utf-8"))
+by_key={entry["key"]:entry for entry in entries}
+for key,changes in overrides["commands"].items():
+	by_key[key].update(changes)
+TARGET.write_bytes((json.dumps({"version": 1,"source_revision": REVISION,"source": f"https://github.com/kellerza/sunsynk/tree/{REVISION}/src/sunsynk","project_revision":overrides["revision"],"correction_sources":overrides["sources"],"profile": "three_phase_lv","commands": entries,"format":1,"map_id":"control","catalog_set":"deye_sg04_sg05_3ph_lv","purpose":"control","writable":True,"transports":["solarman_tcp"]},ensure_ascii=False,indent=2)+"\n").encode("utf-8"))
 print(f"Exported {len(entries)} controls to {TARGET}")

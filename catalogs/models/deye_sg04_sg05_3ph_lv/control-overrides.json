@@ -1,0 +1,39 @@
+{
+	"revision":"1.2.1",
+	"sources":[
+		"https://www.deyeinverter.com/deyeinverter/2026/03/19/BManualSUN-5-12K-SG04LP3-EU20260319en.pdf",
+		"https://pl.deyeinverter.com/deyeinverter/2024/08/05/datasheet_sun-8-12k-sg04lp3_240729_pl.pdf",
+		"User register observations reported 2026-09-16; write behavior is not hardware-verified"
+	],
+	"commands":{
+		"control_battery_capacity_current":{
+			"name":"Battery Capacity",
+			"unit":"Ah",
+			"legacy_names":["Battery Capacity current"]
+		},
+		"control_battery_max_charge_current":{
+			"max":{"registers":[20,21],"factor":0.1,"name":"Rated power","values":{"5000":120,"6000":150,"8000":190,"10000":210,"12000":240}}
+		},
+		"control_battery_max_discharge_current":{
+			"max":{"registers":[20,21],"factor":0.1,"name":"Rated power","values":{"5000":120,"6000":150,"8000":190,"10000":210,"12000":240}}
+		},
+		"control_min_pv_power_for_gen_start":{
+			"max":null,
+			"read_only":true,
+			"read_only_reason":"Maksimum R139 niepotwierdzone. Dostępny odczyt, zapis zablokowany."
+		},
+		"control_parallel_modbus_sn":{
+			"shift":10
+		},
+		"control_grid_standard":{
+			"raw_only":true,
+			"read_only":true,
+			"read_only_reason":"Mapa standardów sieci niepotwierdzona dla tego firmware. RAW/UNKNOWN, bez zapisu."
+		},
+		"control_configured_grid_phases":{
+			"raw_only":true,
+			"read_only":true,
+			"read_only_reason":"Kody konfiguracji faz niepotwierdzone dla tego firmware. RAW/UNKNOWN, bez zapisu."
+		}
+	}
+}

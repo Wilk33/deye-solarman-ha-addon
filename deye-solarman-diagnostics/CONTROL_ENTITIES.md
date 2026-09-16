@@ -1,11 +1,11 @@
-# Encje sterowania
+# Sterowanie
 
-Wersja 1.2.0 dodaje trzecią zakładkę Ingress: **Encje sterowania**. Ma osobny wynik skanu i wybór MQTT. Używa wyglądu, filtrów i układu kart znanych z zakładki Wykryte sensory.
+Wersja 1.2.1 udostępnia zakładkę Ingress: **Sterowanie**. Ma osobny wynik skanu i wybór MQTT. Używa wyglądu, filtrów i układu kart znanych z zakładki Sensory.
 
 ## Obsługa
 
-1. Otwórz **Encje sterowania** i wybierz **Skanuj teraz**. Skan odczytuje aktualne ustawienia, bez zapisu rejestrów.
-2. Przejrzyj wartości i HEX. **Test - odczytaj stan** wykonuje pojedynczy odczyt wybranej encji, bez publikacji MQTT i bez zmiany ustawienia.
+1. Otwórz **Sterowanie** i wybierz **Skanuj teraz**. Skan odczytuje aktualne ustawienia, bez zapisu rejestrów.
+2. Przejrzyj wartości, HEX i ewentualny powód blokady zapisu. Indywidualne przyciski testu zostały usunięte; stan odświeża skan.
 3. Zaznacz **MQTT** przy poprawnie odczytanych encjach i wybierz **Zapisz wybór MQTT**. Dodatek automatycznie przeładuje runtime.
 4. Steruj encjami z Home Assistant. Liczby są publikowane jako `number`, przełączniki jako `switch`, listy wyboru i godziny programów jako `select`, a zegar systemowy jako `text` w formacie `YYYY-MM-DD HH:MM:SS`.
 
@@ -45,7 +45,7 @@ Eksporter `tools/import_sunsynk_controls.py` wymaga checkoutu dokładnie powyżs
 
 Wiadomości MQTT trafiają do ograniczonej kolejki. Runtime obsługuje je przez tę samą blokadę co telemetrię, formuły i skany. Zmiana ustawienia wykonuje kolejno: odczyt aktualnego słowa, odczyt zależnych granic, walidację, kodowanie, zapis FC16 oraz odczyt kontrolny. Przy masce bitowej pozostałe bity pozostają zachowane.
 
-Implementacja zachowuje mapę i formaty Sunsynk, ale odrzuca wartości spoza zakresu zamiast przycinać je do granic. Odrzuca też NaN, nieskończoność i wartości niezgodne z krokiem. Wielosłowowy zegar jest zapisywany w jednej operacji FC16. Liczby nie przekraczają zakresu dostępnych słów nawet wtedy, gdy granica w źródle jest większa.
+Implementacja korzysta z mapy i formatów Sunsynk z lokalnymi korektami opisanymi poniżej. Odrzuca wartości spoza zakresu zamiast przycinać je do granic. Odrzuca też NaN, nieskończoność i wartości niezgodne z krokiem. Wielosłowowy zegar jest zapisywany w jednej operacji FC16. Liczby nie przekraczają zakresu dostępnych słów nawet wtedy, gdy granica w źródle jest większa.
 
 Komendy retained, obce klucze i polecenia dla odznaczonych encji są pomijane. Kolejka mieści 32 komendy; komenda wygasa po 10 sekundach, również podczas oczekiwania na skan. Udane komendy są rozdzielone co najmniej sekundą. Nie ma automatycznego ponawiania zapisu po timeout. Niepewny wynik lub błędny read-back blokuje dalsze zapisy do ponownego zapisania konfiguracji albo restartu dodatku. Same odczyty nadal mogą działać. Jedna blokada obejmuje tylko ten dodatek, nie inne klienty RS485 lub chmurę.
 
@@ -59,6 +59,23 @@ MQTT Discovery ma `optimistic: false` i `retain: false` dla komend. Stan i atryb
 ```
 
 Konfiguracja, wynik skanu i lista opublikowanych encji są zapisywane atomowo do `control_sensors.json`, w tym samym katalogu co `detected_sensors.yaml` (domyślnie `/config/control_sensors.json`). Usunięcie encji wycofuje Discovery z właściwej domeny `number`, `switch`, `select` lub `text`.
+
+## Korekty mapy w 1.2.1
+
+Korekty są zapisane w `catalogs/models/deye_sg04_sg05_3ph_lv/control-overrides.json` i nakładane po każdym imporcie Sunsynk. Aktualizacja wczytuje poprawione definicje także dla wcześniej zapisanych encji. Zachowuje ich klucze MQTT, własne nazwy i harmonogramy; stara domyślna nazwa pojemności jest zastępowana poprawną.
+
+| Rejestr | Bieżące zachowanie |
+| --- | --- |
+| R102 | Battery Capacity, Ah. Dotychczasowy klucz `control_battery_capacity_current` pozostaje dla ciągłości encji. |
+| R108/R109 | Maksimum wyznaczane z R20/R21 (moc znamionowa): 5/6/8/10/12 kW odpowiada 120/150/190/210/240 A. Nierozpoznana moc blokuje zapis, pozostawiając odczyt aktualnego prądu. |
+| R139 | Wartość jest odczytywana, np. 500 W. Fałszywy limit 100 W usunięto. Maksimum niepotwierdzone, więc zapis i tworzenie encji sterowania są zablokowane. |
+| R336 | Parallel Modbus SN: `(raw & 0xFC00)>>10`, zakres 0..63. Zapis przesuwa wartość o 10 bitów i zachowuje pozostałe pola rejestru. |
+| R182/R184 | RAW/UNKNOWN. Cała definicja pozostaje tylko do odczytu do potwierdzenia mapy firmware; żaden kod nie jest domyślnie interpretowany jako liczba faz lub standard sieci. |
+| R178/R228 | Nieznany stan pola, w tym 00, jest UNKNOWN / Not applicable. Nie jest zamieniany na Disable i nie staje się opcją możliwą do zapisu. Znane stany zachowują obsługę sterowania. |
+
+Runtime ponownie odczytuje stan przed każdą komendą i odrzuca zapis nieznanego pola. Dla już wybranej encji UNKNOWN publikowane są atrybuty RAW i niedostępność; nie jest wysyłana niepoprawna opcja do MQTT select. Encja może wrócić do sterowania po rozpoznanym odczycie. R139/R182/R184 są odznaczane, a ich wcześniej opublikowane Discovery jest wycofywane.
+
+Podstawa limitów oraz Ah: [instrukcja Deye SUN-(5-12)K-SG04LP3-EU, strona drukowana 36](https://www.deyeinverter.com/deyeinverter/2026/03/19/BManualSUN-5-12K-SG04LP3-EU20260319en.pdf) i [karta katalogowa Deye 8-12 kW](https://pl.deyeinverter.com/deyeinverter/2024/08/05/datasheet_sun-8-12k-sg04lp3_240729_pl.pdf). Pozostałe korekty bazują na masce źródłowej Sunsynk i wynikach odczytu przekazanych przez użytkownika 2026-09-16. Brak potwierdzonego maksimum R139 i słowników konkretnego firmware pozostaje jawnie oznaczony. Zgłoszone poprawne odczyty nie stanowią potwierdzenia fizycznych zapisów.
 
 ## Testowanie
 

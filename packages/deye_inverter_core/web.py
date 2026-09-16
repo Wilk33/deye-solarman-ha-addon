@@ -477,8 +477,8 @@ summary { padding: 11px 0; color: var(--green); cursor: pointer; font-family: "C
   </header>
 
   <nav class="tabs" aria-label="Pulpity konfiguracji">
-    <button class="tab active" type="button" data-tab="detected">Wykryte sensory</button>
-    <button class="tab" type="button" data-tab="control">Encje sterowania</button>
+    <button class="tab active" type="button" data-tab="detected">Sensory</button>
+    <button class="tab" type="button" data-tab="control">Sterowanie</button>
     <button class="tab" type="button" data-tab="custom">Własne sensory</button>
   </nav>
 
@@ -521,7 +521,7 @@ summary { padding: 11px 0; color: var(--green); cursor: pointer; font-family: "C
     <p id="custom-empty" hidden>Nie utworzono jeszcze wlasnych sensorow. Uzyj przycisku + Dodaj sensor.</p>
   </section>
   <section id="control-tab" class="tab-panel" hidden>
-    <p class="custom-intro">Skan i Test pobierają aktualny stan. Zaznaczenie MQTT udostępnia sterowanie wybraną encją w Home Assistant.</p>
+    <p class="custom-intro">Skan pobiera aktualny stan. Zaznaczenie MQTT udostępnia sterowanie wybraną encją w Home Assistant. Pola UNKNOWN i niepotwierdzone definicje mają zablokowany zapis.</p>
     <section class="actions">
       <button class="button" id="control-scan" type="button">Skanuj teraz</button>
       <button class="button secondary" id="control-reset" type="button">Reset konfiguracji</button>
@@ -540,7 +540,7 @@ summary { padding: 11px 0; color: var(--green); cursor: pointer; font-family: "C
       <div class="select-control" data-select-control>
         <input id="control-filter" type="hidden" value="all">
         <button class="select-trigger" type="button" data-select-trigger aria-haspopup="listbox" aria-expanded="false"><span class="select-value">Wszystkie statusy</span><span class="select-chevron">&#9662;</span></button>
-        <div class="select-options" role="listbox"><button class="select-option selected" type="button" data-select-option data-value="all">Wszystkie statusy</button><button class="select-option" type="button" data-select-option data-value="supported">Supported</button><button class="select-option" type="button" data-select-option data-value="timeout">Timeout</button><button class="select-option" type="button" data-select-option data-value="invalid_value">Invalid value</button></div>
+        <div class="select-options" role="listbox"><button class="select-option selected" type="button" data-select-option data-value="all">Wszystkie statusy</button><button class="select-option" type="button" data-select-option data-value="supported">Supported</button><button class="select-option" type="button" data-select-option data-value="unknown">UNKNOWN / Not applicable</button><button class="select-option" type="button" data-select-option data-value="timeout">Timeout</button><button class="select-option" type="button" data-select-option data-value="invalid_value">Invalid value</button></div>
       </div>
     </section>
     <p id="control-empty">Brak danych skanu. Użyj Skanuj teraz.</p>

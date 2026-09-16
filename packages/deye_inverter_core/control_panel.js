@@ -18,21 +18,22 @@ function controlCard(entry)
 {
 	const definition=entry.definition;
 	const scan=entry.last_scan || {};
-	const choices=definition.options ? Object.entries(definition.options).map(([raw,label])=>`${raw}: ${label}`).join("; ") : "";
-	const bounds=definition.method === "NumberRWSensor" ? `Zakres: ${scan.min ?? "odczytywany"}..${scan.max ?? "odczytywany"}; krok: ${Math.abs(definition.factor)}` : "";
+	const choices=definition.options && !definition.raw_only ? Object.entries(definition.options).map(([raw,label])=>`${raw}: ${label}`).join("; ") : "";
+	const bounds=definition.method === "NumberRWSensor" ? (definition.max === null ? "Zakres zapisu niepotwierdzony" : `Zakres: ${scan.min ?? "odczytywany"}..${scan.max ?? "odczytywany"}; krok: ${Math.abs(definition.factor)}`) : "";
+	const writeReason=definition.read_only_reason || scan.write_reason;
 	return `<article class="sensor ${entry.monitor ? "selected" : ""}">
 		<div class="sensor-head"><div><h3>${esc(definition.name)}</h3><span class="key">${esc(entry.key)} / R${definition.registers.join(",")}</span>
 		<div class="reading"><b>${esc(scan.value ?? "-")} ${esc(definition.unit)}</b><div class="raw-line"><span class="raw-label">HEX</span><code>${esc((scan.raw_hex || []).join(", ") || "-")}</code></div></div>
 		<div class="badges">${statusBadge(scan.status)}<span class="badge">${esc(controlMethodNames[definition.method])}</span></div>
 		${scan.error ? `<p class="notice">${esc(scan.error)}</p>` : ""}</div>
-		<label class="toggle"><input type="checkbox" data-control-monitor="${esc(entry.key)}" ${entry.monitor ? "checked" : ""} ${scan.status !== "supported" && !entry.monitor ? "disabled" : ""}> MQTT</label></div>
-		<div class="fields"><button class="button secondary" type="button" data-control-test="${esc(entry.key)}">Test - odczytaj stan</button></div>
+		<label class="toggle"><input type="checkbox" data-control-monitor="${esc(entry.key)}" ${entry.monitor ? "checked" : ""} ${definition.read_only || ((scan.status !== "supported" || scan.write_allowed === false) && !entry.monitor) ? "disabled" : ""}> MQTT</label></div>
+		${writeReason ? `<p class="notice">${esc(writeReason)}</p>` : ""}
 		<details><summary>Konfiguruj encję i odpytywanie</summary><div class="fields">
 		${controlField(entry,"name","Nazwa")}${controlField(entry,"icon","Ikona")}
 		${controlField(entry,"read_every","Odczyt co sekund","number")}${controlField(entry,"report_every","Ponowna publikacja co sekund","number")}
 		${controlField(entry,"change_by","Próg zmiany","number")}
 		<label class="toggle"><input type="checkbox" data-control-key="${esc(entry.key)}" data-control-field="retain" ${definition.retain ? "checked" : ""}> Zachowaj stan MQTT</label>
-		<p class="notice wide">${esc(bounds)}<br>Maska: ${definition.bitmask ? "0x"+definition.bitmask.toString(16).toUpperCase() : "cały rejestr"}<br>${esc(choices)}<br>Metoda: odczyt, kodowanie wartości, zapis FC16, odczyt kontrolny.</p>
+		<p class="notice wide">${esc(bounds)}<br>Maska: ${definition.bitmask ? "0x"+definition.bitmask.toString(16).toUpperCase() : "cały rejestr"}${definition.shift ? `; przesunięcie: ${definition.shift} bitów` : ""}<br>${esc(choices)}<br>${definition.read_only ? "Tylko odczyt." : "Metoda: odczyt, kodowanie wartości, zapis FC16, odczyt kontrolny."}</p>
 		</div></details></article>`;
 }
 
@@ -113,23 +114,6 @@ byId("control-tab").addEventListener("change",event=>
 		byId("control-selected").textContent=controlSensors.filter(e=>e.monitor).length;
 	}
 	else entry.definition[target.dataset.controlField]=target.type === "checkbox" ? target.checked : target.value;
-});
-
-byId("control-tab").addEventListener("click",async event=>
-{
-	const button=event.target.closest("[data-control-test]");
-	if (!button) return;
-	button.disabled=true;
-	try
-	{
-		const result=await request("api/controls/test",{method:"POST",body:JSON.stringify({key:button.dataset.controlTest})});
-		const entry=controlSensors.find(item=>item.key === button.dataset.controlTest);
-		entry.last_scan=result;
-		renderControls();
-		controlMessage("Test zakończony: odczytano aktualny stan.");
-	}
-	catch (error) { controlMessage(error.message,true); }
-	finally { button.disabled=false; }
 });
 
 for (const action of ["scan","save","reset","delete"]) byId(`control-${action}`).addEventListener("click",()=>controlAction(action));

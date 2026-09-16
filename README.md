@@ -1,8 +1,8 @@
 # Deye Solarman HA Add-on
 
-Wersja `1.2.0` dodatku Home Assistant OS do lokalnej komunikacji z falownikiem Deye przez logger Solarman TCP. Dodatek odczytuje telemetrię oraz aktualne ustawienia, pozwala zweryfikować ich dostępność w panelu Ingress i publikuje wybrane sensory oraz encje sterowania przez MQTT Discovery.
+Wersja `1.2.1` dodatku Home Assistant OS do lokalnej komunikacji z falownikiem Deye przez logger Solarman TCP. Dodatek odczytuje telemetrię oraz aktualne ustawienia, pozwala zweryfikować ich dostępność w panelu Ingress i publikuje wybrane sensory oraz encje sterowania przez MQTT Discovery.
 
-Nowa zakładka **Encje sterowania** korzysta ze 119 definicji profilu Sunsynk `three_phase_lv`. Skan i przycisk **Test** wyłącznie odczytują stan. Dopiero komenda wysłana przez wybraną encję MQTT zmienia ustawienie. Szczegóły, źródła mapy i zasady walidacji opisuje [instrukcja encji sterowania](deye-solarman-diagnostics/CONTROL_ENTITIES.md).
+Zakładka **Sterowanie** korzysta ze 119 definicji profilu Sunsynk `three_phase_lv`. Skan wyłącznie odczytuje stan. Pola nieznane i definicje bez potwierdzonego zakresu mają blokadę zapisu. Dopiero komenda wysłana przez wybraną encję MQTT zmienia ustawienie. Szczegóły, źródła mapy i zasady walidacji opisuje [instrukcja encji sterowania](deye-solarman-diagnostics/CONTROL_ENTITIES.md).
 
 ## Źródła i pakowanie od wersji 1.2.0
 
