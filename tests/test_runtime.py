@@ -6,6 +6,8 @@ import sys
 import tempfile
 import threading
 import unittest
+from contextlib import contextmanager
+from types import SimpleNamespace
 from urllib.request import Request
 from urllib.request import urlopen
 from urllib.error import HTTPError
@@ -20,6 +22,7 @@ APP_ROOT=Path(__file__).resolve().parents[1]/"packages"
 sys.path.insert(0, str(APP_ROOT))
 
 from deye_inverter_core.config import load_config
+from deye_inverter_core.configuration_coordinator import ConfigurationCoordinator
 from deye_inverter_core.custom_sensors import load_custom_sensors
 from deye_inverter_core.custom_sensors import save_custom_sensors
 from deye_inverter_core.codec import decode_registers
@@ -260,6 +263,204 @@ class RuntimeTests(unittest.TestCase):
 			self.assertFalse(queue.exists())
 			self.assertFalse(controls.path.exists())
 
+	def test_panel_uses_the_injected_runtime_configuration_coordinator(self) -> None:
+		with tempfile.TemporaryDirectory() as directory:
+			detected=Path(directory)/"detected.yaml"
+			coordinator=ConfigurationCoordinator([detected])
+
+			panel=IngressPanel(
+				str(detected),
+				lambda:{},
+				configuration_coordinator=coordinator,
+			)
+
+			self.assertIs(panel._configuration,coordinator)
+
+	def test_runtime_discovery_ack_does_not_clear_a_concurrent_panel_queue_update(self) -> None:
+		from deye_inverter_core import main as runtime_main
+		from deye_inverter_core.scanner import _queue_discovery_removal_keys
+
+		with tempfile.TemporaryDirectory() as directory:
+			root=Path(directory)
+			detected=root/"detected.yaml"
+			custom=root/"custom.yaml"
+			queue_path=root/"deye_solarman_discovery_removals.yaml"
+			_queue_discovery_removal_keys(detected,{"old_sensor"})
+			coordinator=ConfigurationCoordinator([detected,custom,queue_path])
+			started=threading.Event()
+			release=threading.Event()
+			updated=threading.Event()
+			class BlockingMqtt:
+				@contextmanager
+				def discovery_transaction(self):
+					yield
+
+				def remove_discovery(self,key):
+					started.set()
+					if not release.wait(5):
+						raise TimeoutError("test did not release discovery")
+
+			config=SimpleNamespace(
+				scan=SimpleNamespace(detected_sensors_file=str(detected)),
+				profiles=SimpleNamespace(custom_sensors_file=str(custom)),
+			)
+			publisher=threading.Thread(target=lambda:runtime_main._publish_sensor_configuration(
+				config,
+				BlockingMqtt(),
+				[],
+				{},
+				reset_state=False,
+				configuration_coordinator=coordinator,
+			))
+			def update_queue():
+				coordinator.apply(lambda:_queue_discovery_removal_keys(detected,{"new_sensor"}))
+				updated.set()
+
+			publisher.start()
+			self.assertTrue(started.wait(5))
+			writer=threading.Thread(target=update_queue)
+			writer.start()
+			self.assertFalse(updated.wait(0.1))
+			release.set()
+			publisher.join(5)
+			writer.join(5)
+
+			self.assertEqual(load_pending_discovery_removals(str(detected)),["new_sensor"])
+
+	def test_runtime_discovery_rollback_finishes_before_a_concurrent_panel_update(self) -> None:
+		from deye_inverter_core import main as runtime_main
+		from deye_inverter_core.scanner import _queue_discovery_removal_keys
+
+		with tempfile.TemporaryDirectory() as directory:
+			root=Path(directory)
+			detected=root/"detected.yaml"
+			custom=root/"custom.yaml"
+			queue_path=root/"deye_solarman_discovery_removals.yaml"
+			_queue_discovery_removal_keys(detected,{"old_sensor"})
+			coordinator=ConfigurationCoordinator([detected,custom,queue_path])
+			started=threading.Event()
+			release=threading.Event()
+			updated=threading.Event()
+			errors=[]
+			class FailingMqtt:
+				@contextmanager
+				def discovery_transaction(self):
+					yield
+
+				def remove_discovery(self,key):
+					started.set()
+					if not release.wait(5):
+						raise TimeoutError("test did not release discovery")
+					raise ConnectionError("broker unavailable")
+
+			config=SimpleNamespace(
+				scan=SimpleNamespace(detected_sensors_file=str(detected)),
+				profiles=SimpleNamespace(custom_sensors_file=str(custom)),
+			)
+			def publish():
+				try:
+					coordinator.apply(lambda:runtime_main._publish_sensor_configuration(
+						config,
+						FailingMqtt(),
+						[],
+						{},
+						reset_state=False,
+					))
+				except Exception as error:
+					errors.append(error)
+			def update_queue():
+				coordinator.apply(lambda:_queue_discovery_removal_keys(detected,{"new_sensor"}))
+				updated.set()
+
+			publisher=threading.Thread(target=publish)
+			publisher.start()
+			self.assertTrue(started.wait(5))
+			writer=threading.Thread(target=update_queue)
+			writer.start()
+			self.assertFalse(updated.wait(0.1))
+			release.set()
+			publisher.join(5)
+			writer.join(5)
+
+			self.assertEqual(len(errors),1)
+			self.assertIsInstance(errors[0],ConnectionError)
+			self.assertEqual(load_pending_discovery_removals(str(detected)),["new_sensor","old_sensor"])
+
+	def test_runtime_configuration_retries_and_orders_offline_before_reload_and_handler_activation(self) -> None:
+		from deye_inverter_core import main as runtime_main
+		from deye_inverter_core.controls import ControlService
+
+		with tempfile.TemporaryDirectory() as directory:
+			root=Path(directory)
+			detected=root/"detected.yaml"
+			custom=root/"custom.yaml"
+			controls=ControlService(str(root/"controls.json"),None,threading.Lock(),0)
+			coordinator=ConfigurationCoordinator([detected,custom,controls.path])
+			events=[]
+			class RetryMqtt:
+				def __init__(self):
+					self.handler="old-handler"
+					self.configure_attempts=0
+
+				def disable_control_commands(self):
+					self.handler=None
+					events.append("disable")
+
+				@contextmanager
+				def discovery_transaction(self):
+					yield
+
+				def publish_discovery(self,sensor):
+					events.append("discovery")
+
+				def sensor_availability(self,sensor,available):
+					events.append("offline" if not available else "online")
+
+				def configure_controls(self,handler,keys):
+					self.configure_attempts+=1
+					events.append("activate")
+					if self.configure_attempts == 1:
+						raise ConnectionError("subscribe failed")
+					self.handler=handler
+
+				def remove_control_discovery(self,definition):
+					pass
+
+			class SensorRuntimeProbe:
+				def reload(self,sensors, *, reset_state=False):
+					events.append("reload")
+			sensor=SensorDefinition("value","Value",[100],"uint16",transport="modbus_rtu")
+			config=SimpleNamespace(
+				scan=SimpleNamespace(detected_sensors_file=str(detected)),
+				profiles=SimpleNamespace(custom_sensors_file=str(custom)),
+			)
+			mqtt=RetryMqtt()
+
+			with patch.object(runtime_main,"_load_runtime_sensors",return_value=[sensor]),patch.object(
+				runtime_main.time,
+				"sleep",
+			):
+				control_runtime=runtime_main._apply_runtime_configuration_until_success(
+					config,
+					mqtt,
+					SensorRuntimeProbe(),
+					{},
+					coordinator,
+					Mock(),
+					controls,
+					reset_state=True,
+				)
+
+			self.assertEqual(mqtt.configure_attempts,2)
+			self.assertIsNotNone(control_runtime)
+			self.assertIsNotNone(mqtt.handler)
+			self.assertGreaterEqual(events.count("disable"),2)
+			last_offline=max(index for index,event in enumerate(events) if event == "offline")
+			last_activate=max(index for index,event in enumerate(events) if event == "activate")
+			last_reload=max(index for index,event in enumerate(events) if event == "reload")
+			self.assertLess(last_offline,last_activate)
+			self.assertLess(last_activate,last_reload)
+
 	def test_worker_iteration_marks_each_group_and_formula_before_physical_read(self) -> None:
 		events=[]
 		class OrderedTransport(RuntimeTransport):
@@ -390,6 +591,44 @@ class RuntimeTests(unittest.TestCase):
 		self.assertEqual(transport.reads,[(100,1),(100,1)])
 		self.assertNotIn(("value",False),mqtt.availability)
 
+	def test_sensor_runtime_commits_timeout_state_when_the_whole_batch_raises(self) -> None:
+		class TimeoutTransport(RuntimeTransport):
+			def read_holding_registers(self,start: int,count: int) -> list[int]:
+				self.reads.append((start,count))
+				raise TimeoutError("device timeout")
+		transport=TimeoutTransport("modbus_rtu")
+		manager=TransportManager([TransportSlot(transport,make_polling(),10)])
+		sensor=SensorDefinition("value","Value",[100],"uint16",transport="modbus_rtu")
+		state={"value":SensorState()}
+		runtime=SensorRuntime(manager,FakeMqtt(),[sensor],state)
+
+		runtime.run_once("modbus_rtu")
+
+		self.assertEqual(state["value"].last_status,"timeout")
+		self.assertEqual(state["value"].timeout_count,1)
+		self.assertEqual(runtime._reports["modbus_rtu"][0]["status"],"timeout")
+
+	def test_sensor_runtime_commits_partial_current_generation_before_connection_error(self) -> None:
+		class PartialTransport(RuntimeTransport):
+			def read_holding_registers(self,start: int,count: int) -> list[int]:
+				self.reads.append((start,count))
+				if start == 20:
+					raise SolarmanConnectionClosedError("connection lost")
+				return [7]
+		transport=PartialTransport("modbus_rtu")
+		manager=TransportManager([TransportSlot(transport,make_polling(),10)])
+		first=SensorDefinition("first","First",[10],"uint16",transport="modbus_rtu")
+		second=SensorDefinition("second","Second",[20],"uint16",transport="modbus_rtu")
+		state={"first":SensorState(),"second":SensorState()}
+		runtime=SensorRuntime(manager,FakeMqtt(),[first,second],state)
+
+		runtime.run_once("modbus_rtu")
+
+		self.assertEqual(state["first"].last_value,7)
+		self.assertEqual(state["first"].last_status,"supported")
+		self.assertEqual(state["second"].last_status,"never_read")
+		self.assertEqual([item["sensor"] for item in runtime._reports["modbus_rtu"]],["first"])
+
 	def test_sensor_worker_survives_mqtt_publish_failure_and_runs_next_deadline(self) -> None:
 		class FlakyMqtt(FakeMqtt):
 			def __init__(self):
@@ -498,6 +737,70 @@ class RuntimeTests(unittest.TestCase):
 		runtime._worker_loop("modbus_rtu")
 
 		self.assertEqual(events,["clear","run","wait","clear","run"])
+
+	def test_panel_stop_waits_for_manual_sensor_scan(self) -> None:
+		started=threading.Event()
+		release=threading.Event()
+		stopped=threading.Event()
+		def scan():
+			started.set()
+			if not release.wait(5):
+				raise TimeoutError("test did not release sensor scan")
+			return {}
+		panel=IngressPanel("unused.yaml",scan,port=0)
+		panel.start()
+		try:
+			self.assertTrue(panel._start_scan())
+			self.assertTrue(started.wait(5))
+			stopper=threading.Thread(target=lambda:(panel.stop(),stopped.set()))
+			stopper.start()
+			self.assertFalse(stopped.wait(0.75))
+			release.set()
+			stopper.join(5)
+			self.assertTrue(stopped.is_set())
+		finally:
+			release.set()
+			panel.stop()
+
+	def test_panel_stop_waits_for_active_http_sensor_test(self) -> None:
+		started=threading.Event()
+		release=threading.Event()
+		stopped=threading.Event()
+		def custom_test(definition):
+			started.set()
+			if not release.wait(5):
+				raise TimeoutError("test did not release HTTP test")
+			return {"value":1}
+		with tempfile.TemporaryDirectory() as directory:
+			panel=IngressPanel(
+				str(Path(directory)/"detected.yaml"),
+				lambda:{},
+				custom_sensors_file=str(Path(directory)/"custom.yaml"),
+				custom_test_handler=custom_test,
+				port=0,
+			)
+			panel.start()
+			port=panel._server.server_address[1]
+			request=Request(
+				f"http://127.0.0.1:{port}/api/custom-sensors/test",
+				data=b'{"definition":{}}',
+				headers={"Content-Type":"application/json"},
+				method="POST",
+			)
+			request_thread=threading.Thread(target=lambda:urlopen(request).read())
+			request_thread.start()
+			try:
+				self.assertTrue(started.wait(5))
+				stopper=threading.Thread(target=lambda:(panel.stop(),stopped.set()))
+				stopper.start()
+				self.assertFalse(stopped.wait(0.75))
+				release.set()
+				request_thread.join(5)
+				stopper.join(5)
+				self.assertTrue(stopped.is_set())
+			finally:
+				release.set()
+				panel.stop()
 
 	def test_custom_sensor_test_reads_only_its_selected_transport(self) -> None:
 		solarman=RuntimeTransport("solarman_tcp",{10040:11})

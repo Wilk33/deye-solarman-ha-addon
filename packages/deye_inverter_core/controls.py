@@ -249,20 +249,11 @@ class ControlService:
 		self.access_lock=access_lock
 		self.spacing=spacing
 		self.lock=threading.RLock()
-		self.blocked_transports: set[str]=set()
+		self.writes_blocked=False
+		self.configuration_coordinator=None
 		self.configuration_action=lambda action:action()
+		self._scan_thread: threading.Thread | None=None
 		self.job={"status":"idle","message":"Skan odczytuje aktualny stan."}
-
-	@property
-	def writes_blocked(self) -> bool:
-		return bool(self.blocked_transports)
-
-	@writes_blocked.setter
-	def writes_blocked(self,value: bool) -> None:
-		if value:
-			self.blocked_transports.update(TRANSPORT_IDS)
-		else:
-			self.blocked_transports.clear()
 
 	def load(self) -> dict:
 		with self.lock:
@@ -443,8 +434,16 @@ class ControlService:
 			if self.job["status"] == "running":
 				return False
 			self.job={"status":"running","message":"Odczyt aktualnych ustawień falownika."}
-		threading.Thread(target=self._scan,args=(changed,),daemon=True,name="control-scan").start()
+			thread=threading.Thread(target=self._scan,args=(changed,),name="control-scan")
+			self._scan_thread=thread
+			thread.start()
 		return True
+
+	def wait_for_idle(self) -> None:
+		with self.lock:
+			thread=self._scan_thread
+		if thread is not None and thread is not threading.current_thread():
+			thread.join()
 
 	def _scan(self, changed: Any) -> None:
 		try:
@@ -571,42 +570,71 @@ class ControlRuntime:
 		self.last_read={}
 		self.last_publish={}
 		self.last_value={}
-		self.blocked_transports=set(service.blocked_transports)
+		self.blocked=service.writes_blocked
 		self.last_command=0.0
 
-	@property
-	def blocked(self) -> bool:
-		return bool(self.blocked_transports)
-
-	def _transport_blocked(self,key: str) -> bool:
-		entry=self.enabled.get(key)
-		return bool(entry and entry["definition"]["transport"] in self.blocked_transports)
-
 	def receive(self, key: str, value: str, retained: bool) -> None:
-		if retained or key not in self.enabled or self._transport_blocked(key):
+		if retained or key not in self.enabled or self.blocked:
 			return
 		try:
 			self.queue.put_nowait((self.clock(),key,value))
 		except queue.Full:
 			LOGGER.warning("Control command queue full")
 
-	def start(self) -> None:
-		transaction=getattr(type(self.mqtt),"discovery_transaction",None)
-		context=transaction(self.mqtt) if transaction is not None else nullcontext()
-		with context:
-			previous_definitions=self.service.published_definitions()
-			data=self.service.load()
-			for key in data.get("published",[]):
-				definition=CONTROLS.get(key) or RETIRED_CONTROLS.get(key) or previous_definitions.get(key)
-				if key not in self.enabled and definition:
-					self.mqtt.remove_control_discovery(definition)
-			self.mqtt.configure_controls(self.receive,list(self.enabled))
-			# Persist before publication so interrupted starts can remove retained entries later.
-			with self.service.lock:
+	def start(self, *, activate: bool=True) -> None:
+		disable=getattr(type(self.mqtt),"disable_control_commands",None)
+		if disable is not None:
+			disable(self.mqtt)
+		def prepare() -> None:
+			transaction=getattr(type(self.mqtt),"discovery_transaction",None)
+			context=transaction(self.mqtt) if transaction is not None else nullcontext()
+			with context:
+				previous_definitions=self.service.published_definitions()
 				data=self.service.load()
-				data["published"]=list(self.enabled)
-				self.service.store(data)
-		self.tick()
+				for key in data.get("published",[]):
+					definition=CONTROLS.get(key) or RETIRED_CONTROLS.get(key) or previous_definitions.get(key)
+					if key not in self.enabled and definition:
+						self.mqtt.remove_control_discovery(definition)
+				# Persist before publication so interrupted starts can remove retained entries later.
+				with self.service.lock:
+					data=self.service.load()
+					data["published"]=list(self.enabled)
+					self.service.store(data)
+				self._initialize_controls()
+		self.service.configuration_action(prepare)
+		if activate:
+			self.activate()
+
+	def activate(self) -> None:
+		self.mqtt.configure_controls(self.receive,list(self.enabled))
+
+	def _initialize_controls(self) -> None:
+		now=self.clock()
+		for key,entry in self.enabled.items():
+			transport_id=entry["definition"]["transport"]
+			self.last_read[key]=now
+			try:
+				if self.manager is not None:
+					result=self.manager.run(transport_id,lambda client:self.service.read(client,key))
+				else:
+					with self.service.access_lock:
+						result=self.service.read(self.client,key)
+			except TransportConnectionClosedError:
+				self.mqtt.control_availability(key,False)
+				if self.manager is None:
+					raise
+				continue
+			except Exception as error:
+				self.mqtt.control_availability(key,False)
+				LOGGER.warning("Control initial read failed key=%s: %s",key,error)
+				continue
+			result={**result,"transport":transport_id}
+			if result["write_allowed"]:
+				self.mqtt.publish_control_discovery(entry,result)
+			self.mqtt.publish_control_state(entry,result)
+			self.last_value[key]=result["value"]
+			self.last_publish[key]=now
+			self.mqtt.control_availability(key,not self.blocked and result["write_allowed"])
 
 	def tick(self) -> None:
 		now=self.clock()
@@ -617,7 +645,7 @@ class ControlRuntime:
 				pass
 			else:
 				transport_id=self.enabled[key]["definition"]["transport"]
-				if now-created <= 10:
+				if not self.blocked and now-created <= 10:
 					try:
 						with self.service.lock:
 							if self.clock()-created > 10:
@@ -627,8 +655,6 @@ class ControlRuntime:
 							if live_entry is None:
 								raise ValueError("Control deselected")
 							transport_id=live_entry["definition"]["transport"]
-							if transport_id in self.blocked_transports:
-								raise ValueError("Control transport is blocked after an uncertain write")
 							if self.manager is not None:
 								def before_io() -> None:
 									if self.clock()-created > 10:
@@ -655,12 +681,11 @@ class ControlRuntime:
 					except ValueError as error:
 						LOGGER.warning("Control command rejected key=%s: %s",key,error)
 					except ControlWriteUncertainError:
-						self.blocked_transports.add(transport_id)
-						self.service.blocked_transports.add(transport_id)
-						for control_key,configured in self.enabled.items():
-							if configured["definition"]["transport"] == transport_id:
-								self.mqtt.control_availability(control_key,False)
-						LOGGER.exception("Control writes blocked for transport=%s until configuration reload",transport_id)
+						self.blocked=True
+						self.service.writes_blocked=True
+						for control_key in self.enabled:
+							self.mqtt.control_availability(control_key,False)
+						LOGGER.exception("All control writes blocked until configuration reload after uncertain transport=%s result",transport_id)
 					except (ControlWriteNotStartedError,TransportConnectionClosedError) as error:
 						self.mqtt.control_availability(key,False)
 						LOGGER.warning("Control write did not start key=%s transport=%s: %s",key,transport_id,error)
@@ -669,9 +694,6 @@ class ControlRuntime:
 						LOGGER.warning("Control command failed key=%s transport=%s: %s",key,transport_id,error)
 		for key,entry in self.enabled.items():
 			transport_id=entry["definition"]["transport"]
-			if transport_id in self.blocked_transports:
-				self.mqtt.control_availability(key,False)
-				continue
 			if now-self.last_read.get(key,-math.inf) < entry["definition"]["read_every"]:
 				continue
 			self.last_read[key]=now
@@ -693,7 +715,7 @@ class ControlRuntime:
 					self.mqtt.publish_control_state(entry,result)
 					self.last_value[key]=value
 					self.last_publish[key]=now
-				self.mqtt.control_availability(key,transport_id not in self.blocked_transports and result["write_allowed"])
+				self.mqtt.control_availability(key,not self.blocked and result["write_allowed"])
 			except TransportConnectionClosedError:
 				self.mqtt.control_availability(key,False)
 				if self.manager is None:

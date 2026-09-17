@@ -41,6 +41,7 @@ class IngressPanel:
 		custom_save_handler: Callable[[list[dict[str, Any]]], dict[str, Any]] | None=None,
 		port: int=8099,
 		control_service: Any=None,
+		configuration_coordinator: ConfigurationCoordinator | None=None,
 	) -> None:
 		self._detected_sensors_file=detected_sensors_file
 		self._scan_handler=scan_handler
@@ -59,8 +60,9 @@ class IngressPanel:
 			tracked.append(Path(custom_sensors_file).with_name("deye_solarman_discovery_removals.yaml"))
 		if control_service is not None:
 			tracked.append(control_service.path)
-		self._configuration=ConfigurationCoordinator(tracked)
+		self._configuration=configuration_coordinator or ConfigurationCoordinator(tracked)
 		if self._controls is not None:
+			self._controls.configuration_coordinator=self._configuration
 			self._controls.configuration_action=self._configuration.apply
 		self._job_lock=threading.Lock()
 		self._job={
@@ -70,13 +72,14 @@ class IngressPanel:
 		}
 		self._server: ThreadingHTTPServer | None=None
 		self._thread: threading.Thread | None=None
+		self._scan_thread: threading.Thread | None=None
 
 	def start(self) -> None:
 		if self._server is not None:
 			return
 		handler=self._build_handler()
 		server=ThreadingHTTPServer(("0.0.0.0",self._port),handler)
-		server.daemon_threads=True
+		server.daemon_threads=False
 		self._server=server
 		self._thread=threading.Thread(
 			target=server.serve_forever,
@@ -87,12 +90,21 @@ class IngressPanel:
 		success(LOGGER,"Ingress configuration panel listening on port %s",self._port)
 
 	def stop(self) -> None:
-		if self._server is None:
-			return
-		self._server.shutdown()
-		self._server.server_close()
+		server=self._server
+		server_thread=self._thread
+		if server is not None:
+			server.shutdown()
+			server.server_close()
+		if server_thread is not None and server_thread is not threading.current_thread():
+			server_thread.join()
+		scan_thread=self._scan_thread
+		if scan_thread is not None and scan_thread is not threading.current_thread():
+			scan_thread.join()
+		if self._controls is not None:
+			self._controls.wait_for_idle()
 		self._server=None
 		self._thread=None
+		self._scan_thread=None
 
 	def _build_handler(self) -> type[BaseHTTPRequestHandler]:
 		panel=self
@@ -316,12 +328,14 @@ class IngressPanel:
 				"message": "Laczenie z loggerem Solarman i skanowanie kandydatow.",
 				"result": None,
 			}
-		threading.Thread(target=self._run_scan,name="deye-solarman-scan",daemon=True).start()
+		thread=threading.Thread(target=self._run_scan,name="deye-solarman-scan")
+		self._scan_thread=thread
+		thread.start()
 		return True
 
 	def _run_scan(self) -> None:
 		try:
-			result=self._scan_handler()
+			result=self._configuration.apply(self._scan_handler)
 		except Exception as error:
 			LOGGER.exception("Ingress scan failed")
 			with self._job_lock:

@@ -281,6 +281,25 @@ class ControlTests(unittest.TestCase):
 		runtime.tick()
 		self.assertEqual(client.writes,[])
 
+	def test_control_service_waits_for_active_scan_thread(self):
+		started=threading.Event()
+		release=threading.Event()
+		finished=threading.Event()
+		def scan(changed):
+			started.set()
+			if not release.wait(5):
+				raise TimeoutError("test did not release control scan")
+		self.service._scan=scan
+		self.assertTrue(self.service.start_scan(lambda:None))
+		self.assertTrue(started.wait(5))
+		waiter=threading.Thread(target=lambda:(self.service.wait_for_idle(),finished.set()))
+		waiter.start()
+		self.assertFalse(finished.wait(0.1))
+		release.set()
+		waiter.join(5)
+
+		self.assertTrue(finished.is_set())
+
 	def test_saved_parallel_scan_is_redecoded_after_upgrade(self):
 		entry=self.service.entry("control_parallel_modbus_sn")
 		entry["definition"].pop("shift",None)
@@ -463,9 +482,10 @@ class ControlTests(unittest.TestCase):
 
 		runtime.tick()
 
-		self.assertEqual(manager.calls,["modbus_rtu"])
+		self.assertNotIn("solarman_tcp",manager.calls)
 		self.assertEqual(solarman.writes,[])
 		self.assertEqual(len(rs485.writes),1)
+		self.assertGreaterEqual(len(rs485.reads),2)
 		self.assertTrue(runtime.blocked)
 
 	def test_command_ttl_is_rechecked_inside_selected_slot_before_register_io(self):
@@ -513,7 +533,7 @@ class ControlTests(unittest.TestCase):
 		with patch.object(self.service,"load",side_effect=OSError("configuration unavailable")):
 			runtime.tick()
 
-		self.assertEqual(runtime.blocked_transports,set())
+		self.assertFalse(runtime.blocked)
 
 	def test_prewrite_transport_failure_does_not_block_future_writes(self):
 		key="control_grid_charge_battery_current"
@@ -529,10 +549,10 @@ class ControlTests(unittest.TestCase):
 
 		runtime.tick()
 
-		self.assertEqual(runtime.blocked_transports,set())
+		self.assertFalse(runtime.blocked)
 		self.assertEqual(client.writes,[])
 
-	def test_uncertain_write_blocks_only_selected_transport(self):
+	def test_uncertain_write_blocks_all_future_writes_but_keeps_control_reads_running(self):
 		failed=self.service.entry("control_grid_charge_battery_current")
 		failed["definition"]["transport"]="modbus_rtu"
 		failed["last_scan"]={"modbus_rtu":{"status":"supported","write_allowed":True}}
@@ -559,9 +579,11 @@ class ControlTests(unittest.TestCase):
 
 		runtime.tick()
 
-		self.assertEqual(runtime.blocked_transports,{"modbus_rtu"})
+		self.assertTrue(runtime.blocked)
 		self.assertEqual(len(modbus.writes),1)
-		self.assertEqual(solarman.writes,[(80,[1])])
+		self.assertEqual(solarman.writes,[])
+		self.assertGreaterEqual(len(modbus.reads),2)
+		self.assertGreaterEqual(len(solarman.reads),1)
 
 	def test_control_availability_is_isolated_by_selected_transport(self):
 		failed=self.service.entry("control_grid_charge_battery_current")
@@ -608,6 +630,24 @@ class ControlTests(unittest.TestCase):
 		mqtt._on_control_message(None,None,SimpleNamespace(topic=mqtt.control_command_topic("control_load_limit"),payload=b"x"*129,retain=False))
 		mqtt._on_control_message(None,None,SimpleNamespace(topic=mqtt.control_command_topic("control_load_limit"),payload=b"\xff",retain=False))
 		callback.assert_called_once_with("control_load_limit","Essentials",False)
+
+	def test_failed_control_subscription_disables_the_stale_command_handler(self):
+		config=MqttConfig("broker",1883,"","","test","deye","homeassistant",True)
+		mqtt=MqttPublisher(config,InverterConfig("123","Inverter","Deye","SG05LP3"))
+		mqtt._client=Mock()
+		old_topic=mqtt.control_command_topic("control_load_limit")
+		old_handler=Mock()
+		mqtt._control_topics={old_topic:"control_load_limit"}
+		mqtt._control_handler=old_handler
+		mqtt._client.subscribe.side_effect=ConnectionError("subscribe failed")
+
+		with self.assertRaisesRegex(ConnectionError,"subscribe failed"):
+			mqtt.configure_controls(Mock(),["control_inverter_enabled"])
+
+		self.assertIsNone(mqtt._control_handler)
+		self.assertEqual(mqtt._control_topics,{old_topic:"control_load_limit"})
+		mqtt._on_control_message(None,None,SimpleNamespace(topic=old_topic,payload=b"25",retain=False))
+		old_handler.assert_not_called()
 
 	def test_ingress_control_routes_and_test_have_no_write_side_effect(self):
 		key="control_grid_charge_battery_current"

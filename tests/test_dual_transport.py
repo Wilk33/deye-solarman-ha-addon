@@ -688,6 +688,53 @@ class SolarmanConnectionTests(unittest.TestCase):
 
 
 class TransportManagerTests(unittest.TestCase):
+	def test_close_continues_after_one_slot_fails(self) -> None:
+		first=make_transport_slot("solarman_tcp")
+		second=make_transport_slot("modbus_rtu")
+		def fail_close():
+			first.client.close_calls+=1
+			raise RuntimeError("first close failed")
+		first.client.close=fail_close
+		manager=TransportManager([first,second])
+
+		with self.assertRaisesRegex(RuntimeError,"first close failed"):
+			manager.close()
+
+		self.assertEqual(first.client.close_calls,1)
+		self.assertEqual(second.client.close_calls,1)
+		self.assertFalse(first.online)
+		self.assertFalse(second.online)
+
+	def test_close_waits_for_active_slot_operation_and_closes_under_the_same_lock(self) -> None:
+		slot=make_transport_slot("modbus_rtu")
+		manager=TransportManager([slot])
+		operation_started=threading.Event()
+		release=threading.Event()
+		closed=threading.Event()
+		original_close=slot.client.close
+		def close():
+			original_close()
+			closed.set()
+		slot.client.close=close
+		def operation(client):
+			operation_started.set()
+			if not release.wait(5):
+				raise TimeoutError("test did not release operation")
+
+		worker=threading.Thread(target=lambda:manager.run("modbus_rtu",operation))
+		closer=threading.Thread(target=manager.close)
+		worker.start()
+		self.assertTrue(operation_started.wait(5))
+		closer.start()
+		self.assertFalse(closed.wait(0.1))
+		release.set()
+		worker.join(5)
+		closer.join(5)
+
+		self.assertTrue(closed.is_set())
+		self.assertEqual(slot.client.close_calls,1)
+		self.assertFalse(slot.online)
+
 	def test_before_io_guard_runs_inside_slot_lock_before_connect(self) -> None:
 		slot=make_transport_slot("modbus_rtu")
 		manager=TransportManager([slot])

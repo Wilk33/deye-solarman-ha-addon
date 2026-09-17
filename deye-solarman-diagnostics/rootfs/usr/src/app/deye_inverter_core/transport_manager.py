@@ -94,6 +94,20 @@ class TransportManager:
 	def available(self) -> tuple[TransportSlot,...]:
 		return self._slots
 
+	def close(self) -> None:
+		first_error: Exception | None=None
+		for slot in self._slots:
+			with slot.lock:
+				try:
+					slot.client.close()
+				except Exception as error:
+					if first_error is None:
+						first_error=error
+				finally:
+					slot.status.online=False
+		if first_error is not None:
+			raise first_error
+
 	def run(
 		self,
 		transport_id: str,

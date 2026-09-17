@@ -15,6 +15,7 @@ from .codec import apply_transform
 from .codec import decode_registers
 from .codec import registers_to_ascii
 from .config import load_config
+from .configuration_coordinator import ConfigurationCoordinator
 from .definitions import sensor_from_payload
 from .definitions import load_sensor_definitions
 from .formula import FormulaExecutor
@@ -165,6 +166,20 @@ class SensorRuntime:
 	def run_once(self,transport_id: str,now: float | None=None) -> list[dict[str,Any]] | None:
 		try:
 			batch=self._workers[transport_id].run_due(now)
+		except (_SensorBatchFailure,_SensorBatchConnectionFailure) as failure:
+			if not self._commit_batch(transport_id,failure.batch):
+				self._schedulers[transport_id].make_due(
+					(sensor.key for sensor in failure.batch.sensors),
+					now=self.clock(),
+				)
+			error=failure.error
+			for sensor in self._sensors.get(transport_id,()):
+				self._safe_sensor_availability(sensor,False)
+			if self.detailed_logs:
+				LOGGER.exception("Transport worker failed transport=%s",transport_id)
+			else:
+				LOGGER.warning("Transport worker failed transport=%s error=%s",transport_id,error)
+			return None
 		except Exception as error:
 			for sensor in self._sensors.get(transport_id,()):
 				self._safe_sensor_availability(sensor,False)
@@ -191,18 +206,26 @@ class SensorRuntime:
 			if not definitions_current:
 				return _SensorBatch(generation,sensors,[],local_state)
 			mqtt=_GenerationMqtt(self,generation)
-			report=run_iteration(
-				list(sensors),
-				local_state,
-				client,
-				mqtt,
-				slot.polling,
-				self.emit_raw_topics,
-				detailed_logs=self.detailed_logs,
-				force=True,
-				mark_attempted=mark_attempted,
-				should_stop=self._stop.is_set,
-			)
+			report=[]
+			try:
+				run_iteration(
+					list(sensors),
+					local_state,
+					client,
+					mqtt,
+					slot.polling,
+					self.emit_raw_topics,
+					detailed_logs=self.detailed_logs,
+					force=True,
+					mark_attempted=mark_attempted,
+					should_stop=self._stop.is_set,
+					report_sink=report,
+				)
+			except Exception as error:
+				batch=_SensorBatch(generation,sensors,report,local_state)
+				if isinstance(error,TransportConnectionClosedError):
+					raise _SensorBatchConnectionFailure(error,batch) from error
+				raise _SensorBatchFailure(error,batch) from error
 			return _SensorBatch(generation,sensors,report,local_state)
 		return read
 
@@ -272,6 +295,20 @@ class _SensorBatch:
 	state: dict[str,SensorState]
 
 
+class _SensorBatchFailure(RuntimeError):
+	def __init__(self,error: Exception,batch: _SensorBatch) -> None:
+		super().__init__(str(error))
+		self.error=error
+		self.batch=batch
+
+
+class _SensorBatchConnectionFailure(TransportConnectionClosedError):
+	def __init__(self,error: Exception,batch: _SensorBatch) -> None:
+		super().__init__(str(error))
+		self.error=error
+		self.batch=batch
+
+
 class _GenerationMqtt:
 	def __init__(self,runtime: SensorRuntime,generation: int) -> None:
 		self.runtime=runtime
@@ -318,6 +355,9 @@ def main(solarman_factory: TransportFactory,rs485_factory: TransportFactory) -> 
 		spacing,
 		transport_manager=manager,
 	)
+	configuration=ConfigurationCoordinator(_configuration_paths(config,controls))
+	controls.configuration_coordinator=configuration
+	controls.configuration_action=configuration.apply
 
 	def current_catalog() -> RemoteCatalog:
 		with catalog_lock:
@@ -339,17 +379,17 @@ def main(solarman_factory: TransportFactory,rs485_factory: TransportFactory) -> 
 		lambda definition: _test_custom_sensor(manager,definition),
 		lambda entries: _save_custom_sensor_configuration(config,entries),
 		control_service=controls,
+		configuration_coordinator=configuration,
 	)
 	panel.start()
 	try:
-		_run_addon(config,manager,current_catalog(),configuration_changed,controls)
+		_run_addon(config,manager,current_catalog(),configuration_changed,controls,configuration)
 	finally:
 		panel.stop()
-		for slot in manager.available():
-			try:
-				slot.client.close()
-			except Exception as error:
-				LOGGER.warning("Transport close failed transport=%s error=%s",slot.transport_id,error)
+		try:
+			manager.close()
+		except Exception as error:
+			LOGGER.warning("Transport manager close failed error=%s",error)
 
 
 def _run_addon(
@@ -358,21 +398,26 @@ def _run_addon(
 	remote_catalog: RemoteCatalog,
 	configuration_changed: threading.Event | None=None,
 	control_service: ControlService | None=None,
+	configuration_coordinator: ConfigurationCoordinator | None=None,
 ) -> None:
 	state=load_state(config.profiles.state_file)
 	change_event=configuration_changed or threading.Event()
+	configuration=configuration_coordinator or ConfigurationCoordinator(_configuration_paths(config,control_service))
+	if control_service is not None:
+		control_service.configuration_coordinator=configuration
+		control_service.configuration_action=configuration.apply
 	_probe_transports(manager)
 	if config.scan.mode != "disabled":
-		_run_scan(config,remote_catalog,manager)
+		configuration.apply(lambda:_run_scan(config,remote_catalog,manager))
 		if config.scan.mode == "scan_only":
 			LOGGER.info("Scan complete. MQTT publishing is disabled while the Ingress panel remains available.")
 			_wait_for_stop()
-	sensors=_load_runtime_sensors(config,state)
+	with configuration.locked():
+		sensors=_load_runtime_sensors(config,state)
 	mqtt=MqttPublisher(config.mqtt,config.inverter,detailed_logs=config.advanced.detailed_logs)
 	sensor_runtime=None
 	try:
 		mqtt.connect()
-		_publish_sensor_configuration(config,mqtt,sensors,state)
 		sensor_runtime=SensorRuntime(
 			manager,
 			mqtt,
@@ -384,25 +429,30 @@ def _run_addon(
 			scan_report_file=config.profiles.scan_report_file,
 			emit_scan_report=config.advanced.emit_scan_report,
 		)
+		control_runtime=_apply_runtime_configuration_until_success(
+			config,
+			mqtt,
+			sensor_runtime,
+			state,
+			configuration,
+			manager,
+			control_service,
+			reset_state=True,
+		)
 		sensor_runtime.start()
-		control_runtime=ControlRuntime(control_service,mqtt,manager) if control_service is not None else None
-		if control_runtime is not None:
-			control_runtime.start()
 		while True:
 			if change_event.wait(0.25):
 				change_event.clear()
-				sensors=_load_runtime_sensors(config)
-				sensor_runtime.reload(sensors,reset_state=True)
-				try:
-					_publish_sensor_configuration(config,mqtt,sensors,state,reset_state=False)
-				except Exception as error:
-					LOGGER.warning("MQTT sensor configuration refresh failed: %s",error)
-				control_runtime=ControlRuntime(control_service,mqtt,manager) if control_service is not None else None
-				if control_runtime is not None:
-					try:
-						control_runtime.start()
-					except Exception as error:
-						LOGGER.warning("MQTT control configuration refresh failed: %s",error)
+				control_runtime=_apply_runtime_configuration_until_success(
+					config,
+					mqtt,
+					sensor_runtime,
+					state,
+					configuration,
+					manager,
+					control_service,
+					reset_state=True,
+				)
 				success(LOGGER,"Applied updated panel configuration without reconnecting transports or MQTT")
 			if control_runtime is not None:
 				try:
@@ -415,6 +465,51 @@ def _run_addon(
 		if sensor_runtime is not None:
 			sensor_runtime.stop()
 		mqtt.disconnect()
+
+
+def _configuration_paths(config: Any,control_service: ControlService | None) -> list[Path]:
+	detected=Path(config.scan.detected_sensors_file)
+	paths=[detected,detected.with_name("deye_solarman_discovery_removals.yaml")]
+	custom_path=getattr(config.profiles,"custom_sensors_file",None)
+	if custom_path:
+		custom=Path(custom_path)
+		paths.extend((custom,custom.with_name("deye_solarman_discovery_removals.yaml")))
+	if control_service is not None:
+		paths.append(control_service.path)
+	return paths
+
+
+def _apply_runtime_configuration_until_success(
+	config: Any,
+	mqtt: Any,
+	sensor_runtime: SensorRuntime,
+	state: dict[str,SensorState],
+	configuration: ConfigurationCoordinator,
+	manager: TransportManager,
+	control_service: ControlService | None,
+	*,
+	reset_state: bool,
+) -> ControlRuntime | None:
+	while True:
+		disable=getattr(type(mqtt),"disable_control_commands",None)
+		if disable is not None:
+			disable(mqtt)
+		try:
+			def apply() -> ControlRuntime | None:
+				sensors=_load_runtime_sensors(config)
+				_publish_sensor_configuration(config,mqtt,sensors,state,reset_state=False)
+				control_runtime=ControlRuntime(control_service,mqtt,manager) if control_service is not None else None
+				if control_runtime is not None:
+					control_runtime.start(activate=False)
+					control_runtime.activate()
+				sensor_runtime.reload(sensors,reset_state=reset_state)
+				return control_runtime
+			return configuration.apply(apply)
+		except Exception as error:
+			if disable is not None:
+				disable(mqtt)
+			LOGGER.warning("Runtime configuration apply failed; retrying: %s",error)
+			time.sleep(0.25)
 
 
 def _probe_transports(manager: TransportManager) -> None:
@@ -459,8 +554,14 @@ def _publish_sensor_configuration(
 	state: dict[str,SensorState],
 	*,
 	reset_state: bool=True,
+	configuration_coordinator: ConfigurationCoordinator | None=None,
 ) -> None:
-	with mqtt.discovery_transaction():
+	configuration_context=(
+		configuration_coordinator.locked()
+		if configuration_coordinator is not None
+		else nullcontext()
+	)
+	with configuration_context,mqtt.discovery_transaction():
 		removal_paths={config.scan.detected_sensors_file,config.profiles.custom_sensors_file}
 		pending=sorted({key for path in removal_paths for key in load_pending_discovery_removals(path)})
 		for sensor_key in pending:
@@ -595,8 +696,9 @@ def run_iteration(
 	force: bool=False,
 	mark_attempted: Any | None=None,
 	should_stop: Any | None=None,
+	report_sink: list[dict[str,Any]] | None=None,
 ) -> list[dict[str, Any]]:
-	report: list[dict[str, Any]]=[]
+	report: list[dict[str, Any]]=[] if report_sink is None else report_sink
 	failed_groups=0
 	due_sensors=[sensor for sensor in sensors if sensor.enabled and (force or _is_due(sensor,state[sensor.key],polling))]
 	direct_sensors=[sensor for sensor in due_sensors if not sensor.formula]

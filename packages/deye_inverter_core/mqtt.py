@@ -198,13 +198,18 @@ class MqttPublisher:
 		return f"{self.control_base()}/{key}/set"
 
 	def configure_controls(self, handler: Any, keys: list[str]) -> None:
-		self._control_handler=handler
+		self.disable_control_commands()
 		previous=set(self._control_topics)
-		self._control_topics={self.control_command_topic(key):key for key in keys}
-		for topic in previous-self._control_topics.keys():
+		new_topics={self.control_command_topic(key):key for key in keys}
+		for topic in previous-new_topics.keys():
 			self._client.unsubscribe(topic)
-		for topic in self._control_topics:
+		for topic in new_topics:
 			self._client.subscribe(topic,qos=0)
+		self._control_topics=new_topics
+		self._control_handler=handler
+
+	def disable_control_commands(self) -> None:
+		self._control_handler=None
 
 	def _on_control_message(self, _client: Any, _userdata: Any, message: Any) -> None:
 		key=self._control_topics.get(message.topic)
