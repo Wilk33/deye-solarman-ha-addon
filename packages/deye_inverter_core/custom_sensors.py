@@ -62,20 +62,54 @@ def save_custom_sensors(path: str, entries: list[dict[str, Any]]) -> dict[str, A
 		previous_entry=previous_entries.get(key)
 		previous_definition=previous_entry.get("definition",{}) if previous_entry else {}
 		previous_transport=previous_definition.get("transport","solarman_tcp")
+		previous_sensor=(
+			sensor_from_payload(previous_definition,enabled=previous_entry.get("monitor",True))
+			if previous_entry
+			else None
+		)
 		supplied_scan=entry.get("last_scan")
 		if not isinstance(supplied_scan,dict):
 			supplied_scan=previous_entry.get("last_scan",{}) if previous_entry else {}
 		branches=normalize_last_scan(supplied_scan)
 		selected_scan=branches.get(sensor.transport,{})
 		transport_changed=previous_entry is not None and sensor.transport != previous_transport
+		read_changed=previous_sensor is not None and (
+			previous_sensor.registers,
+			previous_sensor.register_type,
+			previous_sensor.formula,
+			previous_sensor.multiplier,
+			previous_sensor.offset,
+			previous_sensor.word_order,
+			previous_sensor.byte_order,
+		) != (
+			sensor.registers,
+			sensor.register_type,
+			sensor.formula,
+			sensor.multiplier,
+			sensor.offset,
+			sensor.word_order,
+			sensor.byte_order,
+		)
+		monitor_enabled=previous_entry is not None and previous_entry.get("monitor") is not True and monitor
 		legacy_unchanged=(
 			previous_entry is not None
+			and previous.get("version",1) == 1
+			and previous_entry.get("monitor") is True
+			and monitor
 			and not branches
 			and not transport_changed
+			and not read_changed
+			and previous_transport == "solarman_tcp"
+			and sensor.transport == "solarman_tcp"
 		)
-		if sensor.registers and (previous_entry is None or transport_changed) and selected_scan.get("status") != "supported":
-			raise ValueError(f"custom sensor {key}: selected transport requires a supported scan")
-		if sensor.registers and monitor and selected_scan.get("status") != "supported" and not legacy_unchanged:
+		requires_supported=(
+			(previous_entry is None and bool(sensor.registers))
+			or transport_changed
+			or read_changed
+			or monitor_enabled
+			or (bool(sensor.registers) and monitor and not legacy_unchanged)
+		)
+		if requires_supported and selected_scan.get("status") != "supported":
 			raise ValueError(f"custom sensor {key}: selected transport requires a supported scan")
 		validated_entry={"key":key,"monitor":monitor,"definition":_normalized_definition(sensor)}
 		if branches:

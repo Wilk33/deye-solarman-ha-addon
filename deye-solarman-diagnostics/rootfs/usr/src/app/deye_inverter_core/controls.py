@@ -418,28 +418,44 @@ class ControlService:
 			previous={entry["key"]:entry for entry in data["available_sensors"]}
 			entries=[self.entry(key,previous.get(key)) for key in CONTROLS]
 			if self.transport_manager is None:
-				with self.access_lock:
-					client=self.transport_factory(self.logger)
-					try:
-						client.connect()
-						for entry in entries:
-							try:
-								result=self.read(client,entry["key"])
-								if result.get("status") != "supported":
-									result["status"]="invalid_value"
-							except Exception as error:
-								result={"status":"invalid_value" if isinstance(error,ValueError) else _read_error_status(error),"error":str(error)}
-							branches=normalize_last_scan(entry.get("last_scan",{}))
-							branches["solarman_tcp"]=merge_scan_result(branches.get("solarman_tcp",{}),result)
-							branches["modbus_rtu"]=merge_scan_result(
-								branches.get("modbus_rtu",{}),
-								{"status":"unavailable","error":"Transport modbus_rtu is not active"},
-							)
-							entry["last_scan"]=last_scan_with_selected_alias(branches,entry["definition"]["transport"])
-							entry["status"]=scan_status(branches,entry["definition"]["transports"])
-							time.sleep(self.spacing)
-					finally:
-						client.close()
+				solarman_entries=[entry for entry in entries if "solarman_tcp" in entry["definition"]["transports"]]
+				if solarman_entries:
+					with self.access_lock:
+						client=self.transport_factory(self.logger)
+						try:
+							client.connect()
+							for entry in solarman_entries:
+								try:
+									result=self.read(client,entry["key"])
+									if result.get("status") != "supported":
+										result["status"]="invalid_value"
+								except Exception as error:
+									result={"status":"invalid_value" if isinstance(error,ValueError) else _read_error_status(error),"error":str(error)}
+								branches=normalize_last_scan(entry.get("last_scan",{}))
+								branches["solarman_tcp"]=merge_scan_result(branches.get("solarman_tcp",{}),result)
+								entry["last_scan"]=last_scan_with_selected_alias(branches,entry["definition"]["transport"])
+								time.sleep(self.spacing)
+						finally:
+							client.close()
+				for entry in entries:
+					branches=normalize_last_scan(entry.get("last_scan",{}))
+					if "solarman_tcp" not in entry["definition"]["transports"]:
+						branches["solarman_tcp"]=merge_scan_result(
+							branches.get("solarman_tcp",{}),
+							{"status":"unsupported","error":"Transport solarman_tcp is not allowed by the catalog"},
+						)
+					modbus_status="unavailable" if "modbus_rtu" in entry["definition"]["transports"] else "unsupported"
+					modbus_error=(
+						"Transport modbus_rtu is not active"
+						if modbus_status == "unavailable"
+						else "Transport modbus_rtu is not allowed by the catalog"
+					)
+					branches["modbus_rtu"]=merge_scan_result(
+						branches.get("modbus_rtu",{}),
+						{"status":modbus_status,"error":modbus_error},
+					)
+					entry["last_scan"]=last_scan_with_selected_alias(branches,entry["definition"]["transport"])
+					entry["status"]=scan_status(branches,entry["definition"]["transports"])
 			else:
 				available={slot.transport_id:slot for slot in self.transport_manager.available()}
 				for transport_id in TRANSPORT_IDS:

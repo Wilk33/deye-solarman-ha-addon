@@ -1331,6 +1331,68 @@ class EntityTransportSelectionTests(unittest.TestCase):
 			self.assertEqual(migrated["definition"]["transport"],"modbus_rtu")
 			self.assertEqual(migrated["last_scan"]["value"],501)
 
+	def test_legacy_custom_sensor_requires_scan_when_enabling_or_changing_read_definition(self) -> None:
+		legacy_definition={"key":"custom_voltage","registers":[10],"type":"uint16"}
+		with tempfile.TemporaryDirectory() as directory:
+			path=Path(directory)/"custom.yaml"
+			path.write_text(yaml.safe_dump({
+				"version":1,
+				"sensors":[{"key":"custom_voltage","monitor":False,"definition":legacy_definition}],
+			}),encoding="utf-8")
+			entry=load_custom_sensors(str(path))["sensors"][0]
+			entry["monitor"]=True
+			with self.assertRaisesRegex(ValueError,"supported scan"):
+				save_custom_sensors(str(path),[entry])
+
+		changes=(
+			{"registers":[11]},
+			{"type":"int16"},
+			{"multiplier":2},
+			{"offset":1},
+			{"word_order":"low_high"},
+			{"byte_order":"low_high"},
+			{"registers":[],"type":"auto","formula":"return RAW(R10)"},
+		)
+		for change in changes:
+			with self.subTest(change=change),tempfile.TemporaryDirectory() as directory:
+				path=Path(directory)/"custom.yaml"
+				path.write_text(yaml.safe_dump({
+					"version":1,
+					"sensors":[{"key":"custom_voltage","monitor":True,"definition":legacy_definition}],
+				}),encoding="utf-8")
+				entry=load_custom_sensors(str(path))["sensors"][0]
+				entry["definition"].update(change)
+				with self.assertRaisesRegex(ValueError,"supported scan"):
+					save_custom_sensors(str(path),[entry])
+
+	def test_legacy_custom_sensor_allows_presentation_and_polling_edits_without_scan(self) -> None:
+		with tempfile.TemporaryDirectory() as directory:
+			path=Path(directory)/"custom.yaml"
+			path.write_text(yaml.safe_dump({
+				"version":1,
+				"sensors":[{
+					"key":"custom_voltage",
+					"monitor":True,
+					"definition":{"key":"custom_voltage","name":"Old","registers":[10],"type":"uint16"},
+				}],
+			}),encoding="utf-8")
+			entry=load_custom_sensors(str(path))["sensors"][0]
+			entry["definition"].update(name="New",read_every=30,report_every=120,icon="mdi:flash")
+
+			saved=save_custom_sensors(str(path),[entry])["sensors"][0]
+
+			self.assertEqual(saved["definition"]["name"],"New")
+			self.assertEqual(saved["definition"]["read_every"],30)
+			self.assertTrue(saved["monitor"])
+
+	def test_custom_panel_offers_register_read_test_and_controls_panel_has_no_test_button(self) -> None:
+		custom_script=(ROOT/"packages/deye_inverter_core/custom_panel.js").read_text(encoding="utf-8")
+		control_script=(ROOT/"packages/deye_inverter_core/control_panel.js").read_text(encoding="utf-8")
+
+		self.assertGreaterEqual(custom_script.count('data-custom-test="${customEsc(entry.key)}"'),2)
+		self.assertIn('entry.last_scan={...(entry.last_scan || {}),[transport]:{...result,status:"supported"}}',custom_script)
+		self.assertNotIn("data-control-test",control_script)
+
 	def test_exact_modbus_exception_codes_classify_only_illegal_requests_as_unsupported(self) -> None:
 		for code in (1,2):
 			self.assertEqual(_read_error_status(Exception(f"ExceptionResponse(exception_code={code})")),"unsupported")
@@ -1523,6 +1585,43 @@ class EntityTransportSelectionTests(unittest.TestCase):
 				self.assertEqual(slot.error_count,1)
 				self.assertEqual(slot.last_error,"All control scan reads failed")
 				self.assertTrue(slot.online)
+		finally:
+			set_controls(catalog)
+
+	def test_control_scan_without_manager_respects_each_catalog_transport_list(self) -> None:
+		catalog=list(CONTROLS.values())
+		rs485_only={**CONTROLS["control_load_limit"],"transports":["modbus_rtu"]}
+		solarman_only={**CONTROLS["control_grid_charge_battery_current"],"transports":["solarman_tcp"]}
+		set_controls([rs485_only,solarman_only])
+		try:
+			with tempfile.TemporaryDirectory() as directory:
+				class RecordingTransport(SequentialScanTransport):
+					def __init__(self) -> None:
+						super().__init__("solarman_tcp",[],{128:37,142:50})
+						self.read_starts=[]
+
+					def read_holding_registers(self, start: int, count: int) -> list[int]:
+						self.read_starts.append(start)
+						return super().read_holding_registers(start,count)
+
+				transport=RecordingTransport()
+				service=ControlService(
+					str(Path(directory)/"controls.json"),
+					None,
+					threading.Lock(),
+					0,
+					transport_factory=lambda logger:transport,
+				)
+
+				service._scan(lambda:None)
+
+				by_key={entry["key"]:entry for entry in service.load()["available_sensors"]}
+				self.assertNotIn(142,transport.read_starts)
+				self.assertIn(128,transport.read_starts)
+				self.assertEqual(by_key[rs485_only["key"]]["last_scan"]["solarman_tcp"]["status"],"unsupported")
+				self.assertEqual(by_key[rs485_only["key"]]["last_scan"]["modbus_rtu"]["status"],"unavailable")
+				self.assertEqual(by_key[solarman_only["key"]]["last_scan"]["solarman_tcp"]["status"],"supported")
+				self.assertEqual(by_key[solarman_only["key"]]["last_scan"]["modbus_rtu"]["status"],"unsupported")
 		finally:
 			set_controls(catalog)
 

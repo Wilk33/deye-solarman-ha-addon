@@ -87,7 +87,8 @@ function customCard(entry)
 		${customInput(entry.key,"multiplier","Mnoznik",definition.multiplier,"number")}
 		${customInput(entry.key,"offset","Offset",definition.offset,"number")}
 		${customSelect(entry.key,"word_order","Kolejnosc slow",definition.word_order,["high_low","low_high"])}
-		${customSelect(entry.key,"byte_order","Kolejnosc bajtow ASCII",definition.byte_order,["high_low","low_high"])}`;
+		${customSelect(entry.key,"byte_order","Kolejnosc bajtow ASCII",definition.byte_order,["high_low","low_high"])}
+		<div class="formula-toolbar"><button class="button secondary" type="button" data-custom-test="${customEsc(entry.key)}">Test / odczyt</button></div>`;
 	return `<article class="custom-sensor ${entry.monitor ? "enabled" : ""}" data-custom-sensor="${customEsc(entry.key)}">
 		<div class="sensor-head"><div><h3>${customEsc(definition.name || entry.key)}</h3><span class="key">${customEsc(entry.key)}${formula ? " / formula" : " / R"+customEsc((definition.registers || []).join(","))}</span></div><label class="toggle"><input data-custom-monitor="${customEsc(entry.key)}" type="checkbox" ${entry.monitor ? "checked" : ""} ${ownershipToggle(entry)}> MQTT</label></div>
 		${ownershipBadge(entry)}
@@ -229,10 +230,10 @@ async function testCustomSensor(key,formulaText=null)
 		const entry=customSensors.find(item=>item.key === currentKey);
 		if (!entry) throw new Error("Nie znaleziono sensora");
 		if (formulaText !== null) entry.definition.formula=formulaText;
+		const transport=entry.definition.transport || "solarman_tcp";
+		if (transport !== "solarman_tcp") throw new Error("Test w tej wersji obsluguje tylko transport solarman_tcp");
 		const result=await customRequest("api/custom-sensors/test",{method:"POST",body:JSON.stringify({definition:entry.definition})});
-		if (!entry.definition.formula && (entry.definition.transport || "solarman_tcp") === "solarman_tcp") {
-			entry.last_scan={...(entry.last_scan || {}),solarman_tcp:{...result,status:"supported"}};
-		}
+		entry.last_scan={...(entry.last_scan || {}),[transport]:{...result,status:"supported"}};
 		entry._test={result};
 		if (formulaModalKey === currentKey) {
 			customById("formula-modal-result").textContent=customResult(entry).replace(/<[^>]+>/g,"");
