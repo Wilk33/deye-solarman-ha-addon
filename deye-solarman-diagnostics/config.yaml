@@ -11,7 +11,7 @@ ingress: true
 ingress_port: 8099
 ingress_entry: /
 panel_icon: mdi:solar-power-variant-outline
-panel_title: Deye Solarman
+panel_title: SolarMan Diagnostics
 panel_admin: true
 arch:
   - aarch64

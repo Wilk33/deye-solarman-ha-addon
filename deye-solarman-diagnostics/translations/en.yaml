@@ -1,0 +1,107 @@
+configuration:
+  solarman:
+    name: SolarMan TCP
+    description: Local TCP connection to the SolarMan logger. Host, port, and serial number identify the logger rather than the inverter network interface.
+    fields:
+      enabled: {name: Enable SolarMan TCP, description: Starts the independent worker and connection through the SolarMan logger.}
+      host: {name: Logger IP address, description: Local IP address of the SolarMan logger connected to the inverter.}
+      port: {name: Logger TCP port, description: SolarMan TCP service port, commonly 8899. Verify it on your network.}
+      serial_number: {name: Logger serial number, description: SolarMan device serial required by the logger protocol. This is not the inverter serial number.}
+      modbus_id: {name: Inverter Modbus ID, description: Modbus address seen through the SolarMan logger. The initial value 1 must be verified for the device.}
+      timeout: {name: Read timeout, description: Maximum time in seconds to wait for a SolarMan response.}
+      reconnect_delay: {name: Reconnect delay, description: Seconds before another SolarMan connection attempt after a failure.}
+      polling:
+        name: SolarMan polling
+        description: Intervals and grouping apply only to the SolarMan TCP transport.
+        fields:
+          default_interval: {name: Default read interval, description: Frequency of regular SolarMan reads in seconds.}
+          slow_interval: {name: Slow read interval, description: Frequency of slow SolarMan reads in seconds.}
+          read_message_spacing: {name: Request spacing, description: Minimum seconds between SolarMan messages.}
+          batch_gap: {name: Batch address gap, description: Maximum skipped addresses when SolarMan reads are grouped.}
+          max_registers_per_request: {name: Registers per request, description: Maximum registers in one SolarMan read request.}
+          publish_unchanged_every: {name: Unchanged state republish interval, description: Maximum seconds before an unchanged value is published again.}
+          startup_probe_register: {name: Startup probe register, description: First register used to test the SolarMan connection at startup.}
+          startup_probe_count: {name: Startup probe register count, description: Registers read by the SolarMan startup connection test.}
+          allow_reconnect: {name: Automatic reconnect, description: Allows the SolarMan worker to restore a lost connection.}
+  rs485:
+    name: Modbus RTU (RS485)
+    description: Direct serial connection. /dev/ttyUSB0, 9600 8N1, and Modbus ID 1 are initial values that must be verified for the inverter.
+    fields:
+      enabled: {name: Enable Modbus RTU, description: Starts the independent worker for the direct RS485 transport.}
+      device: {name: Serial device, description: RS485 port such as /dev/ttyUSB0. Select the actual device passed to the add-on.}
+      baudrate: {name: Baud rate, description: The default 9600 baud is an initial value that must be verified on the inverter.}
+      bytesize: {name: Data bits, description: The default 8 data bits are part of the example 9600 8N1 setting.}
+      parity: {name: Parity, description: The default N means no parity in the example 9600 8N1 setting.}
+      stopbits: {name: Stop bits, description: The default 1 stop bit is part of the example 9600 8N1 setting.}
+      modbus_id: {name: Modbus ID, description: RTU device address. The initial value 1 must be verified on the inverter.}
+      timeout: {name: Read timeout, description: Maximum time in seconds to wait for an RS485 response.}
+      reconnect_delay: {name: Reconnect delay, description: Seconds before another attempt to open the RS485 port.}
+      polling:
+        name: RS485 polling
+        description: Intervals and spacing apply only to Modbus RTU and can differ from SolarMan settings.
+        fields:
+          default_interval: {name: Default read interval, description: Frequency of regular RS485 reads in seconds.}
+          slow_interval: {name: Slow read interval, description: Frequency of slow RS485 reads in seconds.}
+          read_message_spacing: {name: Request spacing, description: Minimum seconds between messages on the RS485 bus.}
+          batch_gap: {name: Batch address gap, description: Maximum skipped addresses when RS485 reads are grouped.}
+          max_registers_per_request: {name: Registers per request, description: Maximum registers in one Modbus RTU request.}
+          publish_unchanged_every: {name: Unchanged state republish interval, description: Maximum seconds before an unchanged value is published again.}
+          startup_probe_register: {name: Startup probe register, description: First register used to test the RS485 connection at startup.}
+          startup_probe_count: {name: Startup probe register count, description: Registers read by the RS485 startup connection test.}
+          allow_reconnect: {name: Automatic reconnect, description: Allows the RS485 worker to reopen a lost connection.}
+  mqtt:
+    name: MQTT and Home Assistant
+    description: One shared MQTT connection, Discovery namespace, availability state, and topic hierarchy for both transports.
+    fields:
+      use_supervisor: {name: Use Supervisor MQTT service, description: Gets broker credentials from the Home Assistant MQTT service when available.}
+      host: {name: Broker host, description: MQTT broker host used without the Supervisor service.}
+      port: {name: Broker port, description: MQTT connection port.}
+      username: {name: MQTT username, description: Optional broker username.}
+      password: {name: MQTT password, description: Optional broker password.}
+      tls: {name: Use TLS, description: Enables an encrypted connection to the MQTT broker.}
+      client_id: {name: Client ID, description: Shared identifier for the add-on's single MQTT session.}
+      base_topic: {name: MQTT base topic, description: Shared state and command topic prefix without a transport suffix.}
+      discovery_prefix: {name: MQTT Discovery prefix, description: Prefix for Home Assistant automatic configuration topics.}
+      retain: {name: Retain MQTT state, description: Stores the most recent state messages as retained MQTT messages.}
+  inverter:
+    name: Inverter identity
+    description: Shared device information shown with MQTT Discovery entities.
+    fields:
+      serial_number: {name: Inverter serial number, description: Inverter serial used in Home Assistant device identifiers.}
+      name: {name: Device name, description: Shared device name shown in Home Assistant.}
+      manufacturer: {name: Manufacturer, description: Inverter manufacturer shown in Home Assistant.}
+      model: {name: Model, description: Inverter model shown in Home Assistant.}
+  profiles:
+    name: Profiles and local data
+    description: The default profile is intentionally empty. Sensors come from catalogs, scans, and local definitions.
+    fields:
+      default_profile: {name: Built-in startup profile, description: Minimal startup profile list. Empty by default so unverified entities are not published.}
+      overrides_file: {name: Sensor overrides file, description: Local /config file containing persistent definition overrides.}
+      custom_sensors_file: {name: Custom sensors file, description: Local /config file containing Custom sensor definitions.}
+      state_file: {name: Runtime state file, description: Local /config file containing persistent scheduling and publication state.}
+      scan_report_file: {name: Read cycle report, description: Local /share file containing the current read report.}
+  advanced:
+    name: Diagnostics
+    description: Additional diagnostic data. Normal operation does not require detailed logging.
+    fields:
+      emit_raw_topics: {name: Publish RAW topics, description: Publishes raw registers to an additional MQTT topic.}
+      emit_scan_report: {name: Save read cycle report, description: Writes a local report for completed reads.}
+      detailed_logs: {name: Detailed logs, description: Off by default. When enabled it remains persistently stored in options.json until changed manually.}
+  scan:
+    name: Sensor scanning
+    description: Settings for catalog scanning and the local candidate report.
+    fields:
+      mode: {name: Scan mode, description: Controls automatic scan behavior when the add-on starts.}
+      report_file: {name: Candidate report, description: Local /share file containing candidate scan results.}
+      detected_sensors_file: {name: Detected sensors file, description: Local /config file containing results and the selected transport per sensor.}
+      bms_pack_count: {name: BMS pack count, description: Pack count used when catalog candidates are generated.}
+  catalog:
+    name: Sensor and control catalogs
+    description: Remote lists are stored in local cache files. The last valid copy remains available after a download failure.
+    fields:
+      refresh_on_start: {name: Refresh at startup, description: Attempts to download current catalog lists when the add-on starts.}
+      url: {name: Sensor list URL, description: Source URL for the sensor definition catalog.}
+      cache_file: {name: Local sensor cache, description: /config file containing the last valid sensor list.}
+      control_url: {name: Control list URL, description: Source URL for the control definition catalog.}
+      control_cache_file: {name: Local control cache, description: /config file containing the last valid control list.}
+      timeout: {name: Download timeout, description: Maximum catalog download time in seconds.}

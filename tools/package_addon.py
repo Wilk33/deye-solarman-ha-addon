@@ -31,9 +31,9 @@ def main() -> None:
 	for source in MODEL.glob("SUNSYNK_*"):
 		expected[APP/"deye_inverter_core/data"/source.name]=source.read_bytes()
 	for source_root,target_root in [(ROOT/"packages/deye_inverter_core",APP/"deye_inverter_core"),(ROOT/"apps/deye-solarman/src/deye_solarman_diagnostics",APP/"deye_solarman_diagnostics")]:
-		for source in source_root.glob("*"):
-			if source.is_file() and source.suffix in {".py",".js"}:
-				expected[target_root/source.name]=source.read_bytes()
+		for source in source_root.rglob("*"):
+			if source.is_file() and "__pycache__" not in source.parts and source.suffix in {".py",".js",".json"}:
+				expected[target_root/source.relative_to(source_root)]=source.read_bytes()
 	# The old URL remains valid for installed 1.1.x clients.
 	telemetry=yaml.safe_load((MODEL/"telemetry.yaml").read_text(encoding="utf-8"))
 	extra=yaml.safe_load((MODEL/"telemetry-plus.yaml").read_text(encoding="utf-8"))

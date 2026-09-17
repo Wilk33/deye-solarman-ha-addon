@@ -1959,6 +1959,108 @@ pending.then(()=>process.stdout.write(JSON.stringify(customSensors[0]))).catch(e
 		self.assertIn('[transport]:{...result,status:"supported",definition_snapshot:definitionSnapshot}',custom_script)
 		self.assertNotIn("data-control-test",control_script)
 
+	def test_panel_uses_one_shared_dictionary_and_renders_both_transport_results(self) -> None:
+		panel_script=(ROOT/"packages/deye_inverter_core/panel.js").read_text(encoding="utf-8")
+		control_script=(ROOT/"packages/deye_inverter_core/control_panel.js").read_text(encoding="utf-8")
+		custom_script=(ROOT/"packages/deye_inverter_core/custom_panel.js").read_text(encoding="utf-8")
+		web_source=(ROOT/"packages/deye_inverter_core/web.py").read_text(encoding="utf-8")
+
+		self.assertEqual(sum(source.count("function t(") for source in (panel_script,control_script,custom_script,web_source)),1)
+		self.assertIn("window.t=t",panel_script)
+		self.assertIn("transportResultCards(entry)",web_source)
+		self.assertIn("transportResultCards(entry)",control_script)
+		self.assertIn("latency_ms",panel_script)
+		self.assertIn("supported.length === 1",panel_script)
+		self.assertIn("supported.length === 2",panel_script)
+		self.assertIn("disabled",panel_script)
+		self.assertIn('data-i18n="tabs.sensors">Sensory',web_source)
+		self.assertIn('data-i18n="tabs.controls">Sterowanie',web_source)
+		self.assertIn('data-i18n="tabs.custom">Własne sensory',web_source)
+		self.assertNotIn("data-control-test",control_script)
+		self.assertIn('transports:["solarman_tcp","modbus_rtu"]',custom_script)
+		self.assertIn("testTransportSelection",custom_script)
+
+	def test_panel_transport_selector_hides_single_choice_and_requires_dual_choice(self) -> None:
+		panel_script=(ROOT/"packages/deye_inverter_core/panel.js").read_text(encoding="utf-8")
+		bootstrap=r'''
+globalThis.window=globalThis;
+console.info=()=>{};
+window.location={href:"http://example.test/"};
+window.addEventListener=()=>{};
+globalThis.navigator={language:"en-US"};
+globalThis.document={
+	baseURI:"http://example.test/",
+	title:"",
+	documentElement:{dataset:{language:"en"},lang:""},
+	querySelectorAll(){ return []; },
+	getElementById(){ return null; },
+};
+globalThis.statusBadge=status=>`<span>${status}</span>`;
+globalThis.fetch=async()=>({ok:true,json:async()=>({language:"en",translations:{
+	"transport.title":"Transport","transport.select":"Select transport",
+	"transport.solarman_tcp":"SolarMan TCP","transport.modbus_rtu":"Modbus RTU (RS485)",
+	"status.supported":"supported","status.timeout":"timeout","status.unavailable":"unavailable",
+	"result.value":"Value","result.raw":"RAW","result.latency":"Latency","result.error":"Error"
+}})});
+'''
+		harness=r'''
+window.i18nReady.then(()=>{
+	const single={key:"single",definition:{transport:"solarman_tcp",transports:["solarman_tcp","modbus_rtu"],unit:"V"},last_scan:{solarman_tcp:{status:"timeout"},modbus_rtu:{status:"supported",value:51.2,latency_ms:4}}};
+	const dual={key:"dual",definition:{transport:"modbus_rtu",transports:["solarman_tcp","modbus_rtu"],unit:"V"},last_scan:{solarman_tcp:{status:"supported",value:51.1,raw_hex:["0x01FF"],latency_ms:12},modbus_rtu:{status:"supported",value:51.2,latency_ms:4}}};
+	process.stdout.write(JSON.stringify({single:window.transportSelector(single),singleTransport:single.definition.transport,dual:window.transportSelector(dual),cards:window.transportResultCards(dual)}));
+}).catch(error=>{ console.error(error); process.exitCode=1; });
+'''
+		with tempfile.TemporaryDirectory() as directory:
+			path=Path(directory)/"selector.cjs"
+			path.write_text(bootstrap+"\n"+panel_script+"\n"+harness,encoding="utf-8")
+			result=subprocess.run(["node",str(path)],capture_output=True,text=True,check=False)
+			self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+			payload=json.loads(result.stdout)
+		self.assertIn('type="hidden"',payload["single"])
+		self.assertEqual(payload["singleTransport"],"modbus_rtu")
+		self.assertIn("<select required",payload["dual"])
+		self.assertIn('value="modbus_rtu" selected',payload["dual"])
+		self.assertIn("SolarMan TCP",payload["cards"])
+		self.assertIn("Modbus RTU (RS485)",payload["cards"])
+		self.assertIn("12 ms",payload["cards"])
+		self.assertIn("0x01FF",payload["cards"])
+
+	def test_ingress_dictionaries_are_complete_polish_and_english_variants(self) -> None:
+		translations={}
+		for language in ("pl","en"):
+			path=ROOT/"packages/deye_inverter_core/i18n"/f"{language}.json"
+			translations[language]=json.loads(path.read_text(encoding="utf-8"))
+			self.assertGreaterEqual(len(translations[language]),80)
+			self.assertTrue(all(isinstance(key,str) and isinstance(value,str) and value for key,value in translations[language].items()))
+		self.assertEqual(set(translations["pl"]),set(translations["en"]))
+		self.assertEqual(translations["pl"]["tabs.sensors"],"Sensory")
+		self.assertEqual(translations["pl"]["tabs.controls"],"Sterowanie")
+		self.assertEqual(translations["pl"]["tabs.custom"],"Własne sensory")
+		self.assertEqual(translations["en"]["tabs.sensors"],"Sensors")
+		self.assertEqual(translations["en"]["tabs.controls"],"Controls")
+		self.assertEqual(translations["en"]["tabs.custom"],"Custom sensors")
+
+	def test_home_assistant_translations_cover_the_current_nested_schema(self) -> None:
+		config=yaml.safe_load((ROOT/"deye-solarman-diagnostics/config.yaml").read_text(encoding="utf-8"))
+		self.assertEqual(config["panel_title"],"SolarMan Diagnostics")
+		for language in ("pl","en"):
+			translated=yaml.safe_load((ROOT/"deye-solarman-diagnostics/translations"/f"{language}.yaml").read_text(encoding="utf-8"))["configuration"]
+			self.assertNotIn("logger",translated)
+			self.assertNotIn("polling",translated)
+			def assert_group(schema,group,path):
+				self.assertIn("name",group,path)
+				self.assertIn("description",group,path)
+				fields=group.get("fields",{})
+				for key,value in schema.items():
+					self.assertIn(key,fields,f"{path}.{key}")
+					self.assertIn("name",fields[key],f"{path}.{key}")
+					self.assertIn("description",fields[key],f"{path}.{key}")
+					if isinstance(value,dict):
+						assert_group(value,fields[key],f"{path}.{key}")
+			for section,schema in config["schema"].items():
+				self.assertIn(section,translated,section)
+				assert_group(schema,translated[section],section)
+
 	def test_exact_modbus_exception_codes_classify_only_illegal_requests_as_unsupported(self) -> None:
 		for code in (1,2):
 			self.assertEqual(_read_error_status(Exception(f"ExceptionResponse(exception_code={code})")),"unsupported")

@@ -1,7 +1,17 @@
 let controlSensors=[];
 let controlTimer=null;
 let controlBusy=false;
-const controlMethodNames={NumberRWSensor:"Nastawy liczbowe",SelectRWSensor:"Listy wyboru",SwitchRWSensor:"Przełączniki",TimeRWSensor:"Godziny harmonogramu",SystemTimeRWSensor:"Data i czas"};
+
+function controlMethodName(method)
+{
+	return t({
+		NumberRWSensor:"controls.number",
+		SelectRWSensor:"controls.select",
+		SwitchRWSensor:"controls.switch",
+		TimeRWSensor:"controls.time",
+		SystemTimeRWSensor:"controls.system_time",
+	}[method] || "status.unknown");
+}
 
 function controlMessage(message,error=false)
 {
@@ -11,30 +21,32 @@ function controlMessage(message,error=false)
 
 function controlField(entry,field,label,type="text")
 {
-	return `<label class="field">${label}<input data-control-key="${esc(entry.key)}" data-control-field="${field}" type="${type}" value="${esc(entry.definition[field])}"></label>`;
+	return `<label class="field">${esc(label)}<input data-control-key="${esc(entry.key)}" data-control-field="${field}" type="${type}" value="${esc(entry.definition[field])}"></label>`;
 }
 
 function controlCard(entry)
 {
 	const definition=entry.definition;
-	const kind={NumberRWSensor:"number",SelectRWSensor:"select",SwitchRWSensor:"switch",TimeRWSensor:"select",SystemTimeRWSensor:"text"}[definition.method];
-	const scan=entry.last_scan || {};
+	const selector=transportSelector(entry,"control");
+	const selectedScan=entry.last_scan?.[definition.transport] || entry.last_scan || {};
+	const supported=transportBranches(entry).filter(([,result])=>result.status === "supported");
 	const choices=definition.options && !definition.raw_only ? Object.entries(definition.options).map(([raw,label])=>`${raw}: ${label}`).join("; ") : "";
-	const bounds=definition.method === "NumberRWSensor" ? (definition.max === null ? "Zakres zapisu niepotwierdzony" : `Zakres: ${scan.min ?? "odczytywany"}..${scan.max ?? "odczytywany"}; krok: ${Math.abs(definition.factor)}`) : "";
-	const writeReason=definition.read_only_reason || scan.write_reason;
+	const bounds=definition.method === "NumberRWSensor" ? (definition.max === null ? t("controls.range_unknown") : t("controls.range",{min:selectedScan.min ?? "?",max:selectedScan.max ?? "?",step:Math.abs(definition.factor)})) : "";
+	const writeReason=definition.read_only_reason || selectedScan.write_reason;
+	const selectedWritable=selectedScan.status === "supported" && selectedScan.write_allowed !== false && !definition.read_only;
 	return `<article class="sensor ${entry.monitor ? "selected" : ""}">
 		<div class="sensor-head"><div><h3>${esc(definition.name)}</h3><span class="key">${esc(entry.key)} / R${definition.registers.join(",")}</span>
-		<div class="reading"><b>${esc(scan.value ?? "-")} ${esc(definition.unit)}</b><div class="raw-line"><span class="raw-label">HEX</span><code>${esc((scan.raw_hex || []).join(", ") || "-")}</code></div></div>
-		<div class="badges">${statusBadge(scan.status)}<span class="badge">${esc(controlMethodNames[definition.method])}</span></div>
-		${scan.error ? `<p class="notice">${esc(scan.error)}</p>` : ""}</div>
-		<label class="toggle"><input type="checkbox" data-control-monitor="${esc(entry.key)}" ${entry.monitor ? "checked" : ""} ${definition.read_only || ((scan.status !== "supported" || scan.write_allowed === false) && !entry.monitor) ? "disabled" : ""}> MQTT</label></div>
+		<div class="badges"><span class="badge">${esc(controlMethodName(definition.method))}</span></div></div>
+		<label class="toggle"><input type="checkbox" data-control-monitor="${esc(entry.key)}" ${entry.monitor ? "checked" : ""} ${(!supported.length || (!selectedWritable && !entry.monitor)) ? "disabled" : ""}> ${esc(t("common.mqtt"))}</label></div>
+		${transportResultCards(entry)}
 		${writeReason ? `<p class="notice">${esc(writeReason)}</p>` : ""}
-		<details><summary>Konfiguruj encję i odpytywanie</summary><div class="fields">
-		${controlField(entry,"name","Nazwa")}${controlField(entry,"icon","Ikona")}
-		${controlField(entry,"read_every","Odczyt co sekund","number")}${controlField(entry,"report_every","Ponowna publikacja co sekund","number")}
-		${controlField(entry,"change_by","Próg zmiany","number")}
-		<label class="toggle"><input type="checkbox" data-control-key="${esc(entry.key)}" data-control-field="retain" ${definition.retain ? "checked" : ""}> Zachowaj stan MQTT</label>
-		<p class="notice wide">${esc(bounds)}<br>Maska: ${definition.bitmask ? "0x"+definition.bitmask.toString(16).toUpperCase() : "cały rejestr"}${definition.shift ? `; przesunięcie: ${definition.shift} bitów` : ""}<br>${esc(choices)}<br>${definition.read_only ? "Tylko odczyt." : "Metoda: odczyt, kodowanie wartości, zapis FC16, odczyt kontrolny."}</p>
+		<details><summary>${esc(t("controls.configure"))}</summary><div class="fields">
+		${selector}
+		${controlField(entry,"name",t("common.name"))}${controlField(entry,"icon",t("common.icon"))}
+		${controlField(entry,"read_every",t("common.read_every"),"number")}${controlField(entry,"report_every",t("common.report_every"),"number")}
+		${controlField(entry,"change_by",t("common.change_by"),"number")}
+		<label class="toggle"><input type="checkbox" data-control-key="${esc(entry.key)}" data-control-field="retain" ${definition.retain ? "checked" : ""}> ${esc(t("common.retain"))}</label>
+		<p class="notice wide">${esc(bounds)}<br>${esc(t("controls.mask"))}: ${definition.bitmask ? "0x"+definition.bitmask.toString(16).toUpperCase() : esc(t("controls.whole_register"))}${definition.shift ? `; ${esc(t("controls.shift",{value:definition.shift}))}` : ""}<br>${esc(choices)}<br>${esc(definition.read_only ? t("controls.read_only") : t("controls.write_method"))}</p>
 		</div></details></article>`;
 }
 
@@ -42,7 +54,7 @@ function renderControls()
 {
 	const query=byId("control-search").value.toLowerCase();
 	const status=byId("control-filter").value;
-	const filtered=controlSensors.filter(entry=>[entry.key,entry.definition.name,entry.definition.method,entry.definition.registers.join(",")].join(" ").toLowerCase().includes(query) && (status === "all" || entry.last_scan?.status === status));
+	const filtered=controlSensors.filter(entry=>[entry.key,entry.definition.name,entry.definition.method,entry.definition.registers.join(",")].join(" ").toLowerCase().includes(query) && (status === "all" || transportBranches(entry).some(([,result])=>result.status === status)));
 	const groups=new Map();
 	for (const entry of filtered)
 	{
@@ -50,12 +62,12 @@ function renderControls()
 		if (!groups.has(method)) groups.set(method,[]);
 		groups.get(method).push(entry);
 	}
-	byId("control-groups").innerHTML=[...groups].map(([method,entries])=>`<section class="group"><div class="group-title"><b>${esc(controlMethodNames[method])}</b><small>Liczba encji: ${entries.length}</small></div><div class="sensor-grid">${entries.map(controlCard).join("")}</div></section>`).join("");
+	byId("control-groups").innerHTML=[...groups].map(([method,entries])=>`<section class="group"><div class="group-title"><b>${esc(controlMethodName(method))}</b><small>${esc(t("common.entries",{value:entries.length}))}</small></div><div class="sensor-grid">${entries.map(controlCard).join("")}</div></section>`).join("");
 	byId("control-empty").hidden=controlSensors.length !== 0;
 	byId("control-total").textContent=controlSensors.length;
-	byId("control-supported").textContent=controlSensors.filter(e=>e.last_scan?.status === "supported").length;
-	byId("control-selected").textContent=controlSensors.filter(e=>e.monitor).length;
-	byId("control-other").textContent=controlSensors.filter(e=>e.last_scan?.status !== "supported").length;
+	byId("control-supported").textContent=controlSensors.filter(entry=>transportBranches(entry).some(([,result])=>result.status === "supported")).length;
+	byId("control-selected").textContent=controlSensors.filter(entry=>entry.monitor).length;
+	byId("control-other").textContent=controlSensors.filter(entry=>!transportBranches(entry).some(([,result])=>result.status === "supported")).length;
 }
 
 async function loadControls()
@@ -67,17 +79,19 @@ async function loadControls()
 async function controlAction(action)
 {
 	if (controlBusy) return;
-	if (["reset","delete"].includes(action) && !window.confirm(action === "reset" ? "Przywrócić konfigurację encji sterowania i wyłączyć ich MQTT?" : "Usunąć lokalną listę encji sterowania oraz ich MQTT Discovery?")) return;
+	if (action === "reset" && !window.confirm(t("confirm.reset_controls"))) return;
+	if (action === "delete" && !window.confirm(t("confirm.delete_controls"))) return;
 	controlBusy=true;
 	try
 	{
-		const payload=action === "save" ? {sensors:controlSensors.map(entry=>({key:entry.key,monitor:entry.monitor,definition:Object.fromEntries(["name","icon","read_every","report_every","change_by","retain"].map(field=>[field,entry.definition[field]]))}))} : {};
+		const fields=["name","icon","read_every","report_every","change_by","retain","transport"];
+		const payload=action === "save" ? {sensors:controlSensors.map(entry=>({key:entry.key,monitor:entry.monitor,definition:Object.fromEntries(fields.map(field=>[field,entry.definition[field]]))}))} : {};
 		await request(action === "save" ? "api/controls" : `api/controls/${action}`,{method:"POST",body:JSON.stringify(payload)});
 		if (action === "scan") await controlScanStatus();
 		else
 		{
 			await loadControls();
-			controlMessage("Zapisano. Encje MQTT zostaną automatycznie przeładowane.");
+			controlMessage(t("messages.saved"));
 		}
 	}
 	catch (error) { controlMessage(error.message,true); }
@@ -90,7 +104,7 @@ async function controlScanStatus()
 	{
 		const job=await request("api/controls/scan-status");
 		for (const action of ["scan","save","reset","delete"]) byId(`control-${action}`).disabled=job.status === "running";
-		controlMessage(job.message,job.status === "failed");
+		controlMessage(job.status === "failed" ? job.message : t(`scan.${job.status}`),job.status === "failed");
 		if (job.status === "running") controlTimer=setTimeout(controlScanStatus,2000);
 		else
 		{
@@ -105,19 +119,20 @@ async function controlScanStatus()
 byId("control-tab").addEventListener("change",event=>
 {
 	const target=event.target;
-	const key=target.dataset.controlKey || target.dataset.controlMonitor;
+	const key=target.dataset.controlKey || target.dataset.controlMonitor || target.dataset.controlTransport;
 	const entry=controlSensors.find(item=>item.key === key);
 	if (!entry) return;
 	if (target.dataset.controlMonitor)
 	{
 		entry.monitor=target.checked;
 		target.closest(".sensor").classList.toggle("selected",entry.monitor);
-		byId("control-selected").textContent=controlSensors.filter(e=>e.monitor).length;
+		byId("control-selected").textContent=controlSensors.filter(item=>item.monitor).length;
 	}
+	else if (target.dataset.controlTransport) entry.definition.transport=target.value;
 	else entry.definition[target.dataset.controlField]=target.type === "checkbox" ? target.checked : target.value;
 });
 
 for (const action of ["scan","save","reset","delete"]) byId(`control-${action}`).addEventListener("click",()=>controlAction(action));
 byId("control-search").addEventListener("input",renderControls);
 byId("control-filter").addEventListener("change",renderControls);
-Promise.all([loadControls(),controlScanStatus()]).catch(error=>controlMessage(error.message,true));
+if (window.i18nReady) window.i18nReady.then(()=>Promise.all([loadControls(),controlScanStatus()])).catch(error=>controlMessage(error.message,true));

@@ -380,6 +380,7 @@ def main(solarman_factory: TransportFactory,rs485_factory: TransportFactory) -> 
 		lambda entries: _save_custom_sensor_configuration(config,entries),
 		control_service=controls,
 		configuration_coordinator=configuration,
+		transport_status_handler=lambda:_transport_runtime_status(manager),
 	)
 	panel.start()
 	try:
@@ -664,6 +665,24 @@ def _test_custom_sensor(manager: TransportManager,definition: dict[str,Any]) -> 
 			"transport":sensor.transport,
 		}
 	return manager.run(sensor.transport,read)
+
+
+def _transport_runtime_status(manager: TransportManager) -> dict[str,Any]:
+	now=time.monotonic()
+	transports=[]
+	for slot in manager.available():
+		with slot.lock:
+			status=slot.status
+			transports.append({
+				"id":slot.transport_id,
+				"online":status.online,
+				"latency_ms":round(status.latency_ms,2),
+				"last_error":status.last_error,
+				"error_count":status.error_count,
+				"next_reconnect_at":status.next_reconnect_at,
+				"reconnect_in_seconds":round(max(0.0,status.next_reconnect_at-now),2),
+			})
+	return {"transports":transports}
 
 
 def _wait_for_stop() -> None:

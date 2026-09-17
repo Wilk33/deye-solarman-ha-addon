@@ -10,7 +10,9 @@ from http.server import BaseHTTPRequestHandler
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs
 from urllib.parse import unquote
+from urllib.parse import urlsplit
 
 from .custom_sensors import delete_custom_sensor
 from .custom_sensors import load_custom_sensors
@@ -26,6 +28,12 @@ MAX_REQUEST_BYTES=1_000_000
 PANEL_SCRIPT=Path(__file__).with_name("panel.js").read_text(encoding="utf-8")
 CUSTOM_PANEL_SCRIPT=Path(__file__).with_name("custom_panel.js").read_text(encoding="utf-8")
 CONTROL_PANEL_SCRIPT=Path(__file__).with_name("control_panel.js").read_text(encoding="utf-8")
+I18N_DIRECTORY=Path(__file__).with_name("i18n")
+I18N_TRANSLATIONS={
+	language:json.loads((I18N_DIRECTORY/f"{language}.json").read_text(encoding="utf-8"))
+	for language in ("pl","en")
+}
+TRANSPORT_IDS=("solarman_tcp","modbus_rtu")
 
 
 class IngressPanel:
@@ -42,6 +50,7 @@ class IngressPanel:
 		port: int=8099,
 		control_service: Any=None,
 		configuration_coordinator: ConfigurationCoordinator | None=None,
+		transport_status_handler: Callable[[], dict[str,Any]] | None=None,
 	) -> None:
 		self._detected_sensors_file=detected_sensors_file
 		self._scan_handler=scan_handler
@@ -53,6 +62,7 @@ class IngressPanel:
 		self._custom_save_handler=custom_save_handler
 		self._port=port
 		self._controls=control_service
+		self._transport_status_handler=transport_status_handler
 		tracked=[Path(detected_sensors_file)]
 		tracked.append(Path(detected_sensors_file).with_name("deye_solarman_discovery_removals.yaml"))
 		if custom_sensors_file is not None:
@@ -68,6 +78,7 @@ class IngressPanel:
 		self._job={
 			"status": "idle",
 			"message": "Nie uruchomiono jeszcze skanu z tego panelu.",
+			"message_key": "scan.idle",
 			"result": None,
 		}
 		self._server: ThreadingHTTPServer | None=None
@@ -114,10 +125,25 @@ class IngressPanel:
 				self._get()
 
 			def _get(self) -> None:
-				path=self.path.split("?",1)[0]
+				path=urlsplit(self.path).path
 				self._log_request(path)
 				if path in {"/","/index.html"}:
-					self._send_html(PANEL_HTML.replace("__INGRESS_BASE__",self._ingress_base()))
+					language=self._requested_language()
+					body=PANEL_HTML.replace("__INGRESS_BASE__",self._ingress_base())
+					body=body.replace("__DOCUMENT_LANGUAGE__",language or "pl").replace("__PANEL_LANGUAGE__",language)
+					self._send_html(body)
+					return
+				if path.startswith("/api/i18n/"):
+					requested=unquote(path.removeprefix("/api/i18n/"))
+					if not requested or "/" in requested or "\\" in requested or requested in {".",".."}:
+						self._send_json({"error":"Not found"},HTTPStatus.NOT_FOUND)
+						return
+					language=panel._normalize_language(requested)
+					self._send_json({"language":language,"translations":I18N_TRANSLATIONS[language]})
+					return
+				if path == "/api/runtime":
+					payload=panel._transport_status_handler() if panel._transport_status_handler is not None else {"transports":[]}
+					self._send_json(payload)
 					return
 				if path == "/panel.js":
 					self._send_script(PANEL_SCRIPT)
@@ -230,7 +256,26 @@ class IngressPanel:
 						definition=payload.get("definition") if isinstance(payload,dict) else None
 						if not isinstance(definition,dict):
 							raise ValueError("Custom sensor definition must be an object")
-						self._send_json(panel._custom_test_handler(definition))
+						requested=payload.get("transports") if isinstance(payload,dict) else None
+						if requested is None:
+							self._send_json(panel._custom_test_handler(definition))
+							return
+						if not isinstance(requested,list) or not requested:
+							raise ValueError("transports must be a non-empty list")
+						allowed=definition.get("transports") or [definition.get("transport","solarman_tcp")]
+						if len(set(requested)) != len(requested) or any(item not in TRANSPORT_IDS or item not in allowed for item in requested):
+							raise ValueError("Requested custom sensor transport is not allowed")
+						results=[]
+						for transport in TRANSPORT_IDS:
+							if transport not in requested:
+								continue
+							transport_definition={**definition,"transport":transport}
+							try:
+								result=panel._custom_test_handler(transport_definition)
+								results.append({**result,"transport":transport,"status":"supported"})
+							except Exception as error:
+								results.append({"transport":transport,"status":"timeout","error":str(error)})
+						self._send_json({"results":results})
 						return
 				except ValueError as error:
 					self._send_json({"error": str(error)},HTTPStatus.BAD_REQUEST)
@@ -309,6 +354,17 @@ class IngressPanel:
 					path=""
 				return escape(f"{path}/",quote=True)
 
+			def _requested_language(self) -> str:
+				query=parse_qs(urlsplit(self.path).query)
+				for key in ("language","lang"):
+					if query.get(key):
+						return panel._normalize_language(query[key][0])
+				for header in ("X-Home-Assistant-Language","X-Hass-Language","Accept-Language"):
+					value=self.headers.get(header)
+					if value:
+						return panel._normalize_language(value)
+				return ""
+
 			def _log_request(self, path: str) -> None:
 				LOGGER.info(
 					"Ingress request method=%s path=%s ingress_path=%s",
@@ -319,6 +375,11 @@ class IngressPanel:
 
 		return PanelHandler
 
+	@staticmethod
+	def _normalize_language(value: str) -> str:
+		primary=str(value).strip().lower().split(",",1)[0].split(";",1)[0].split("-",1)[0]
+		return "en" if primary == "en" else "pl"
+
 	def _start_scan(self) -> bool:
 		with self._job_lock:
 			if self._job["status"] == "running":
@@ -326,6 +387,7 @@ class IngressPanel:
 			self._job={
 				"status": "running",
 				"message": "Laczenie z loggerem Solarman i skanowanie kandydatow.",
+				"message_key": "scan.running",
 				"result": None,
 			}
 		thread=threading.Thread(target=self._run_scan,name="deye-solarman-scan")
@@ -342,6 +404,7 @@ class IngressPanel:
 				self._job={
 					"status": "failed",
 					"message": str(error),
+					"message_key": None,
 					"result": None,
 				}
 			return
@@ -349,6 +412,7 @@ class IngressPanel:
 			self._job={
 				"status": "completed",
 				"message": "Skan zakonczony. Wybierz wartosci do publikacji i zapisz konfiguracje.",
+				"message_key": "scan.completed",
 				"result": result,
 			}
 		self._notify_configuration_changed()
@@ -376,12 +440,12 @@ class IngressPanel:
 
 
 PANEL_HTML="""<!doctype html>
-<html lang="en">
+<html lang="__DOCUMENT_LANGUAGE__" data-language="__PANEL_LANGUAGE__">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <base href="__INGRESS_BASE__">
-<title>Deye Solarman - Konfigurator encji</title>
+<title>SolarMan Diagnostics</title>
 <style>
 :root {
   color-scheme: light;
@@ -412,8 +476,12 @@ button { cursor: pointer; }
 .eyebrow { margin: 0 0 8px; font-family: "Courier New", monospace; color: var(--solar); font-size: .78rem; letter-spacing: .12em; text-transform: uppercase; }
 h1 { margin: 0; font-size: clamp(2rem, 5vw, 4.2rem); letter-spacing: -.055em; line-height: .92; }
 .lede { max-width: 650px; margin: 15px 0 0; color: var(--muted); font-size: 1.05rem; line-height: 1.45; }
-.status { min-width: 250px; border-left: 4px solid var(--sun); padding: 10px 0 10px 14px; font-family: "Courier New", monospace; font-size: .82rem; }
+.status { min-width: 300px; border-left: 4px solid var(--sun); padding: 10px 0 10px 14px; font-family: "Courier New", monospace; font-size: .82rem; }
 .status strong { display: block; margin-bottom: 5px; color: var(--green); }
+.runtime-title { margin-top: 12px; color: var(--muted); text-transform: uppercase; }
+.runtime-transports { display: grid; gap: 7px; margin-top: 7px; }
+.runtime-transport { display: grid; gap: 2px; border-top: 1px solid var(--line); padding-top: 6px; }
+.runtime-transport strong { margin: 0; }
 .actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 25px 0 14px; }
 .tabs { display: flex; gap: 8px; margin: 24px 0 0; border-bottom: 1px solid var(--line); }
 .tab { border: 0; border-bottom: 3px solid transparent; background: transparent; color: var(--muted); padding: 11px 15px; font-weight: bold; }
@@ -458,8 +526,13 @@ details { border-top: 1px solid var(--line); padding: 0 15px 14px; }
 summary { padding: 11px 0; color: var(--green); cursor: pointer; font-family: "Courier New", monospace; font-size: .75rem; }
 .fields { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 9px; }
 .field { display: grid; gap: 4px; color: var(--muted); font-family: "Courier New", monospace; font-size: .68rem; text-transform: uppercase; }
-.field input { min-width: 0; border: 1px solid var(--line); background: var(--field); padding: 7px; color: var(--ink); font-family: "Courier New", monospace; font-size: .8rem; text-transform: none; }
+.field input, .field select { min-width: 0; border: 1px solid var(--line); background: var(--field); padding: 7px; color: var(--ink); font-family: "Courier New", monospace; font-size: .8rem; text-transform: none; }
 .field.wide { grid-column: 1 / -1; }
+.transport-results { display: grid; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); gap: 8px; padding: 0 15px 15px; }
+.transport-result { display: grid; gap: 5px; border: 1px solid var(--line); background: var(--field); padding: 9px; font: .72rem/1.4 "Courier New", monospace; }
+.transport-result header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.transport-result.supported { border-color: var(--green); }
+.transport-error { color: var(--red); overflow-wrap: anywhere; }
 .select-control { position: relative; min-width: 0; font-family: "Courier New", monospace; font-size: .8rem; text-transform: none; }
 .select-trigger { display: flex; width: 100%; min-height: 34px; align-items: center; justify-content: space-between; gap: 8px; border: 1px solid var(--line); background: var(--field); color: var(--ink); padding: 7px; text-align: left; }
 .filters .select-trigger { min-height: 44px; padding: 12px; font-family: inherit; font-size: 1rem; }
@@ -507,97 +580,98 @@ summary { padding: 11px 0; color: var(--green); cursor: pointer; font-family: "C
 <main class="shell">
   <header class="masthead">
     <div>
-      <p class="eyebrow">Home Assistant Ingress / local Solarman TCP</p>
-      <h1>Konfigurator encji</h1>
-      <p class="lede">Odczytaj stan falownika Deye, porównaj wartości i wybierz sensory oraz encje sterowania udostępniane w Home Assistant przez MQTT.</p>
+      <p class="eyebrow" data-i18n="app.eyebrow">Home Assistant Ingress / diagnostyka transportów</p>
+      <h1 data-i18n="app.heading">Konfigurator encji</h1>
+      <p class="lede" data-i18n="app.lede">Odczytaj stan falownika Deye, porównaj oba transporty i wybierz sensory oraz encje sterowania udostępniane w Home Assistant przez MQTT.</p>
     </div>
-    <div class="status"><strong id="scan-state">Ladowanie panelu</strong><span id="scan-message">Odczyt zapisanego wyniku skanu.</span></div>
+    <div class="status"><strong id="scan-state" data-i18n="scan.loading">Ladowanie panelu</strong><span id="scan-message" data-i18n="scan.loading_message">Odczyt zapisanego wyniku skanu.</span><strong class="runtime-title" data-i18n="runtime.title">Aktywne transporty</strong><div id="transport-status-list" class="runtime-transports"></div></div>
   </header>
 
   <nav class="tabs" aria-label="Pulpity konfiguracji">
-    <button class="tab active" type="button" data-tab="detected">Sensory</button>
-    <button class="tab" type="button" data-tab="control">Sterowanie</button>
-    <button class="tab" type="button" data-tab="custom">Własne sensory</button>
+    <button class="tab active" type="button" data-tab="detected" data-i18n="tabs.sensors">Sensory</button>
+    <button class="tab" type="button" data-tab="control" data-i18n="tabs.controls">Sterowanie</button>
+    <button class="tab" type="button" data-tab="custom" data-i18n="tabs.custom">Własne sensory</button>
   </nav>
 
   <section id="detected-tab" class="tab-panel">
   <section class="actions">
-    <button class="button" id="scan-button" type="button">Skanuj teraz</button>
-    <button class="button secondary" id="reset-button" type="button">Reset konfiguracji</button>
-    <button class="button danger" id="delete-button" type="button">Usun sensory</button>
-    <button class="button secondary" id="save-button" type="button">Zapisz wybor MQTT</button>
+    <button class="button" id="scan-button" type="button" data-i18n="actions.scan">Skanuj teraz</button>
+    <button class="button secondary" id="reset-button" type="button" data-i18n="actions.reset">Reset konfiguracji</button>
+    <button class="button danger" id="delete-button" type="button" data-i18n="actions.delete_sensors">Usun sensory</button>
+    <button class="button secondary" id="save-button" type="button" data-i18n="actions.save_mqtt">Zapisz wybor MQTT</button>
     <span id="save-message"></span>
   </section>
 
   <section class="summary" aria-label="Scan summary">
-    <div class="metric"><b id="count-total">0</b><span>dostepnych kandydatow</span></div>
-    <div class="metric"><b id="count-supported">0</b><span>poprawnych odpowiedzi</span></div>
-    <div class="metric"><b id="count-selected">0</b><span>wybranych do MQTT</span></div>
-    <div class="metric"><b id="count-other">0</b><span>niedostepnych lub blednych</span></div>
+    <div class="metric"><b id="count-total">0</b><span data-i18n="summary.candidates">dostepnych kandydatow</span></div>
+    <div class="metric"><b id="count-supported">0</b><span data-i18n="summary.supported">poprawnych odpowiedzi</span></div>
+    <div class="metric"><b id="count-selected">0</b><span data-i18n="summary.selected">wybranych do MQTT</span></div>
+    <div class="metric"><b id="count-other">0</b><span data-i18n="summary.other">niedostepnych lub blednych</span></div>
   </section>
 
   <section class="filters">
-    <input id="search" type="search" placeholder="Filtruj po nazwie, kluczu, kategorii, rejestrze lub jednostce">
+    <input id="search" type="search" placeholder="Filtruj po nazwie, kluczu, kategorii, rejestrze lub jednostce" data-i18n-placeholder="filters.sensor_search">
     <div class="select-control" data-select-control>
       <input id="status-filter" type="hidden" value="all">
-      <button class="select-trigger" type="button" data-select-trigger aria-haspopup="listbox" aria-expanded="false"><span class="select-value">Wszystkie statusy</span><span class="select-chevron">&#9662;</span></button>
-      <div class="select-options" role="listbox"><button class="select-option selected" type="button" data-select-option data-value="all">Wszystkie statusy</button><button class="select-option" type="button" data-select-option data-value="supported">Supported</button><button class="select-option" type="button" data-select-option data-value="unsupported">Unsupported</button><button class="select-option" type="button" data-select-option data-value="timeout">Timeout</button><button class="select-option" type="button" data-select-option data-value="invalid_value">Invalid value</button></div>
+      <button class="select-trigger" type="button" data-select-trigger aria-haspopup="listbox" aria-expanded="false"><span class="select-value" data-i18n="filters.all">Wszystkie statusy</span><span class="select-chevron">&#9662;</span></button>
+      <div class="select-options" role="listbox"><button class="select-option selected" type="button" data-select-option data-value="all" data-i18n="filters.all">Wszystkie statusy</button><button class="select-option" type="button" data-select-option data-value="supported" data-i18n="status.supported">Supported</button><button class="select-option" type="button" data-select-option data-value="unsupported" data-i18n="status.unsupported">Unsupported</button><button class="select-option" type="button" data-select-option data-value="timeout" data-i18n="status.timeout">Timeout</button><button class="select-option" type="button" data-select-option data-value="invalid_value" data-i18n="status.invalid_value">Invalid value</button></div>
     </div>
   </section>
-  <p id="empty" hidden>Brak danych skanu. Uzyj Skanuj teraz po skonfigurowaniu polaczenia loggera w zakladce Konfiguracja dodatku.</p>
+  <p id="empty" hidden data-i18n="sensors.empty">Brak danych skanu. Uzyj Skanuj teraz po skonfigurowaniu polaczenia loggera w zakladce Konfiguracja dodatku.</p>
   <section id="sensor-groups"></section>
-  <p class="notice"><b>Zastosowanie zmian:</b> zapis aktualizuje trwaly plik wyboru. Dodatek automatycznie przeladowuje tylko polaczenia Solarman i MQTT oraz odczyt wybranych czujnikow. Wiersz ASCII pokazuje dwa znaki z kazdego rejestru, a znaki niedrukowalne jako kropki. Poprawny odczyt BMS potwierdza dostep transportowy, ale niekoniecznie znaczenie rejestru.</p>
+  <p class="notice" data-i18n="sensors.notice">Zapis aktualizuje trwaly plik wyboru. Dodatek automatycznie przeladowuje odczyt i MQTT. Poprawny odczyt potwierdza dostep transportowy, ale niekoniecznie znaczenie rejestru.</p>
   </section>
 
   <section id="custom-tab" class="tab-panel" hidden>
-    <p class="custom-intro">Dodaj zwykly sensor Modbus lub wlacz <b>Wlasna formula</b>, aby lokalnie odczytywac rejestry przez <code>sensor(...)</code> i <code>RAW(...)</code>. Zapis automatycznie przeladowuje tylko odczyt oraz MQTT.</p>
+    <p class="custom-intro" data-i18n="custom.intro">Dodaj zwykly sensor Modbus lub wlacz Wlasna formule, aby lokalnie odczytywac rejestry przez sensor(...) i RAW(...). Test zawsze tylko odczytuje rejestry.</p>
     <section class="custom-actions">
-      <div><button class="button" id="custom-add-button" type="button">+ Dodaj sensor</button><button class="button secondary" id="custom-save-button" type="button">Zapisz wlasne sensory</button></div>
+      <div><button class="button" id="custom-add-button" type="button" data-i18n="actions.add_sensor">+ Dodaj sensor</button><button class="button secondary" id="custom-save-button" type="button" data-i18n="actions.save_custom">Zapisz wlasne sensory</button></div>
       <span id="custom-save-message"></span>
     </section>
     <section id="custom-sensor-list" class="custom-grid"></section>
-    <p id="custom-empty" hidden>Nie utworzono jeszcze wlasnych sensorow. Uzyj przycisku + Dodaj sensor.</p>
+    <p id="custom-empty" hidden data-i18n="custom.empty">Nie utworzono jeszcze wlasnych sensorow. Uzyj przycisku + Dodaj sensor.</p>
   </section>
   <section id="control-tab" class="tab-panel" hidden>
-    <p class="custom-intro">Skan pobiera aktualny stan. Zaznaczenie MQTT udostępnia sterowanie wybraną encją w Home Assistant. Pola UNKNOWN i niepotwierdzone definicje mają zablokowany zapis.</p>
+    <p class="custom-intro" data-i18n="controls.intro">Skan pobiera aktualny stan. Zaznaczenie MQTT udostępnia sterowanie wybraną encją w Home Assistant. Pola UNKNOWN i niepotwierdzone definicje mają zablokowany zapis.</p>
     <section class="actions">
-      <button class="button" id="control-scan" type="button">Skanuj teraz</button>
-      <button class="button secondary" id="control-reset" type="button">Reset konfiguracji</button>
-      <button class="button danger" id="control-delete" type="button">Usuń encje</button>
-      <button class="button secondary" id="control-save" type="button">Zapisz wybór MQTT</button>
+      <button class="button" id="control-scan" type="button" data-i18n="actions.scan">Skanuj teraz</button>
+      <button class="button secondary" id="control-reset" type="button" data-i18n="actions.reset">Reset konfiguracji</button>
+      <button class="button danger" id="control-delete" type="button" data-i18n="actions.delete_controls">Usuń encje</button>
+      <button class="button secondary" id="control-save" type="button" data-i18n="actions.save_mqtt">Zapisz wybór MQTT</button>
       <span id="control-message" role="status"></span>
     </section>
     <section class="summary">
-      <div class="metric"><b id="control-total">0</b><span>encji sterowania</span></div>
-      <div class="metric"><b id="control-supported">0</b><span>poprawnych odpowiedzi</span></div>
-      <div class="metric"><b id="control-selected">0</b><span>wybranych do MQTT</span></div>
-      <div class="metric"><b id="control-other">0</b><span>niedostępnych lub błędnych</span></div>
+      <div class="metric"><b id="control-total">0</b><span data-i18n="summary.controls">encji sterowania</span></div>
+      <div class="metric"><b id="control-supported">0</b><span data-i18n="summary.supported">poprawnych odpowiedzi</span></div>
+      <div class="metric"><b id="control-selected">0</b><span data-i18n="summary.selected">wybranych do MQTT</span></div>
+      <div class="metric"><b id="control-other">0</b><span data-i18n="summary.other">niedostępnych lub błędnych</span></div>
     </section>
     <section class="filters">
-      <input id="control-search" type="search" placeholder="Filtruj po nazwie, kluczu, rejestrze lub metodzie sterowania">
+      <input id="control-search" type="search" placeholder="Filtruj po nazwie, kluczu, rejestrze lub metodzie sterowania" data-i18n-placeholder="filters.control_search">
       <div class="select-control" data-select-control>
         <input id="control-filter" type="hidden" value="all">
-        <button class="select-trigger" type="button" data-select-trigger aria-haspopup="listbox" aria-expanded="false"><span class="select-value">Wszystkie statusy</span><span class="select-chevron">&#9662;</span></button>
-        <div class="select-options" role="listbox"><button class="select-option selected" type="button" data-select-option data-value="all">Wszystkie statusy</button><button class="select-option" type="button" data-select-option data-value="supported">Supported</button><button class="select-option" type="button" data-select-option data-value="unknown">UNKNOWN / Not applicable</button><button class="select-option" type="button" data-select-option data-value="timeout">Timeout</button><button class="select-option" type="button" data-select-option data-value="invalid_value">Invalid value</button></div>
+        <button class="select-trigger" type="button" data-select-trigger aria-haspopup="listbox" aria-expanded="false"><span class="select-value" data-i18n="filters.all">Wszystkie statusy</span><span class="select-chevron">&#9662;</span></button>
+        <div class="select-options" role="listbox"><button class="select-option selected" type="button" data-select-option data-value="all" data-i18n="filters.all">Wszystkie statusy</button><button class="select-option" type="button" data-select-option data-value="supported" data-i18n="status.supported">Supported</button><button class="select-option" type="button" data-select-option data-value="unknown" data-i18n="status.unknown">UNKNOWN</button><button class="select-option" type="button" data-select-option data-value="timeout" data-i18n="status.timeout">Timeout</button><button class="select-option" type="button" data-select-option data-value="invalid_value" data-i18n="status.invalid_value">Invalid value</button></div>
       </div>
     </section>
-    <p id="control-empty">Brak danych skanu. Użyj Skanuj teraz.</p>
+    <p id="control-empty" data-i18n="controls.empty">Brak danych skanu. Użyj Skanuj teraz.</p>
     <section id="control-groups"></section>
   </section>
 </main>
-<section id="formula-modal" class="formula-modal" hidden aria-modal="true" role="dialog" aria-label="Edytor formuly">
+<section id="formula-modal" class="formula-modal" hidden aria-modal="true" role="dialog" aria-label="Edytor formuly" data-i18n-aria-label="common.formula_editor">
   <div class="formula-dialog">
-    <header><div><h2 id="formula-modal-title">Formula</h2><span id="formula-modal-key" class="key"></span></div><button class="button secondary" id="formula-minimize-button" type="button">Minimalizuj</button></header>
+    <header><div><h2 id="formula-modal-title" data-i18n="common.formula">Formula</h2><span id="formula-modal-key" class="key"></span></div><button class="button secondary" id="formula-minimize-button" type="button" data-i18n="actions.minimize">Minimalizuj</button></header>
     <textarea id="formula-modal-editor" spellcheck="false" aria-label="Formula"></textarea>
     <pre id="formula-modal-result" class="test-result" hidden></pre>
-    <footer><button class="button secondary" id="formula-modal-test-button" type="button">Test formuly</button><button class="button" id="formula-apply-button" type="button">Zastosuj</button></footer>
+    <footer><button class="button secondary" id="formula-modal-test-button" type="button" data-i18n="actions.test_formula">Test formuly</button><button class="button" id="formula-apply-button" type="button" data-i18n="actions.apply">Zastosuj</button></footer>
   </div>
 </section>
 <script src="panel.js"></script>
 <script>
 let sensors=[];
 let scanTimer=null;
-const editable=["name","multiplier","offset","unit","type","word_order","byte_order","schedule","read_every","report_every","change_by","retain","device_class","state_class","icon","category","topic_suffix"];
+let runtimeTimer=null;
+const editable=["name","multiplier","offset","unit","type","word_order","byte_order","schedule","read_every","report_every","change_by","retain","device_class","state_class","icon","category","topic_suffix","transport"];
 const esc=value=>String(value ?? "").replace(/[&<>'"]/g,char=>{
   if (char.charCodeAt(0) === 34) return "&quot;";
   return {"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;"}[char];
@@ -670,7 +744,7 @@ async function request(path,options={}) {
   return data;
 }
 
-function statusBadge(status) { return `<span class="badge ${esc(status)}">${esc(status || "not_scanned")}</span>`; }
+function statusBadge(status) { const value=status || "not_scanned"; return `<span class="badge ${esc(value)}">${esc(t(`status.${value}`))}</span>`; }
 function input(key,field,label,value,type="text",wide=false) {
   return `<label class="field ${wide ? "wide" : ""}">${label}<input data-field="${esc(field)}" data-key="${esc(key)}" type="${type}" value="${esc(value)}"></label>`;
 }
@@ -689,36 +763,34 @@ function asciiFromRaw(registers,byteOrder="high_low") {
 
 function sensorCard(entry) {
   const definition=entry.definition || {};
-  const scan=entry.last_scan || {};
-  const value=scan.value === null || scan.value === undefined ? "-" : `${esc(scan.value)} ${esc(definition.unit)}`;
-  const raw=(scan.raw_hex || []).join(", ") || "-";
-  const rawAscii=scan.raw_ascii || asciiFromRaw(scan.raw_registers,definition.byte_order) || "-";
+  const supported=transportBranches(entry).filter(([,result])=>result.status === "supported");
   return `<article class="sensor ${entry.monitor ? "selected" : ""}" data-sensor="${esc(entry.key)}">
     <div class="sensor-head">
       <div><h3>${esc(definition.name || entry.key)}</h3><span class="key">${esc(entry.key)} / R${esc((definition.registers || []).join(","))}</span>
-        <div class="reading"><b>${value}</b><div class="raw-line"><span class="raw-label">HEX</span><code>${esc(raw)}</code></div><div class="raw-line ascii"><span class="raw-label">ASCII</span><code>${esc(rawAscii)}</code></div></div>
-        <div class="badges">${statusBadge(scan.status)}<span class="badge ${esc(scan.verification)}">${esc(scan.verification || "unknown")}</span><span class="badge">${esc(definition.type)}</span></div>
+        <div class="badges"><span class="badge">${esc(definition.type)}</span></div>
       </div>
-      <label class="toggle"><input data-monitor="${esc(entry.key)}" type="checkbox" ${entry.monitor ? "checked" : ""}> MQTT</label>
+      <label class="toggle"><input data-monitor="${esc(entry.key)}" type="checkbox" ${entry.monitor ? "checked" : ""} ${supported.length ? "" : "disabled"}> ${esc(t("common.mqtt"))}</label>
     </div>
-    <details><summary>Konfiguruj dekodowanie i odpytywanie</summary><div class="fields">
-      ${input(entry.key,"name","Nazwa",definition.name,"text",true)}
-      ${input(entry.key,"multiplier","Mnoznik",definition.multiplier,"number")}
-      ${input(entry.key,"offset","Offset",definition.offset,"number")}
-      ${input(entry.key,"unit","Jednostka",definition.unit)}
-      ${select(entry.key,"type","Typ rejestru",definition.type,["uint16","int16","uint32","int32","hex","ascii"])}
-      ${select(entry.key,"word_order","Kolejnosc slow",definition.word_order,["high_low","low_high"])}
-      ${select(entry.key,"byte_order","Kolejnosc bajtow ASCII",definition.byte_order,["high_low","low_high"])}
-      ${select(entry.key,"schedule","Harmonogram",definition.schedule,["default","slow"])}
-      ${input(entry.key,"read_every","Odczyt co sekundy",definition.read_every,"number")}
-      ${input(entry.key,"report_every","Ponowna publikacja co sekundy",definition.report_every,"number")}
-      ${input(entry.key,"change_by","Prog zmiany",definition.change_by,"number")}
-      ${input(entry.key,"device_class","Klasa urzadzenia HA",definition.device_class)}
-      ${input(entry.key,"state_class","Klasa stanu HA",definition.state_class)}
-      ${input(entry.key,"icon","Ikona",definition.icon)}
-      ${input(entry.key,"category","Kategoria",definition.category)}
-      ${input(entry.key,"topic_suffix","Sufiks MQTT",definition.topic_suffix,"text",true)}
-      <label class="toggle"><input data-field="retain" data-key="${esc(entry.key)}" type="checkbox" ${definition.retain ? "checked" : ""}> Zachowaj stan MQTT</label>
+    ${transportResultCards(entry)}
+    <details><summary>${esc(t("sensors.configure"))}</summary><div class="fields">
+      ${transportSelector(entry)}
+      ${input(entry.key,"name",t("common.name"),definition.name,"text",true)}
+      ${input(entry.key,"multiplier",t("common.multiplier"),definition.multiplier,"number")}
+      ${input(entry.key,"offset",t("common.offset"),definition.offset,"number")}
+      ${input(entry.key,"unit",t("common.unit"),definition.unit)}
+      ${select(entry.key,"type",t("common.register_type"),definition.type,["uint16","int16","uint32","int32","hex","ascii"])}
+      ${select(entry.key,"word_order",t("common.word_order"),definition.word_order,["high_low","low_high"])}
+      ${select(entry.key,"byte_order",t("common.byte_order"),definition.byte_order,["high_low","low_high"])}
+      ${select(entry.key,"schedule",t("common.schedule"),definition.schedule,["default","slow"])}
+      ${input(entry.key,"read_every",t("common.read_every"),definition.read_every,"number")}
+      ${input(entry.key,"report_every",t("common.report_every"),definition.report_every,"number")}
+      ${input(entry.key,"change_by",t("common.change_by"),definition.change_by,"number")}
+      ${input(entry.key,"device_class",t("common.device_class"),definition.device_class)}
+      ${input(entry.key,"state_class",t("common.state_class"),definition.state_class)}
+      ${input(entry.key,"icon",t("common.icon"),definition.icon)}
+      ${input(entry.key,"category",t("common.category"),definition.category)}
+      ${input(entry.key,"topic_suffix",t("common.topic_suffix"),definition.topic_suffix,"text",true)}
+      <label class="toggle"><input data-field="retain" data-key="${esc(entry.key)}" type="checkbox" ${definition.retain ? "checked" : ""}> ${esc(t("common.retain"))}</label>
     </div></details>
   </article>`;
 }
@@ -737,10 +809,10 @@ function render() {
     if (!groups.has(category)) groups.set(category,[]);
     groups.get(category).push(entry);
   }
-  byId("sensor-groups").innerHTML=[...groups.entries()].sort(([a],[b])=>a.localeCompare(b)).map(([category,items])=>`<section class="group"><div class="group-title"><b>${esc(category)}</b><small>${items.length} entries</small></div><div class="sensor-grid">${items.map(sensorCard).join("")}</div></section>`).join("");
+  byId("sensor-groups").innerHTML=[...groups.entries()].sort(([a],[b])=>a.localeCompare(b)).map(([category,items])=>`<section class="group"><div class="group-title"><b>${esc(category)}</b><small>${esc(t("common.entries",{value:items.length}))}</small></div><div class="sensor-grid">${items.map(sensorCard).join("")}</div></section>`).join("");
   byId("empty").hidden=sensors.length !== 0;
   byId("count-total").textContent=sensors.length;
-  byId("count-supported").textContent=sensors.filter(entry=>entry.last_scan?.status === "supported").length;
+  byId("count-supported").textContent=sensors.filter(entry=>transportBranches(entry).some(([,result])=>result.status === "supported")).length;
   byId("count-selected").textContent=sensors.filter(entry=>entry.monitor).length;
   byId("count-other").textContent=sensors.filter(entry=>entry.last_scan?.status && entry.last_scan.status !== "supported").length;
 }
@@ -793,12 +865,16 @@ async function loadSensors() {
   render();
 }
 
+async function refreshRuntimeStatus() {
+  renderTransportRuntime(await request("api/runtime"));
+}
+
 function collectUpdates() {
   return sensors.map(entry=>{
     const key=entry.key;
     const definition={};
-    for (const field of editable) {
-      const control=document.querySelector(`[data-field="${field}"][data-key="${CSS.escape(key)}"]`);
+	for (const field of editable) {
+	  const control=field === "transport" ? document.querySelector(`[data-transport="${CSS.escape(key)}"]`) : document.querySelector(`[data-field="${field}"][data-key="${CSS.escape(key)}"]`);
       if (!control) continue;
       definition[field]=field === "retain" ? control.checked : control.value;
     }
@@ -813,39 +889,39 @@ async function save() {
     const payload=await request("api/sensors",{method:"POST",body:JSON.stringify({sensors:collectUpdates()})});
     sensors=payload.available_sensors || [];
     message.style.color="var(--green)";
-    message.textContent="Zapisano. Polaczenia Solarman i MQTT zostaly automatycznie przeladowane.";
+    message.textContent=t("messages.saved");
     render();
-  } catch (error) { message.textContent=`Blad zapisu: ${error.message}`; message.style.color="var(--red)"; }
+  } catch (error) { message.textContent=t("messages.save_error",{error:error.message}); message.style.color="var(--red)"; }
 }
 
 async function resetConfiguration() {
-  if (!window.confirm("Przywrocic domyslne ustawienia katalogowe dla znalezionych czujnikow? Wszystkie wyboru MQTT zostana wylaczone.")) return;
+  if (!window.confirm(t("confirm.reset_sensors"))) return;
   const message=byId("save-message");
   try {
     const payload=await request("api/reset",{method:"POST",body:"{}"});
     sensors=payload.available_sensors || [];
     message.style.color="var(--green)";
-    message.textContent="Przywrocono domyslna konfiguracje. Poprzednie encje MQTT Discovery zostana automatycznie usuniete.";
+    message.textContent=t("messages.reset");
     render();
-  } catch (error) { message.style.color="var(--red)"; message.textContent=`Blad resetu: ${error.message}`; }
+  } catch (error) { message.style.color="var(--red)"; message.textContent=t("messages.save_error",{error:error.message}); }
 }
 
 async function deleteSensors() {
-  if (!window.confirm("Usunac lokalna liste znalezionych czujnikow i ich konfiguracje? Katalog rejestrow zostanie odswiezony z GitHub.")) return;
+  if (!window.confirm(t("confirm.delete_sensors"))) return;
   const message=byId("save-message");
   try {
     const payload=await request("api/sensors/delete",{method:"POST",body:"{}"});
     sensors=payload.available_sensors || [];
     message.style.color="var(--green)";
-    message.textContent="Usunieto lokalna liste. Katalog zostal odswiezony, a poprzednie encje MQTT Discovery zostana automatycznie usuniete. Uruchom skan, aby utworzyc nowa liste.";
+    message.textContent=t("messages.deleted");
     render();
-  } catch (error) { message.style.color="var(--red)"; message.textContent=`Blad usuwania: ${error.message}`; }
+  } catch (error) { message.style.color="var(--red)"; message.textContent=t("messages.delete_error",{error:error.message}); }
 }
 
 async function refreshScanStatus() {
   const job=await request("api/scan-status");
-  byId("scan-state").textContent=job.status.toUpperCase();
-  byId("scan-message").textContent=job.message;
+  byId("scan-state").textContent=t(`status.${job.status}`);
+  byId("scan-message").textContent=job.message_key ? t(job.message_key) : job.message;
   const button=byId("scan-button");
   button.disabled=job.status === "running";
   if (job.status === "running") {
@@ -868,7 +944,10 @@ byId("delete-button").addEventListener("click",deleteSensors);
 byId("search").addEventListener("input",render);
 byId("status-filter").addEventListener("change",render);
 installHomeAssistantThemeSync();
-Promise.all([loadSensors(),refreshScanStatus()]).catch(error=>{
+window.i18nReady.then(async()=>{
+  await Promise.all([loadSensors(),refreshScanStatus(),refreshRuntimeStatus()]);
+  if (!runtimeTimer) runtimeTimer=window.setInterval(()=>refreshRuntimeStatus().catch(error=>console.error("[SolarMan Diagnostics] runtime status refresh failed",error)),5000);
+}).catch(error=>{
   console.error("[Deye Solarman] panel initialization failed",error);
   byId("scan-message").textContent=error.message;
 });

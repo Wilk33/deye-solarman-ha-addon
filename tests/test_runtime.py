@@ -1116,6 +1116,92 @@ class RuntimeTests(unittest.TestCase):
 			finally:
 				panel.stop()
 
+	def test_ingress_panel_serves_safe_polish_and_english_i18n_with_language_precedence(self) -> None:
+		with tempfile.TemporaryDirectory() as directory:
+			panel=IngressPanel(str(Path(directory)/"detected.yaml"),lambda:{},port=0)
+			panel.start()
+			try:
+				assert panel._server is not None
+				address=f"http://127.0.0.1:{panel._server.server_address[1]}"
+				for language,expected in (("pl","Sensory"),("pl-PL","Sensory"),("en","Sensors"),("en-US","Sensors"),("de","Sensory")):
+					with self.subTest(language=language),urlopen(f"{address}/api/i18n/{language}") as response:
+						payload=json.loads(response.read())
+						self.assertEqual(response.headers.get_content_type(),"application/json")
+						self.assertEqual(response.headers["Cache-Control"],"no-store")
+						self.assertEqual(payload["translations"]["tabs.sensors"],expected)
+				with urlopen(f"{address}/?lang=en-US") as response:
+					self.assertIn('data-language="en"',response.read().decode("utf-8"))
+				with urlopen(Request(f"{address}/",headers={"Accept-Language":"en-US,en;q=0.9"})) as response:
+					self.assertIn('data-language="en"',response.read().decode("utf-8"))
+				with self.assertRaises(HTTPError) as context:
+					urlopen(f"{address}/api/i18n/%2e%2e%2fpl")
+				self.assertEqual(context.exception.code,404)
+			finally:
+				panel.stop()
+
+	def test_ingress_panel_reports_both_transport_runtime_states(self) -> None:
+		statuses=lambda:{
+			"transports":[
+				{"id":"solarman_tcp","online":True,"latency_ms":12.5,"last_error":None,"error_count":0,"next_reconnect_at":0.0},
+				{"id":"modbus_rtu","online":False,"latency_ms":4.25,"last_error":"disconnected","error_count":2,"next_reconnect_at":10.0},
+			]
+		}
+		with tempfile.TemporaryDirectory() as directory:
+			panel=IngressPanel(
+				str(Path(directory)/"detected.yaml"),
+				lambda:{},
+				transport_status_handler=statuses,
+				port=0,
+			)
+			panel.start()
+			try:
+				assert panel._server is not None
+				address=f"http://127.0.0.1:{panel._server.server_address[1]}"
+				with urlopen(f"{address}/api/runtime") as response:
+					payload=json.loads(response.read())
+				self.assertEqual([item["id"] for item in payload["transports"]],["solarman_tcp","modbus_rtu"])
+				self.assertEqual(payload["transports"][1]["last_error"],"disconnected")
+				self.assertEqual(payload["transports"][0]["latency_ms"],12.5)
+			finally:
+				panel.stop()
+
+	def test_custom_sensor_http_test_runs_both_transports_sequentially(self) -> None:
+		calls=[]
+		def custom_test(definition):
+			calls.append(definition["transport"])
+			return {"transport":definition["transport"],"value":len(calls)}
+		with tempfile.TemporaryDirectory() as directory:
+			panel=IngressPanel(
+				str(Path(directory)/"detected.yaml"),
+				lambda:{},
+				custom_sensors_file=str(Path(directory)/"custom.yaml"),
+				custom_test_handler=custom_test,
+				port=0,
+			)
+			panel.start()
+			try:
+				assert panel._server is not None
+				address=f"http://127.0.0.1:{panel._server.server_address[1]}"
+				definition={
+					"key":"custom_voltage",
+					"registers":[10040],
+					"type":"uint16",
+					"transport":"modbus_rtu",
+					"transports":["solarman_tcp","modbus_rtu"],
+				}
+				request=Request(
+					f"{address}/api/custom-sensors/test",
+					data=json.dumps({"definition":definition,"transports":["modbus_rtu","solarman_tcp"]}).encode("utf-8"),
+					headers={"Content-Type":"application/json"},
+					method="POST",
+				)
+				with urlopen(request) as response:
+					payload=json.loads(response.read())
+				self.assertEqual(calls,["solarman_tcp","modbus_rtu"])
+				self.assertEqual([result["transport"] for result in payload["results"]],["solarman_tcp","modbus_rtu"])
+			finally:
+				panel.stop()
+
 	def test_config_accepts_profile_editor_scalar(self) -> None:
 		with tempfile.TemporaryDirectory() as directory:
 			options_path=Path(directory) / "options.json"

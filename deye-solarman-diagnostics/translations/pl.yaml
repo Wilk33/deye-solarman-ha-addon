@@ -1,124 +1,175 @@
 configuration:
-  logger:
-    name: Połączenie z loggerem SolarMan
-    description: Dane lokalnego loggera TCP, nie adres IP falownika.
+  solarman:
+    name: SolarMan TCP
+    description: Lokalne połączenie TCP z loggerem SolarMan. Adres, port i numer seryjny dotyczą loggera, a nie interfejsu sieciowego falownika.
     fields:
+      enabled:
+        name: Włącz SolarMan TCP
+        description: Uruchamia niezależny worker i połączenie przez logger SolarMan.
       host:
         name: Adres IP loggera
+        description: Lokalny adres IP loggera SolarMan podłączonego do falownika.
       port:
-        name: Port TCP
+        name: Port TCP loggera
+        description: Port usługi SolarMan TCP loggera, zwykle 8899. Zweryfikuj go w swojej sieci.
       serial_number:
         name: Numer seryjny loggera
+        description: Numer seryjny urządzenia SolarMan wymagany przez protokół loggera. To nie jest numer seryjny falownika.
       modbus_id:
         name: Identyfikator Modbus falownika
+        description: Adres Modbus falownika widzianego przez logger SolarMan. Wartość startowa 1 wymaga weryfikacji urządzenia.
       timeout:
-        name: Timeout odczytu w sekundach
+        name: Timeout odczytu
+        description: Maksymalny czas oczekiwania na odpowiedź SolarMan w sekundach.
       reconnect_delay:
-        name: Czas ponownego połączenia w sekundach
+        name: Opóźnienie ponownego połączenia
+        description: Czas w sekundach przed kolejną próbą po utracie połączenia SolarMan.
+      polling:
+        name: Odczyt SolarMan
+        description: Interwały i grupowanie dotyczą wyłącznie transportu SolarMan TCP.
+        fields:
+          default_interval:
+            name: Domyślny interwał odczytu
+            description: Częstotliwość zwykłych odczytów SolarMan w sekundach.
+          slow_interval:
+            name: Wolny interwał odczytu
+            description: Częstotliwość wolnych odczytów SolarMan w sekundach.
+          read_message_spacing:
+            name: Odstęp między zapytaniami
+            description: Minimalny odstęp w sekundach między komunikatami SolarMan.
+          batch_gap:
+            name: Przerwa adresów w grupie
+            description: Maksymalna liczba pomijanych adresów przy grupowaniu odczytów SolarMan.
+          max_registers_per_request:
+            name: Rejestry na zapytanie
+            description: Maksymalna liczba rejestrów odczytywanych jednym zapytaniem SolarMan.
+          publish_unchanged_every:
+            name: Publikacja niezmienionego stanu
+            description: Maksymalny czas w sekundach bez ponownej publikacji niezmienionej wartości.
+          startup_probe_register:
+            name: Rejestr testu startowego
+            description: Pierwszy rejestr używany do testu połączenia SolarMan przy starcie.
+          startup_probe_count:
+            name: Liczba rejestrów testu
+            description: Liczba rejestrów odczytywanych w teście startowym SolarMan.
+          allow_reconnect:
+            name: Automatyczne ponowne połączenie
+            description: Pozwala workerowi SolarMan odnawiać utracone połączenie.
+  rs485:
+    name: Modbus RTU (RS485)
+    description: Bezpośrednie połączenie szeregowe. Ustawienia /dev/ttyUSB0, 9600 8N1 i Modbus ID 1 są wartościami startowymi i wymagają potwierdzenia dla falownika.
+    fields:
+      enabled:
+        name: Włącz Modbus RTU
+        description: Uruchamia niezależny worker dla bezpośredniego transportu RS485.
+      device:
+        name: Urządzenie szeregowe
+        description: Port RS485, na przykład /dev/ttyUSB0. Wybierz rzeczywiste urządzenie przekazane do dodatku.
+      baudrate:
+        name: Prędkość transmisji
+        description: Domyślne 9600 baud jest wartością startową i wymaga weryfikacji w falowniku.
+      bytesize:
+        name: Bity danych
+        description: Domyślne 8 bitów jest częścią przykładowego ustawienia 9600 8N1.
+      parity:
+        name: Parzystość
+        description: Domyślne N oznacza brak parzystości w przykładowym ustawieniu 9600 8N1.
+      stopbits:
+        name: Bity stopu
+        description: Domyślny 1 bit stopu jest częścią przykładowego ustawienia 9600 8N1.
+      modbus_id:
+        name: Identyfikator Modbus
+        description: Adres urządzenia RTU. Wartość startowa 1 wymaga weryfikacji w falowniku.
+      timeout:
+        name: Timeout odczytu
+        description: Maksymalny czas oczekiwania na odpowiedź RS485 w sekundach.
+      reconnect_delay:
+        name: Opóźnienie ponownego połączenia
+        description: Czas w sekundach przed kolejną próbą otwarcia portu RS485.
+      polling:
+        name: Odczyt RS485
+        description: Interwały i spacing dotyczą wyłącznie transportu Modbus RTU i mogą różnić się od SolarMan.
+        fields:
+          default_interval:
+            name: Domyślny interwał odczytu
+            description: Częstotliwość zwykłych odczytów RS485 w sekundach.
+          slow_interval:
+            name: Wolny interwał odczytu
+            description: Częstotliwość wolnych odczytów RS485 w sekundach.
+          read_message_spacing:
+            name: Odstęp między zapytaniami
+            description: Minimalny odstęp w sekundach między komunikatami na magistrali RS485.
+          batch_gap:
+            name: Przerwa adresów w grupie
+            description: Maksymalna liczba pomijanych adresów przy grupowaniu odczytów RS485.
+          max_registers_per_request:
+            name: Rejestry na zapytanie
+            description: Maksymalna liczba rejestrów w jednym zapytaniu Modbus RTU.
+          publish_unchanged_every:
+            name: Publikacja niezmienionego stanu
+            description: Maksymalny czas w sekundach bez ponownej publikacji niezmienionej wartości.
+          startup_probe_register:
+            name: Rejestr testu startowego
+            description: Pierwszy rejestr używany do testu połączenia RS485 przy starcie.
+          startup_probe_count:
+            name: Liczba rejestrów testu
+            description: Liczba rejestrów odczytywanych w teście startowym RS485.
+          allow_reconnect:
+            name: Automatyczne ponowne połączenie
+            description: Pozwala workerowi RS485 ponownie otwierać utracone połączenie.
   mqtt:
     name: MQTT i Home Assistant
-    description: Ustawienia połączenia z brokerem oraz nazw encji MQTT.
+    description: Jedno wspólne połączenie MQTT, Discovery, stan dostępności i tematy dla obu transportów.
     fields:
-      use_supervisor:
-        name: Użyj usługi MQTT Supervisora
-      host:
-        name: Host brokera
-      port:
-        name: Port brokera
-      username:
-        name: Użytkownik MQTT
-      password:
-        name: Hasło MQTT
-      tls:
-        name: Użyj TLS
-      client_id:
-        name: Identyfikator klienta MQTT
-      base_topic:
-        name: Główny temat MQTT
-      discovery_prefix:
-        name: Prefiks MQTT Discovery
-      retain:
-        name: Zachowuj ostatni stan MQTT
+      use_supervisor: {name: Użyj usługi MQTT Supervisora, description: Pobiera dane brokera z usługi MQTT Home Assistant, gdy jest dostępna.}
+      host: {name: Host brokera, description: Nazwa lub adres brokera MQTT używany bez usługi Supervisora.}
+      port: {name: Port brokera, description: Port połączenia MQTT.}
+      username: {name: Użytkownik MQTT, description: Opcjonalna nazwa użytkownika brokera.}
+      password: {name: Hasło MQTT, description: Opcjonalne hasło brokera.}
+      tls: {name: Użyj TLS, description: Włącza szyfrowane połączenie z brokerem MQTT.}
+      client_id: {name: Identyfikator klienta, description: Wspólny identyfikator pojedynczej sesji MQTT dodatku.}
+      base_topic: {name: Główny temat MQTT, description: Wspólny prefiks tematów stanów i poleceń bez sufiksu transportu.}
+      discovery_prefix: {name: Prefiks MQTT Discovery, description: Prefiks tematów automatycznej konfiguracji Home Assistant.}
+      retain: {name: Zachowuj stan MQTT, description: Zapisuje ostatnie komunikaty stanu jako retained.}
   inverter:
-    name: Tożsamość falownika w Home Assistant
+    name: Tożsamość falownika
+    description: Wspólne dane urządzenia pokazywane przy encjach MQTT Discovery.
     fields:
-      serial_number:
-        name: Numer seryjny falownika
-      name:
-        name: Nazwa urządzenia
-      manufacturer:
-        name: Producent
-      model:
-        name: Model
+      serial_number: {name: Numer seryjny falownika, description: Numer seryjny falownika używany w identyfikatorach urządzenia Home Assistant.}
+      name: {name: Nazwa urządzenia, description: Nazwa wspólnego urządzenia widoczna w Home Assistant.}
+      manufacturer: {name: Producent, description: Producent falownika pokazywany w Home Assistant.}
+      model: {name: Model, description: Model falownika pokazywany w Home Assistant.}
   profiles:
     name: Profile i lokalne dane
-    description: Domyślnie lista profili jest pusta. Sensory pojawiają się po załadowaniu katalogu i skanie.
+    description: Domyślny profil jest celowo pusty. Sensory pochodzą z katalogu, skanu i lokalnych definicji.
     fields:
-      default_profile:
-        name: Wbudowany profil startowy
-      overrides_file:
-        name: Plik lokalnych nadpisań sensorów
-      custom_sensors_file:
-        name: Plik własnych sensorów
-      state_file:
-        name: Plik stanu działania
-      scan_report_file:
-        name: Plik raportu skanu
-  polling:
-    name: Odczyt i publikacja
-    fields:
-      default_interval:
-        name: Domyślny interwał odczytu w sekundach
-      slow_interval:
-        name: Wolny interwał odczytu w sekundach
-      read_message_spacing:
-        name: Odstęp między zapytaniami w sekundach
-      batch_gap:
-        name: Maksymalna przerwa adresów w grupie
-      max_registers_per_request:
-        name: Maksymalna liczba rejestrów w zapytaniu
-      publish_unchanged_every:
-        name: Ponowna publikacja niezmienionego stanu w sekundach
-      startup_probe_register:
-        name: Rejestr testu połączenia
-      startup_probe_count:
-        name: Liczba rejestrów testu połączenia
-      allow_reconnect:
-        name: Automatycznie odnawiaj połączenie
+      default_profile: {name: Wbudowany profil startowy, description: Minimalna lista profili startowych. Domyślnie pusta, aby nie publikować niepotwierdzonych encji.}
+      overrides_file: {name: Plik nadpisań sensorów, description: Lokalny plik /config z trwałymi nadpisaniami definicji.}
+      custom_sensors_file: {name: Plik własnych sensorów, description: Lokalny plik /config z definicjami Własnych sensorów.}
+      state_file: {name: Plik stanu runtime, description: Lokalny plik /config z trwałym stanem harmonogramu i publikacji.}
+      scan_report_file: {name: Raport cyklu odczytu, description: Lokalny plik /share z raportem bieżących odczytów.}
   advanced:
     name: Diagnostyka
+    description: Dodatkowe dane diagnostyczne. Zwykła praca nie wymaga szczegółowych logów.
     fields:
-      emit_raw_topics:
-        name: Publikuj tematy RAW
-      emit_scan_report:
-        name: Zapisuj raport cyklu odczytu
-      detailed_logs:
-        name: Szczegółowe logi
-        description: Włącza DEBUG, zakresy rejestrów, potwierdzenia publikacji MQTT i tracebacki.
+      emit_raw_topics: {name: Publikuj tematy RAW, description: Publikuje surowe rejestry w dodatkowym temacie MQTT.}
+      emit_scan_report: {name: Zapisuj raport cyklu, description: Zapisuje lokalny raport wykonanych odczytów.}
+      detailed_logs: {name: Szczegółowe logi, description: Domyślnie wyłączone. Po włączeniu ustawienie pozostaje trwale zapisane w options.json do czasu ręcznej zmiany.}
   scan:
     name: Skanowanie sensorów
+    description: Ustawienia skanu katalogu i lokalnego raportu kandydatów.
     fields:
-      mode:
-        name: Tryb skanowania
-      report_file:
-        name: Plik raportu kandydatów
-      detected_sensors_file:
-        name: Plik wykrytych sensorów
-      bms_pack_count:
-        name: Liczba pakietów BMS
+      mode: {name: Tryb skanowania, description: Określa automatyczne zachowanie skanu przy starcie dodatku.}
+      report_file: {name: Raport kandydatów, description: Lokalny plik /share z wynikami skanu kandydatów.}
+      detected_sensors_file: {name: Plik wykrytych sensorów, description: Lokalny plik /config z wynikami i wyborem transportu per sensor.}
+      bms_pack_count: {name: Liczba pakietów BMS, description: Liczba pakietów używana przy budowie kandydatów katalogu.}
   catalog:
-    name: Zewnętrzne źródła list sensorów i sterowania
-    description: Listy są pobierane z tych adresów i zapisywane lokalnie jako ostatnia poprawna kopia.
+    name: Katalogi sensorów i sterowania
+    description: Zdalne listy są zapisywane w lokalnych plikach cache. Poprzednia poprawna kopia pozostaje dostępna po błędzie pobierania.
     fields:
-      refresh_on_start:
-        name: Odśwież katalogi przy starcie
-      url:
-        name: Link do listy sensorów
-      cache_file:
-        name: Lokalna kopia listy sensorów
-      control_url:
-        name: Link do listy sterowania
-      control_cache_file:
-        name: Lokalna kopia listy sterowania
-      timeout:
-        name: Timeout pobierania w sekundach
+      refresh_on_start: {name: Odśwież przy starcie, description: Próbuje pobrać aktualne listy po uruchomieniu dodatku.}
+      url: {name: Link do listy sensorów, description: Adres źródłowego katalogu definicji sensorów.}
+      cache_file: {name: Lokalny cache sensorów, description: Plik /config z ostatnią poprawną kopią listy sensorów.}
+      control_url: {name: Link do listy sterowania, description: Adres źródłowego katalogu definicji sterowania.}
+      control_cache_file: {name: Lokalny cache sterowania, description: Plik /config z ostatnią poprawną kopią listy sterowania.}
+      timeout: {name: Timeout pobierania, description: Maksymalny czas pobierania katalogu w sekundach.}
