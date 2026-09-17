@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import time
 from dataclasses import asdict
 from dataclasses import replace
@@ -43,6 +44,18 @@ EDITABLE_DEFINITION_FIELDS={
 }
 
 
+class PartialScanConnectionError(TransportConnectionClosedError):
+	def __init__(self, message: str, results: Any) -> None:
+		super().__init__(message)
+		self.results=results
+
+
+class ScanBatchError(RuntimeError):
+	def __init__(self, message: str, results: Any) -> None:
+		super().__init__(message)
+		self.results=results
+
+
 def validate_transport_configuration(
 	transport: Any,
 	transports: Any,
@@ -79,7 +92,8 @@ def select_transport(
 	last_scan: dict[str,dict[str,Any]],
 	previous: str | None=None,
 ) -> str:
-	validate_transport_configuration(previous or transports[0],transports)
+	default="solarman_tcp" if "solarman_tcp" in transports else transports[0] if transports else None
+	validate_transport_configuration(default,transports)
 	supported=[
 		transport_id
 		for transport_id in TRANSPORT_IDS
@@ -145,13 +159,26 @@ def scan_transports_sequentially(
 		try:
 			report=manager.run(
 				transport_id,
-				lambda client:scan_candidates(allowed,client,slot.polling),
+				lambda client:scan_candidates(allowed,client,slot.polling,raise_on_all_failures=True),
 			)
+		except PartialScanConnectionError as error:
+			for result in error.results:
+				results[result["key"]][transport_id]=result
+			for candidate in allowed:
+				if transport_id in results[candidate.sensor.key]:
+					continue
+				results[candidate.sensor.key][transport_id]=_scan_error(
+					candidate,"unavailable",str(error),
+				)
 		except TransportConnectionClosedError as error:
 			for candidate in allowed:
 				results[candidate.sensor.key][transport_id]=_scan_error(
 					candidate,"unavailable",str(error),
 				)
+		except ScanBatchError as error:
+			report=error.results
+			for result in report:
+				results[result["key"]][transport_id]=result
 		else:
 			for result in report:
 				results[result["key"]][transport_id]=result
@@ -170,15 +197,7 @@ def scan_transports_sequentially(
 		transport_results={}
 		for transport_id,result in results[key].items():
 			prior=prior_scans.get(transport_id,{})
-			if result.get("status") in {"timeout","unavailable","unsupported"} and prior:
-				preserved=dict(prior)
-				preserved.update({
-					field:value
-					for field,value in result.items()
-					if field not in {"raw_registers","raw_hex","raw_ascii","decoded","value"}
-				})
-				result=preserved
-			transport_results[transport_id]=result
+			transport_results[transport_id]=merge_scan_result(prior,result)
 		selected=select_transport(candidate.sensor.transports,transport_results,previous_transport)
 		definition=_sensor_to_payload(replace(candidate.sensor,transport=selected))
 		merged.append({
@@ -199,6 +218,8 @@ def scan_candidates(
 	candidates: list[ScanCandidate],
 	solarman: RegisterTransport,
 	polling: PollingConfig,
+	*,
+	raise_on_all_failures: bool=False,
 ) -> list[dict[str, Any]]:
 	by_key={candidate.sensor.key: candidate for candidate in candidates}
 	readable=[replace(candidate.sensor, enabled=True) for candidate in candidates]
@@ -214,8 +235,8 @@ def scan_candidates(
 			start=time.perf_counter()
 			values=solarman.read_holding_registers(group_start, count)
 			latency_ms=(time.perf_counter()-start)*1000
-		except TransportConnectionClosedError:
-			raise
+		except TransportConnectionClosedError as error:
+			raise PartialScanConnectionError(str(error),report) from error
 		except Exception as error:
 			status=_read_error_status(error)
 			for sensor in group:
@@ -227,25 +248,31 @@ def scan_candidates(
 		if index < len(groups)-1 and polling.read_message_spacing > 0:
 			time.sleep(polling.read_message_spacing)
 
+	if raise_on_all_failures and report and all(result.get("status") in {"timeout","unsupported"} for result in report):
+		raise ScanBatchError("All scan reads failed",report)
 	return report
 
 
 def _read_error_status(error: Exception) -> str:
 	message=str(error).lower()
-	unsupported_markers=(
-		"illegal data address",
-		"illegal function",
-		"modbus exception",
-		"exception response",
-		"exceptionresponse",
-		"exception code 1",
-		"exception code 2",
-		"exception_code=1",
-		"exception_code=2",
-	)
-	if any(marker in message for marker in unsupported_markers):
+	if re.search(r"\billegal\s+(?:data\s+)?(?:address|function)\b",message):
+		return "unsupported"
+	match=re.search(r"\bexception(?:_|\s+)code\s*[=:]?\s*(\d+)\b",message)
+	if match and int(match.group(1)) in {1,2}:
 		return "unsupported"
 	return "timeout"
+
+
+def merge_scan_result(previous: Any, result: dict[str,Any]) -> dict[str,Any]:
+	if result.get("status") not in {"timeout","unavailable","unsupported"} or not isinstance(previous,dict) or not previous:
+		return result
+	preserved=dict(previous)
+	preserved.update({
+		field:value
+		for field,value in result.items()
+		if field not in {"raw_registers","raw_hex","raw_ascii","decoded","value"}
+	})
+	return preserved
 
 
 def save_detected_sensors(path: str, report: list[dict[str, Any]]) -> None:
@@ -339,7 +366,10 @@ def reset_detected_sensors(path: str, candidates: list[ScanCandidate]) -> dict[s
 				"key": key,
 				"monitor": False,
 				"definition": defaults[key],
-				"last_scan": entry.get("last_scan",{}),
+				"last_scan": last_scan_with_selected_alias(
+					normalize_last_scan(entry.get("last_scan",{})),
+					defaults[key].get("transport","solarman_tcp"),
+				),
 			}
 		)
 
@@ -406,7 +436,7 @@ def load_monitored_definitions(path: str) -> list[dict[str, Any]]:
 		transports=definition.get("transports",list(TRANSPORT_IDS))
 		validate_transport_configuration(transport,transports,subject=f"Sensor {entry.get('key')}")
 		if normalize_last_scan(entry.get("last_scan",{})).get(transport,{}).get("status") != "supported":
-			raise ValueError(f"Sensor {entry.get('key')}: selected transport is not supported")
+			continue
 		selected=dict(definition)
 		selected["transport"]=transport
 		selected["transports"]=transports

@@ -74,7 +74,12 @@ class OwnershipApiTests(unittest.TestCase):
 
 	def test_custom_sensor_conflict_and_release_on_delete(self):
 		definition={**self.definition,"key":"custom_pv"}
-		payload={"sensors":[{"key":"custom_pv","monitor":True,"definition":definition}]}
+		payload={"sensors":[{
+			"key":"custom_pv",
+			"monitor":True,
+			"definition":definition,
+			"last_scan":{"solarman_tcp":{"status":"supported","raw_registers":[1],"value":1}},
+		}]}
 		self.foreign.reconcile({("sensor","custom_pv")})
 		with self.assertRaises(HTTPError) as caught:
 			self.request("/api/custom-sensors",payload)

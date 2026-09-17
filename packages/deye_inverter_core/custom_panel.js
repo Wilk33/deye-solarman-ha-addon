@@ -161,7 +161,7 @@ function collectCustomSensors()
 			topic_suffix:String(value("topic_suffix")).trim() || nextKey,
 			formula:formulaMode ? String(formula) : "",
 		};
-		return {key:nextKey,monitor:document.querySelector(`[data-custom-monitor="${CSS.escape(key)}"]`)?.checked ?? true,definition,_test:existing._test};
+		return {key:nextKey,monitor:document.querySelector(`[data-custom-monitor="${CSS.escape(key)}"]`)?.checked ?? true,definition,last_scan:existing.last_scan,_test:existing._test};
 	});
 }
 
@@ -230,6 +230,9 @@ async function testCustomSensor(key,formulaText=null)
 		if (!entry) throw new Error("Nie znaleziono sensora");
 		if (formulaText !== null) entry.definition.formula=formulaText;
 		const result=await customRequest("api/custom-sensors/test",{method:"POST",body:JSON.stringify({definition:entry.definition})});
+		if (!entry.definition.formula && (entry.definition.transport || "solarman_tcp") === "solarman_tcp") {
+			entry.last_scan={...(entry.last_scan || {}),solarman_tcp:{...result,status:"supported"}};
+		}
 		entry._test={result};
 		if (formulaModalKey === currentKey) {
 			customById("formula-modal-result").textContent=customResult(entry).replace(/<[^>]+>/g,"");

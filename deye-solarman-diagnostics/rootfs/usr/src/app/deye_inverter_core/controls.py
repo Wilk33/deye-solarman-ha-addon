@@ -18,7 +18,10 @@ from .catalog_bundle import load_map
 from .models import TRANSPORT_IDS
 from .scanner import _read_error_status
 from .scanner import last_scan_with_selected_alias
+from .scanner import merge_scan_result
 from .scanner import normalize_last_scan
+from .scanner import PartialScanConnectionError
+from .scanner import ScanBatchError
 from .scanner import scan_status
 from .scanner import select_transport
 from .scanner import validate_transport_configuration
@@ -41,14 +44,21 @@ RETIRED_CONTROLS={
 
 
 def set_controls(entries: list[dict]) -> None:
-	keys=[entry["key"] for entry in entries]
+	if not isinstance(entries,list):
+		raise ValueError("Control catalog must be a list")
+	normalized=[]
+	for index,entry in enumerate(entries):
+		if not isinstance(entry,dict) or not isinstance(entry.get("key"),str) or not entry["key"]:
+			raise ValueError(f"Control catalog entry {index} must have a key")
+		transports=list(entry.get("transports",TRANSPORT_IDS))
+		default="solarman_tcp" if "solarman_tcp" in transports else transports[0] if transports else None
+		validate_transport_configuration(default,transports,subject=f"Control {entry['key']}")
+		normalized.append({**entry,"transports":transports})
+	keys=[entry["key"] for entry in normalized]
 	if len(keys) != len(set(keys)):
 		raise ValueError("Control catalog has duplicate keys")
 	CONTROLS.clear()
-	CONTROLS.update({
-		entry["key"]:{**entry,"transports":list(entry.get("transports",TRANSPORT_IDS))}
-		for entry in entries
-	})
+	CONTROLS.update({entry["key"]:entry for entry in normalized})
 
 
 def component(entry: dict) -> str:
@@ -261,15 +271,16 @@ class ControlService:
 	def entry(self, key: str, previous: dict | None=None) -> dict:
 		catalog=deepcopy(CONTROLS[key])
 		transports=list(catalog.get("transports",TRANSPORT_IDS))
-		definition={**catalog,"name":catalog["name"],"read_every":60,"report_every":300,"change_by":0,"retain":True,"category":"config","icon":"mdi:tune","transport":"solarman_tcp" if "solarman_tcp" in transports else transports[0],"transports":transports}
+		default_transport="solarman_tcp" if "solarman_tcp" in transports else transports[0] if transports else None
+		validate_transport_configuration(default_transport,transports,subject=f"Control {key}")
+		branches=normalize_last_scan(previous.get("last_scan",{})) if previous else {}
+		definition={**catalog,"name":catalog["name"],"read_every":60,"report_every":300,"change_by":0,"retain":True,"category":"config","icon":"mdi:tune","transport":default_transport,"transports":transports}
 		if previous:
 			definition.update({field:previous["definition"][field] for field in ("name","read_every","report_every","change_by","retain","icon") if field in previous["definition"]})
 			previous_transport=previous["definition"].get("transport","solarman_tcp")
-			validate_transport_configuration(previous_transport,transports,subject=f"Control {key}")
-			definition["transport"]=previous_transport
+			definition["transport"]=select_transport(transports,branches,previous_transport)
 			if definition["name"] in catalog.get("legacy_names",[]):
 				definition["name"]=catalog["name"]
-		branches=normalize_last_scan(previous.get("last_scan",{})) if previous else {}
 		if previous and any(previous["definition"].get(field) != catalog.get(field) for field in ("factor","bitmask","shift","min","max","options","read_only","raw_only","unit")):
 			selected_scan=branches.get(definition["transport"],{})
 			words=selected_scan.get("raw_registers",[])
@@ -311,6 +322,8 @@ class ControlService:
 				validate_transport_configuration(transport,transports,subject=f"Control {key}")
 				branches=normalize_last_scan(entry.get("last_scan",{}))
 				selected_scan=branches.get(transport,{})
+				if transport != entry["definition"]["transport"] and selected_scan.get("status") != "supported":
+					raise ValueError("Najpierw wykonaj poprawny odczyt encji")
 				if update["monitor"] and (CONTROLS[key].get("read_only") or selected_scan.get("status") != "supported" or selected_scan.get("write_allowed") is False):
 					raise ValueError("Najpierw wykonaj poprawny odczyt encji")
 				entry["monitor"]=update["monitor"]
@@ -340,7 +353,17 @@ class ControlService:
 			if self.job["status"] == "running":
 				raise ValueError("Poczekaj na zakończenie skanu")
 			data=self.load()
-			data["available_sensors"]=[] if clear else [{**self.entry(entry["key"]),"last_scan":entry["last_scan"]} for entry in data["available_sensors"]]
+			if clear:
+				data["available_sensors"]=[]
+			else:
+				reset_entries=[]
+				for entry in data["available_sensors"]:
+					reset=self.entry(entry["key"])
+					branches=normalize_last_scan(entry.get("last_scan",{}))
+					reset["last_scan"]=last_scan_with_selected_alias(branches,reset["definition"]["transport"])
+					reset["status"]=scan_status(branches,reset["definition"]["transports"])
+					reset_entries.append(reset)
+				data["available_sensors"]=reset_entries
 			self.store(data)
 			self.writes_blocked=False
 			return data
@@ -407,7 +430,11 @@ class ControlService:
 							except Exception as error:
 								result={"status":"invalid_value" if isinstance(error,ValueError) else _read_error_status(error),"error":str(error)}
 							branches=normalize_last_scan(entry.get("last_scan",{}))
-							branches["solarman_tcp"]=result
+							branches["solarman_tcp"]=merge_scan_result(branches.get("solarman_tcp",{}),result)
+							branches["modbus_rtu"]=merge_scan_result(
+								branches.get("modbus_rtu",{}),
+								{"status":"unavailable","error":"Transport modbus_rtu is not active"},
+							)
 							entry["last_scan"]=last_scan_with_selected_alias(branches,entry["definition"]["transport"])
 							entry["status"]=scan_status(branches,entry["definition"]["transports"])
 							time.sleep(self.spacing)
@@ -420,7 +447,10 @@ class ControlService:
 					for entry in entries:
 						if transport_id not in entry["definition"]["transports"]:
 							branches=normalize_last_scan(entry.get("last_scan",{}))
-							branches[transport_id]={"status":"unsupported","error":f"Transport {transport_id} is not allowed by the catalog"}
+							branches[transport_id]=merge_scan_result(
+								branches.get(transport_id,{}),
+								{"status":"unsupported","error":f"Transport {transport_id} is not allowed by the catalog"},
+							)
 							entry["last_scan"]=last_scan_with_selected_alias(branches,entry["definition"]["transport"])
 					if not allowed:
 						continue
@@ -434,19 +464,27 @@ class ControlService:
 									results[entry["key"]]=self.read(client,entry["key"])
 									if results[entry["key"]].get("status") != "supported":
 										results[entry["key"]]["status"]="invalid_value"
-								except TransportConnectionClosedError:
-									raise
+								except TransportConnectionClosedError as error:
+									raise PartialScanConnectionError(str(error),results) from error
 								except Exception as error:
 									results[entry["key"]]={"status":"invalid_value" if isinstance(error,ValueError) else _read_error_status(error),"error":str(error)}
 								time.sleep(self.spacing)
+							if results and all(result.get("status") in {"timeout","unsupported"} for result in results.values()):
+								raise ScanBatchError("All control scan reads failed",results)
 							return results
 						try:
 							transport_results=self.transport_manager.run(transport_id,read_all)
+						except PartialScanConnectionError as error:
+							transport_results=dict(error.results)
+							for entry in allowed:
+								transport_results.setdefault(entry["key"],{"status":"unavailable","error":str(error)})
 						except TransportConnectionClosedError as error:
 							transport_results={entry["key"]:{"status":"unavailable","error":str(error)} for entry in allowed}
+						except ScanBatchError as error:
+							transport_results=error.results
 					for entry in allowed:
 						branches=normalize_last_scan(entry.get("last_scan",{}))
-						branches[transport_id]=transport_results[entry["key"]]
+						branches[transport_id]=merge_scan_result(branches.get(transport_id,{}),transport_results[entry["key"]])
 						entry["last_scan"]=last_scan_with_selected_alias(branches,entry["definition"]["transport"])
 				for entry in entries:
 					branches=normalize_last_scan(entry.get("last_scan",{}))

@@ -27,7 +27,10 @@ from deye_inverter_core.models import SolarmanConfig
 from deye_inverter_core.models import TransportPollingConfig
 from deye_inverter_core.scan_catalog import ScanCandidate
 from deye_inverter_core.scanner import save_detected_sensors
+from deye_inverter_core.scanner import _read_error_status
 from deye_inverter_core.scanner import load_detected_sensors
+from deye_inverter_core.scanner import load_monitored_definitions
+from deye_inverter_core.scanner import reset_detected_sensors
 from deye_inverter_core.scanner import scan_transports_sequentially
 from deye_inverter_core.scanner import update_detected_sensors
 from deye_solarman_diagnostics.rs485 import ModbusRtuTransport
@@ -1092,6 +1095,9 @@ class EntityTransportSelectionTests(unittest.TestCase):
 			payload=save_custom_sensors(str(path),[{
 				"key":"custom_voltage",
 				"monitor":True,
+				"last_scan":{
+					"modbus_rtu":{"status":"supported","raw_registers":[500],"value":500},
+				},
 				"definition":{
 					"key":"custom_voltage",
 					"registers":[10],
@@ -1215,6 +1221,330 @@ class EntityTransportSelectionTests(unittest.TestCase):
 				service._scan(lambda:None)
 				entry=service.load()["available_sensors"][0]
 				self.assertEqual(entry["last_scan"]["solarman_tcp"]["status"],"invalid_value")
+		finally:
+			set_controls(catalog)
+
+	def test_legacy_monitored_timeout_is_migrated_and_skipped_at_startup(self) -> None:
+		with tempfile.TemporaryDirectory() as directory:
+			path=Path(directory)/"detected.yaml"
+			path.write_text(yaml.safe_dump({
+				"version":1,
+				"available_sensors":[{
+					"key":"voltage",
+					"monitor":True,
+					"definition":{"key":"voltage","name":"Voltage","registers":[10],"type":"uint16"},
+					"last_scan":{"status":"timeout","error":"legacy timeout"},
+				}],
+			}),encoding="utf-8")
+
+			self.assertEqual(load_monitored_definitions(str(path)),[])
+			loaded=load_detected_sensors(str(path))["available_sensors"][0]
+			self.assertFalse(loaded["monitor"])
+			self.assertEqual(loaded["last_scan"]["solarman_tcp"]["status"],"timeout")
+
+	def test_sensor_scan_preserves_success_before_connection_closes_and_marks_slot_offline(self) -> None:
+		first=self.candidate(transports=["solarman_tcp"])
+		second=ScanCandidate(
+			SensorDefinition("current","Current",[100],"uint16",1,transports=["solarman_tcp"]),
+			"documented",
+			"test",
+		)
+		transport=SequentialScanTransport("solarman_tcp",[],{10:500})
+		transport.failures[100]=TransportConnectionClosedError("socket closed")
+		manager=self.manager(transport,None)
+
+		entries=scan_transports_sequentially([first,second],manager)
+
+		by_key={entry["key"]:entry for entry in entries}
+		self.assertEqual(by_key["voltage"]["last_scan"]["solarman_tcp"]["status"],"supported")
+		self.assertEqual(by_key["current"]["last_scan"]["solarman_tcp"]["status"],"unavailable")
+		self.assertFalse(manager.get("solarman_tcp").online)
+
+	def test_sensor_all_protocol_failures_are_reported_without_false_slot_success(self) -> None:
+		transport=SequentialScanTransport("solarman_tcp",[])
+		transport.failures[10]=TransportProtocolError("CRC mismatch")
+		manager=self.manager(transport,None)
+
+		entry=scan_transports_sequentially([self.candidate(transports=["solarman_tcp"])],manager)[0]
+
+		self.assertEqual(entry["last_scan"]["solarman_tcp"]["status"],"timeout")
+		slot=manager.get("solarman_tcp")
+		self.assertEqual(slot.error_count,1)
+		self.assertEqual(slot.last_error,"All scan reads failed")
+		self.assertTrue(slot.online)
+
+	def test_removed_previous_transport_selects_only_supported_allowed_transport(self) -> None:
+		entry=scan_transports_sequentially(
+			[self.candidate(transports=["solarman_tcp"])],
+			self.manager(SequentialScanTransport("solarman_tcp",[],{10:500}),None),
+			[{"key":"voltage","definition":{"transport":"modbus_rtu"}}],
+		)[0]
+
+		self.assertEqual(entry["definition"]["transport"],"solarman_tcp")
+
+	def test_custom_register_sensor_requires_and_persists_supported_selected_scan(self) -> None:
+		with tempfile.TemporaryDirectory() as directory:
+			path=Path(directory)/"custom.yaml"
+			definition={
+				"key":"custom_voltage",
+				"registers":[10],
+				"type":"uint16",
+				"transport":"modbus_rtu",
+				"transports":["solarman_tcp","modbus_rtu"],
+			}
+			with self.assertRaisesRegex(ValueError,"supported scan"):
+				save_custom_sensors(str(path),[{"key":"custom_voltage","monitor":False,"definition":definition}])
+			last_scan={
+				"solarman_tcp":{"status":"timeout"},
+				"modbus_rtu":{"status":"supported","raw_registers":[500],"value":500},
+			}
+			payload=save_custom_sensors(str(path),[{
+				"key":"custom_voltage",
+				"monitor":True,
+				"definition":definition,
+				"last_scan":last_scan,
+			}])
+			self.assertEqual(payload["sensors"][0]["last_scan"]["modbus_rtu"]["value"],500)
+			self.assertEqual(payload["sensors"][0]["last_scan"]["status"],"supported")
+
+	def test_legacy_custom_sensor_without_scan_survives_unchanged_but_transport_change_requires_scan(self) -> None:
+		with tempfile.TemporaryDirectory() as directory:
+			path=Path(directory)/"custom.yaml"
+			legacy={
+				"version":1,
+				"sensors":[{
+					"key":"custom_voltage",
+					"monitor":True,
+					"definition":{"key":"custom_voltage","registers":[10],"type":"uint16"},
+				}],
+			}
+			path.write_text(yaml.safe_dump(legacy),encoding="utf-8")
+			loaded=load_custom_sensors(str(path))["sensors"][0]
+			unchanged=save_custom_sensors(str(path),[loaded])["sensors"][0]
+			self.assertTrue(unchanged["monitor"])
+			self.assertEqual(unchanged["definition"]["transport"],"solarman_tcp")
+			changed={**unchanged,"definition":{**unchanged["definition"],"transport":"modbus_rtu"}}
+			with self.assertRaisesRegex(ValueError,"supported scan"):
+				save_custom_sensors(str(path),[changed])
+			changed["last_scan"]={"modbus_rtu":{"status":"supported","raw_registers":[501],"value":501}}
+			migrated=save_custom_sensors(str(path),[changed])["sensors"][0]
+			self.assertEqual(migrated["definition"]["transport"],"modbus_rtu")
+			self.assertEqual(migrated["last_scan"]["value"],501)
+
+	def test_exact_modbus_exception_codes_classify_only_illegal_requests_as_unsupported(self) -> None:
+		for code in (1,2):
+			self.assertEqual(_read_error_status(Exception(f"ExceptionResponse(exception_code={code})")),"unsupported")
+		for code in (6,10,11):
+			self.assertEqual(_read_error_status(Exception(f"ExceptionResponse(exception_code={code})")),"timeout")
+		self.assertEqual(_read_error_status(Exception("ExceptionResponse without a code")),"timeout")
+		self.assertEqual(_read_error_status(Exception("Illegal data address")),"unsupported")
+
+	def test_reset_sensor_alias_matches_catalog_default_transport(self) -> None:
+		with tempfile.TemporaryDirectory() as directory:
+			path=Path(directory)/"detected.yaml"
+			path.write_text(yaml.safe_dump({
+				"version":1,
+				"available_sensors":[{
+					"key":"voltage",
+					"monitor":True,
+					"definition":{"key":"voltage","registers":[10],"type":"uint16","transport":"modbus_rtu","transports":["solarman_tcp","modbus_rtu"]},
+					"last_scan":{
+						"solarman_tcp":{"status":"supported","value":500},
+						"modbus_rtu":{"status":"supported","value":501},
+					},
+				}],
+			}),encoding="utf-8")
+
+			entry=reset_detected_sensors(str(path),[self.candidate()])["available_sensors"][0]
+
+			self.assertEqual(entry["definition"]["transport"],"solarman_tcp")
+			self.assertEqual(entry["last_scan"]["value"],500)
+
+	def test_control_catalog_rejects_invalid_transport_lists(self) -> None:
+		catalog=list(CONTROLS.values())
+		control=dict(catalog[0])
+		try:
+			for transports in ([],["solarman_tcp","solarman_tcp"],["unknown"]):
+				with self.subTest(transports=transports),self.assertRaises(ValueError):
+					set_controls([{**control,"transports":transports}])
+		finally:
+			set_controls(catalog)
+
+	def test_control_scan_preserves_success_before_connection_closes_and_marks_slot_offline(self) -> None:
+		catalog=list(CONTROLS.values())
+		first=dict(CONTROLS["control_grid_charge_battery_current"])
+		second=dict(CONTROLS["control_load_limit"])
+		set_controls([first,second])
+		try:
+			with tempfile.TemporaryDirectory() as directory:
+				transport=SequentialScanTransport("solarman_tcp",[],{128:37})
+				transport.failures[142]=TransportConnectionClosedError("socket closed")
+				manager=self.manager(transport,None)
+				service=ControlService(
+					str(Path(directory)/"controls.json"),
+					None,
+					threading.Lock(),
+					0,
+					transport_manager=manager,
+				)
+
+				service._scan(lambda:None)
+
+				by_key={entry["key"]:entry for entry in service.load()["available_sensors"]}
+				self.assertEqual(by_key[first["key"]]["last_scan"]["solarman_tcp"]["status"],"supported")
+				self.assertEqual(by_key[second["key"]]["last_scan"]["solarman_tcp"]["status"],"unavailable")
+				self.assertFalse(manager.get("solarman_tcp").online)
+		finally:
+			set_controls(catalog)
+
+	def test_control_catalog_removal_reselects_supported_allowed_transport(self) -> None:
+		catalog=list(CONTROLS.values())
+		control=dict(CONTROLS["control_grid_charge_battery_current"])
+		try:
+			with tempfile.TemporaryDirectory() as directory:
+				service=ControlService(str(Path(directory)/"controls.json"),None,threading.Lock(),0)
+				previous=service.entry(control["key"])
+				previous["definition"]["transport"]="modbus_rtu"
+				previous["last_scan"]={
+					"solarman_tcp":{"status":"supported","write_allowed":True},
+					"modbus_rtu":{"status":"supported","write_allowed":True},
+				}
+				service.store({"available_sensors":[previous],"published":[]})
+				set_controls([{**control,"transports":["solarman_tcp"]}])
+
+				loaded=service.load()["available_sensors"][0]
+
+				self.assertEqual(loaded["definition"]["transport"],"solarman_tcp")
+		finally:
+			set_controls(catalog)
+
+	def test_control_transport_change_requires_supported_scan_even_when_not_monitored(self) -> None:
+		catalog=list(CONTROLS.values())
+		control=dict(CONTROLS["control_grid_charge_battery_current"])
+		set_controls([control])
+		try:
+			with tempfile.TemporaryDirectory() as directory:
+				service=ControlService(str(Path(directory)/"controls.json"),None,threading.Lock(),0)
+				entry=service.entry(control["key"])
+				entry["last_scan"]={
+					"solarman_tcp":{"status":"supported","write_allowed":True},
+					"modbus_rtu":{"status":"timeout"},
+				}
+				service.store({"available_sensors":[entry],"published":[]})
+
+				with self.assertRaisesRegex(ValueError,"poprawny odczyt"):
+					service.update([{
+						"key":control["key"],
+						"monitor":False,
+						"definition":{"transport":"modbus_rtu"},
+					}])
+		finally:
+			set_controls(catalog)
+
+	def test_control_rescan_failure_preserves_legacy_raw_values_and_marks_missing_rs485(self) -> None:
+		catalog=list(CONTROLS.values())
+		control=dict(CONTROLS["control_grid_charge_battery_current"])
+		set_controls([control])
+		try:
+			with tempfile.TemporaryDirectory() as directory:
+				transport=SequentialScanTransport("solarman_tcp",[])
+				transport.failures[128]=TimeoutError("no reply")
+				service=ControlService(
+					str(Path(directory)/"controls.json"),
+					None,
+					threading.Lock(),
+					0,
+					transport_factory=lambda logger:transport,
+				)
+				entry=service.entry(control["key"])
+				entry["last_scan"]={"status":"supported","value":37,"raw_registers":[37],"raw_hex":["0x0025"],"write_allowed":True}
+				service.store({"available_sensors":[entry],"published":[]})
+
+				service._scan(lambda:None)
+
+				loaded=service.load()["available_sensors"][0]
+				self.assertEqual(loaded["last_scan"]["solarman_tcp"]["status"],"timeout")
+				self.assertEqual(loaded["last_scan"]["solarman_tcp"]["value"],37)
+				self.assertEqual(loaded["last_scan"]["solarman_tcp"]["raw_hex"],["0x0025"])
+				self.assertEqual(loaded["last_scan"]["modbus_rtu"]["status"],"unavailable")
+		finally:
+			set_controls(catalog)
+
+	def test_control_unavailable_rescan_preserves_nested_transport_history(self) -> None:
+		catalog=list(CONTROLS.values())
+		control=dict(CONTROLS["control_grid_charge_battery_current"])
+		set_controls([control])
+		try:
+			with tempfile.TemporaryDirectory() as directory:
+				service=ControlService(
+					str(Path(directory)/"controls.json"),
+					None,
+					threading.Lock(),
+					0,
+					transport_manager=self.manager(SequentialScanTransport("solarman_tcp",[],{128:37}),None),
+				)
+				entry=service.entry(control["key"])
+				entry["last_scan"]={
+					"solarman_tcp":{"status":"supported","value":36,"raw_registers":[36],"raw_hex":["0x0024"]},
+					"modbus_rtu":{"status":"supported","value":38,"raw_registers":[38],"raw_hex":["0x0026"]},
+				}
+				service.store({"available_sensors":[entry],"published":[]})
+
+				service._scan(lambda:None)
+
+				branch=service.load()["available_sensors"][0]["last_scan"]["modbus_rtu"]
+				self.assertEqual(branch["status"],"unavailable")
+				self.assertEqual(branch["value"],38)
+				self.assertEqual(branch["raw_hex"],["0x0026"])
+		finally:
+			set_controls(catalog)
+
+	def test_control_all_protocol_failures_are_reported_without_false_slot_success(self) -> None:
+		catalog=list(CONTROLS.values())
+		control=dict(CONTROLS["control_grid_charge_battery_current"])
+		set_controls([control])
+		try:
+			with tempfile.TemporaryDirectory() as directory:
+				transport=SequentialScanTransport("solarman_tcp",[])
+				transport.failures[128]=TransportProtocolError("CRC mismatch")
+				manager=self.manager(transport,None)
+				service=ControlService(
+					str(Path(directory)/"controls.json"),
+					None,
+					threading.Lock(),
+					0,
+					transport_manager=manager,
+				)
+
+				service._scan(lambda:None)
+
+				self.assertEqual(service.load()["available_sensors"][0]["last_scan"]["solarman_tcp"]["status"],"timeout")
+				slot=manager.get("solarman_tcp")
+				self.assertEqual(slot.error_count,1)
+				self.assertEqual(slot.last_error,"All control scan reads failed")
+				self.assertTrue(slot.online)
+		finally:
+			set_controls(catalog)
+
+	def test_control_reset_alias_matches_catalog_default_transport(self) -> None:
+		catalog=list(CONTROLS.values())
+		control=dict(CONTROLS["control_grid_charge_battery_current"])
+		set_controls([control])
+		try:
+			with tempfile.TemporaryDirectory() as directory:
+				service=ControlService(str(Path(directory)/"controls.json"),None,threading.Lock(),0)
+				entry=service.entry(control["key"])
+				entry["definition"]["transport"]="modbus_rtu"
+				entry["last_scan"]={
+					"solarman_tcp":{"status":"supported","value":37,"write_allowed":True},
+					"modbus_rtu":{"status":"supported","value":38,"write_allowed":True},
+				}
+				service.store({"available_sensors":[entry],"published":[]})
+
+				reset=service.reset()["available_sensors"][0]
+
+				self.assertEqual(reset["definition"]["transport"],"solarman_tcp")
+				self.assertEqual(reset["last_scan"]["value"],37)
 		finally:
 			set_controls(catalog)
 
