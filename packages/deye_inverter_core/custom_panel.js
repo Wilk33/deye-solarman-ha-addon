@@ -49,6 +49,20 @@ function customDefaultDefinition(key)
 	};
 }
 
+function customReadSnapshot(definition,transport)
+{
+	return {
+		registers:[...(definition.registers || [])],
+		type:String(definition.type),
+		formula:String(definition.formula || ""),
+		multiplier:Number(definition.multiplier),
+		offset:Number(definition.offset),
+		word_order:String(definition.word_order),
+		byte_order:String(definition.byte_order),
+		transport,
+	};
+}
+
 function customInput(key,field,label,value,type="text",wide=false)
 {
 	return `<label class="field ${wide ? "wide" : ""}">${label}<input data-custom-field="${customEsc(field)}" data-custom-key="${customEsc(key)}" type="${type}" value="${customEsc(value)}"></label>`;
@@ -233,7 +247,7 @@ async function testCustomSensor(key,formulaText=null)
 		const transport=entry.definition.transport || "solarman_tcp";
 		if (transport !== "solarman_tcp") throw new Error("Test w tej wersji obsluguje tylko transport solarman_tcp");
 		const result=await customRequest("api/custom-sensors/test",{method:"POST",body:JSON.stringify({definition:entry.definition})});
-		entry.last_scan={...(entry.last_scan || {}),[transport]:{...result,status:"supported"}};
+		entry.last_scan={...(entry.last_scan || {}),[transport]:{...result,status:"supported",definition_snapshot:customReadSnapshot(entry.definition,transport)}};
 		entry._test={result};
 		if (formulaModalKey === currentKey) {
 			customById("formula-modal-result").textContent=customResult(entry).replace(/<[^>]+>/g,"");
@@ -243,7 +257,12 @@ async function testCustomSensor(key,formulaText=null)
 		renderCustomSensors();
 	} catch (error) {
 		const entry=customSensors.find(item=>item.key === customCurrentKey(key));
-		if (entry) entry._test={error:error.message};
+		if (entry) {
+			const transport=entry.definition.transport || "solarman_tcp";
+			const previousScan=entry.last_scan?.[transport] || {};
+			entry.last_scan={...(entry.last_scan || {}),[transport]:{...previousScan,status:"timeout",error:error.message}};
+			entry._test={error:error.message};
+		}
 		if (formulaModalKey === entry?.key) {
 			customById("formula-modal-result").textContent=`Blad testu: ${error.message}`;
 			customById("formula-modal-result").hidden=false;

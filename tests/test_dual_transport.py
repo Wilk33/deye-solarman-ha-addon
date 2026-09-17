@@ -932,6 +932,19 @@ class TransportManagerTests(unittest.TestCase):
 
 
 class EntityTransportSelectionTests(unittest.TestCase):
+	def custom_snapshot(self, definition: dict) -> dict:
+		sensor=sensor_from_payload(definition)
+		return {
+			"registers":sensor.registers,
+			"type":sensor.register_type,
+			"formula":sensor.formula,
+			"multiplier":sensor.multiplier,
+			"offset":sensor.offset,
+			"word_order":sensor.word_order,
+			"byte_order":sensor.byte_order,
+			"transport":sensor.transport,
+		}
+
 	def candidate(self, *, transports: list[str] | None=None) -> ScanCandidate:
 		arguments={}
 		if transports is not None:
@@ -1092,19 +1105,25 @@ class EntityTransportSelectionTests(unittest.TestCase):
 	def test_custom_sensor_persistence_keeps_transport_fields(self) -> None:
 		with tempfile.TemporaryDirectory() as directory:
 			path=Path(directory)/"custom.yaml"
+			custom_definition={
+				"key":"custom_voltage",
+				"registers":[10],
+				"type":"uint16",
+				"transport":"modbus_rtu",
+				"transports":["solarman_tcp","modbus_rtu"],
+			}
 			payload=save_custom_sensors(str(path),[{
 				"key":"custom_voltage",
 				"monitor":True,
 				"last_scan":{
-					"modbus_rtu":{"status":"supported","raw_registers":[500],"value":500},
+					"modbus_rtu":{
+						"status":"supported",
+						"raw_registers":[500],
+						"value":500,
+						"definition_snapshot":self.custom_snapshot(custom_definition),
+					},
 				},
-				"definition":{
-					"key":"custom_voltage",
-					"registers":[10],
-					"type":"uint16",
-					"transport":"modbus_rtu",
-					"transports":["solarman_tcp","modbus_rtu"],
-				},
+				"definition":custom_definition,
 			}])
 			definition=payload["sensors"][0]["definition"]
 			self.assertEqual(definition["transport"],"modbus_rtu")
@@ -1296,7 +1315,12 @@ class EntityTransportSelectionTests(unittest.TestCase):
 				save_custom_sensors(str(path),[{"key":"custom_voltage","monitor":False,"definition":definition}])
 			last_scan={
 				"solarman_tcp":{"status":"timeout"},
-				"modbus_rtu":{"status":"supported","raw_registers":[500],"value":500},
+				"modbus_rtu":{
+					"status":"supported",
+					"raw_registers":[500],
+					"value":500,
+					"definition_snapshot":self.custom_snapshot(definition),
+				},
 			}
 			payload=save_custom_sensors(str(path),[{
 				"key":"custom_voltage",
@@ -1306,6 +1330,69 @@ class EntityTransportSelectionTests(unittest.TestCase):
 			}])
 			self.assertEqual(payload["sensors"][0]["last_scan"]["modbus_rtu"]["value"],500)
 			self.assertEqual(payload["sensors"][0]["last_scan"]["status"],"supported")
+
+	def test_new_custom_sensor_rejects_supported_scan_for_a_different_read_definition(self) -> None:
+		with tempfile.TemporaryDirectory() as directory:
+			path=Path(directory)/"custom.yaml"
+			tested_definition={"key":"custom_voltage","registers":[10],"type":"uint16"}
+			current_definition={**tested_definition,"registers":[11]}
+			entry={
+				"key":"custom_voltage",
+				"monitor":True,
+				"definition":current_definition,
+				"last_scan":{"solarman_tcp":{
+					"status":"supported",
+					"raw_registers":[500],
+					"value":500,
+					"definition_snapshot":self.custom_snapshot(tested_definition),
+				}},
+			}
+
+			with self.assertRaisesRegex(ValueError,"current read definition"):
+				save_custom_sensors(str(path),[entry])
+
+	def test_existing_custom_sensor_rejects_stale_supported_scan_after_read_change(self) -> None:
+		with tempfile.TemporaryDirectory() as directory:
+			path=Path(directory)/"custom.yaml"
+			definition={"key":"custom_voltage","registers":[10],"type":"uint16"}
+			initial=save_custom_sensors(str(path),[{
+				"key":"custom_voltage",
+				"monitor":True,
+				"definition":definition,
+				"last_scan":{"solarman_tcp":{
+					"status":"supported",
+					"raw_registers":[500],
+					"value":500,
+					"definition_snapshot":self.custom_snapshot(definition),
+				}},
+			}])["sensors"][0]
+			initial["definition"]["type"]="int16"
+
+			with self.assertRaisesRegex(ValueError,"current read definition"):
+				save_custom_sensors(str(path),[initial])
+
+	def test_failed_custom_sensor_retest_blocks_save_and_panel_preserves_history(self) -> None:
+		with tempfile.TemporaryDirectory() as directory:
+			path=Path(directory)/"custom.yaml"
+			definition={"key":"custom_voltage","registers":[10],"type":"uint16"}
+			entry={
+				"key":"custom_voltage",
+				"monitor":True,
+				"definition":definition,
+				"last_scan":{"solarman_tcp":{
+					"status":"timeout",
+					"error":"read failed",
+					"raw_registers":[500],
+					"value":500,
+					"definition_snapshot":self.custom_snapshot(definition),
+				}},
+			}
+			with self.assertRaisesRegex(ValueError,"supported scan"):
+				save_custom_sensors(str(path),[entry])
+
+		custom_script=(ROOT/"packages/deye_inverter_core/custom_panel.js").read_text(encoding="utf-8")
+		self.assertIn('[transport]:{...previousScan,status:"timeout",error:error.message}',custom_script)
+		self.assertIn('definition_snapshot:customReadSnapshot(entry.definition,transport)',custom_script)
 
 	def test_legacy_custom_sensor_without_scan_survives_unchanged_but_transport_change_requires_scan(self) -> None:
 		with tempfile.TemporaryDirectory() as directory:
@@ -1326,7 +1413,12 @@ class EntityTransportSelectionTests(unittest.TestCase):
 			changed={**unchanged,"definition":{**unchanged["definition"],"transport":"modbus_rtu"}}
 			with self.assertRaisesRegex(ValueError,"supported scan"):
 				save_custom_sensors(str(path),[changed])
-			changed["last_scan"]={"modbus_rtu":{"status":"supported","raw_registers":[501],"value":501}}
+			changed["last_scan"]={"modbus_rtu":{
+				"status":"supported",
+				"raw_registers":[501],
+				"value":501,
+				"definition_snapshot":self.custom_snapshot(changed["definition"]),
+			}}
 			migrated=save_custom_sensors(str(path),[changed])["sensors"][0]
 			self.assertEqual(migrated["definition"]["transport"],"modbus_rtu")
 			self.assertEqual(migrated["last_scan"]["value"],501)
@@ -1390,7 +1482,7 @@ class EntityTransportSelectionTests(unittest.TestCase):
 		control_script=(ROOT/"packages/deye_inverter_core/control_panel.js").read_text(encoding="utf-8")
 
 		self.assertGreaterEqual(custom_script.count('data-custom-test="${customEsc(entry.key)}"'),2)
-		self.assertIn('entry.last_scan={...(entry.last_scan || {}),[transport]:{...result,status:"supported"}}',custom_script)
+		self.assertIn('[transport]:{...result,status:"supported",definition_snapshot:customReadSnapshot(entry.definition,transport)}',custom_script)
 		self.assertNotIn("data-control-test",control_script)
 
 	def test_exact_modbus_exception_codes_classify_only_illegal_requests_as_unsupported(self) -> None:

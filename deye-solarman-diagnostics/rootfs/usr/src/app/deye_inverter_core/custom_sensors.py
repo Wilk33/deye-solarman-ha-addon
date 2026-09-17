@@ -109,6 +109,8 @@ def save_custom_sensors(path: str, entries: list[dict[str, Any]]) -> dict[str, A
 			or monitor_enabled
 			or (bool(sensor.registers) and monitor and not legacy_unchanged)
 		)
+		if selected_scan.get("status") == "supported" and selected_scan.get("definition_snapshot") != _read_definition_snapshot(sensor):
+			raise ValueError(f"custom sensor {key}: supported scan does not match the current read definition")
 		if requires_supported and selected_scan.get("status") != "supported":
 			raise ValueError(f"custom sensor {key}: selected transport requires a supported scan")
 		validated_entry={"key":key,"monitor":monitor,"definition":_normalized_definition(sensor)}
@@ -165,6 +167,19 @@ def _normalized_definition(sensor: Any) -> dict[str, Any]:
 		"formula": sensor.formula,
 		"transport": sensor.transport,
 		"transports": sensor.transports,
+	}
+
+
+def _read_definition_snapshot(sensor: Any) -> dict[str, Any]:
+	return {
+		"registers":list(sensor.registers),
+		"type":sensor.register_type,
+		"formula":sensor.formula,
+		"multiplier":sensor.multiplier,
+		"offset":sensor.offset,
+		"word_order":sensor.word_order,
+		"byte_order":sensor.byte_order,
+		"transport":sensor.transport,
 	}
 
 

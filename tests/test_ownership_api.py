@@ -78,7 +78,21 @@ class OwnershipApiTests(unittest.TestCase):
 			"key":"custom_pv",
 			"monitor":True,
 			"definition":definition,
-			"last_scan":{"solarman_tcp":{"status":"supported","raw_registers":[1],"value":1}},
+			"last_scan":{"solarman_tcp":{
+				"status":"supported",
+				"raw_registers":[1],
+				"value":1,
+				"definition_snapshot":{
+					"registers":[672],
+					"type":"uint16",
+					"formula":"",
+					"multiplier":1.0,
+					"offset":0.0,
+					"word_order":"high_low",
+					"byte_order":"high_low",
+					"transport":"solarman_tcp",
+				},
+			}},
 		}]}
 		self.foreign.reconcile({("sensor","custom_pv")})
 		with self.assertRaises(HTTPError) as caught:
