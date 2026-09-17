@@ -118,7 +118,7 @@ schema:
   advanced:
     emit_raw_topics: bool
     emit_scan_report: bool
-    detailed_logs: bool
+    detailed_logs: bool?
   scan:
     mode: list(disabled|scan_only|scan_and_monitor)
     report_file: str
