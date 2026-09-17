@@ -1,4 +1,4 @@
-# Deye Solarman Diagnostics
+# SolarMan Diagnostics
 
 ## Przeznaczenie
 
@@ -31,20 +31,19 @@ mqtt:
   username: ""
   password: ""
   tls: false
-  client_id: deye-solarman-diagnostics
-  base_topic: deye_solarman
+  client_id: solarman
+  base_topic: solarman_diagnostics
   discovery_prefix: homeassistant
   retain: true
 
 inverter:
   serial_number: "2507092018"
-  name: Deye Solarman Diagnostics
+  name: SolarMan Diagnostics
   manufacturer: Deye
   model: SG05LP3
 
 profiles:
-  default_profile:
-    - deye_battery_packs
+  default_profile: []
   overrides_file: /config/user_sensors.yaml
   state_file: /config/runtime_state.json
   scan_report_file: /share/deye_solarman_scan_report.json
@@ -75,18 +74,20 @@ catalog:
   refresh_on_start: true
   url: https://raw.githubusercontent.com/Wilk33/deye-solarman-ha-addon/main/deye-solarman-diagnostics/deye_sg04_sg05_3ph_lv_catalog.yaml
   cache_file: /config/deye_solarman_catalog.yaml
+  control_url: https://raw.githubusercontent.com/Wilk33/deye-solarman-ha-addon/main/catalogs/models/deye_sg04_sg05_3ph_lv/control.yaml
+  control_cache_file: /config/deye_solarman_control_catalog.yaml
   timeout: 5
 ```
 
 Parametry loggera musza wskazywac logger Solarman, nie adres IP samego falownika. `serial_number` w sekcji `logger` to numer loggera, a `inverter.serial_number` to numer seryjny falownika uzywany w nazwach MQTT.
 
-### Katalog rejestrow z GitHub
+### Katalogi sensorów i sterowania z GitHub
 
-Przy starcie dodatek pobiera plik YAML `deye_sg04_sg05_3ph_lv_catalog.yaml` z `catalog.url`. Od wersji `1.1.1` jest to pelna mapa `version: 2`: zawiera 94 definicje telemetryczne oraz szablon 23 pozycji BMS, ktory jest rozwijany zgodnie z `bms_pack_count`. Pobierane sa wylacznie dane YAML - dodatek nie wykonuje zdalnego kodu. Po udanej walidacji kopia jest atomowo zapisywana w `catalog.cache_file`. Przycisk `Usun sensory` wymusza takie samo pobranie niezaleznie od opcji `refresh_on_start`.
+Przy starcie dodatek pobiera listę sensorów z `catalog.url` oraz listę sterowania z `catalog.control_url`. Pierwsza jest mapą `version: 2`, zawierającą telemetrykę i szablon BMS, a druga mapą `format: 1`, `map_id: control`. Pobierane są wyłącznie dane YAML - dodatek nie wykonuje zdalnego kodu. Po udanej walidacji kopie są atomowo zapisywane odpowiednio w `catalog.cache_file` i `catalog.control_cache_file`. Adresy są widoczne w panelu konfiguracji w sekcji **Zewnętrzne źródła list sensorów i sterowania**.
 
-Gdy GitHub lub Internet jest niedostepny, dodatek wykorzystuje ostatnia poprawna kopie z cache. Gdy cache takze nie istnieje albo jest bledny, uzywany jest katalog wbudowany w obraz dodatku. Nie zmienia to pliku `/config/detected_sensors.yaml` ani istniejacych wyborow MQTT.
+Gdy GitHub lub Internet jest niedostępny, dodatek wykorzystuje ostatnią poprawną kopię odpowiedniego cache. Gdy cache także nie istnieje albo jest błędny, dana lista jest pusta. Nowa instalacja nie uruchamia wbudowanego profilu ani listy rejestrów. Nie zmienia to pliku `/config/detected_sensors.yaml` ani istniejących wyborów MQTT.
 
-Format katalogu jest wersjonowany. Kompletna mapa `version: 2` ma liste `sensors` i obiekt `bms_pack`. Jest autorytatywna, wiec brak wpisu w YAML usuwa go z listy kandydatow, gdy zdalny katalog albo jego cache jest dostepny. Wpisy `sensors` definiuja telemetrie falownika. `bms_pack.base_register` i `register_stride` okreslaja adres kolejnego pakietu, a kazdy wpis `bms_pack.sensors` zawiera `register_offsets` oraz symbole `{pack}` w `key`, `name` i opcjonalnym `topic_suffix`. Typ `ascii` obsluguje opcjonalne `byte_order: high_low|low_high`; BMS serial uzywa `low_high`, ktore zamienia kolejnosc dwoch bajtow w kazdym slowie bez zmiany kolejnosci rejestrow. Katalog jest walidowany przed uzyciem, a gdy siec i cache zawioda, dodatek uzywa wbudowanego fallbacku z tej samej mapy w obrazie.
+Format katalogu jest wersjonowany. Kompletna mapa `version: 2` ma liste `sensors` i obiekt `bms_pack`. Jest autorytatywna, wiec brak wpisu w YAML usuwa go z listy kandydatow, gdy zdalny katalog albo jego cache jest dostepny. Wpisy `sensors` definiuja telemetrie falownika. `bms_pack.base_register` i `register_stride` okreslaja adres kolejnego pakietu, a kazdy wpis `bms_pack.sensors` zawiera `register_offsets` oraz symbole `{pack}` w `key`, `name` i opcjonalnym `topic_suffix`. Typ `ascii` obsluguje opcjonalne `byte_order: high_low|low_high`; BMS serial uzywa `low_high`, ktore zamienia kolejnosc dwoch bajtow w kazdym slowie bez zmiany kolejnosci rejestrow. Katalog jest walidowany przed użyciem, a gdy sieć i cache zawiodą, lista sensorów pozostaje pusta.
 
 ```yaml
 version: 2
@@ -117,7 +118,7 @@ Ustaw `use_supervisor: false` tylko wtedy, gdy broker MQTT znajduje sie poza Hom
 
 ### Szczegółowe logi
 
-`advanced.detailed_logs` jest domyślnie `false`. W tym trybie dodatek pomija debugowanie i pojedyncze potwierdzenia publikacji MQTT. Zamknięcie sesji Solarman TCP zapisuje zwięzły warning `Solarman TCP session closed; reconnecting`, bez zakresu rejestrów i tracebacku.
+`advanced.detailed_logs` jest domyślnie `false`. Jest zapisywaną opcją dodatku, więc po zmianie i zapisaniu konfiguracji pozostaje w wybranym stanie po odświeżeniu panelu. W tym trybie dodatek pomija debugowanie i pojedyncze potwierdzenia publikacji MQTT. Zamknięcie sesji Solarman TCP zapisuje zwięzły warning `Solarman TCP session closed; reconnecting`, bez zakresu rejestrów i tracebacku.
 
 Ustaw `advanced.detailed_logs: true` wyłącznie podczas diagnozy. Wtedy log zawiera DEBUG, potwierdzenia każdej publikacji MQTT, zakresy rejestrów oraz pełne tracebacki. Po zmianie uruchom dodatek ponownie.
 

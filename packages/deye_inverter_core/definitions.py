@@ -125,9 +125,6 @@ def _load_monitored_items(detected_sensors_file: str | None) -> list[dict[str, A
 
 
 def _validate_sensor_definitions(sensors: list[SensorDefinition]) -> list[SensorDefinition]:
-	if not sensors:
-		raise ValueError("No sensor definitions are configured")
-
 	keys: set[str]=set()
 	for sensor in sensors:
 		if not sensor.key or sensor.key in keys:

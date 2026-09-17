@@ -45,6 +45,7 @@ from deye_inverter_core.scan_catalog import load_scan_candidates
 from deye_inverter_core.remote_catalog import RemoteCatalog
 from deye_inverter_core.remote_catalog import apply_remote_catalog
 from deye_inverter_core.remote_catalog import load_remote_catalog
+from deye_inverter_core.control_catalog import load_remote_control_catalog
 from deye_inverter_core.supervisor import discover_mqtt_service
 from deye_inverter_core.transport import TransportConnectionClosedError as SolarmanConnectionClosedError
 from deye_inverter_core.scanner import load_monitored_definitions
@@ -446,10 +447,42 @@ class RuntimeTests(unittest.TestCase):
 			load_sensor_definitions(["not_a_profile"], "does-not-exist.yaml")
 
 	def test_default_profile_requires_explicit_sensor_selection(self) -> None:
-		sensors=load_sensor_definitions(["deye_battery_packs"], "does-not-exist.yaml")
+		self.assertEqual(load_sensor_definitions([], "does-not-exist.yaml"),[])
 
-		self.assertTrue(sensors)
-		self.assertTrue(all(sensor.enabled is False for sensor in sensors))
+	def test_config_exposes_a_separate_control_catalog_source(self) -> None:
+		options=make_options()
+		options["catalog"]={
+			"refresh_on_start":True,
+			"url":"https://example.invalid/sensors.yaml",
+			"cache_file":"/config/sensors.yaml",
+			"control_url":"https://example.invalid/control.yaml",
+			"control_cache_file":"/config/control.yaml",
+			"timeout":5,
+		}
+		with tempfile.TemporaryDirectory() as directory:
+			options_path=Path(directory) / "options.json"
+			options_path.write_text(json.dumps(options),encoding="utf-8")
+			config=load_config(options_path)
+
+		self.assertEqual(config.catalog.control_url,"https://example.invalid/control.yaml")
+		self.assertEqual(config.catalog.control_cache_file,"/config/control.yaml")
+
+	def test_remote_control_catalog_uses_the_configured_url(self) -> None:
+		payload={
+			"format":1,
+			"map_id":"control",
+			"catalog_set":"deye_sg04_sg05_3ph_lv",
+			"commands":[
+				{"key":"grid_charge_current","name":"Grid charge current","registers":[128],"method":"NumberRWSensor","factor":1,"unit":"A","bitmask":0,"min":0,"max":210}
+			],
+		}
+		with tempfile.TemporaryDirectory() as directory:
+			config=CatalogConfig(True,"https://example.invalid/sensors.yaml",str(Path(directory)/"sensors.yaml"),5,"https://example.invalid/controls.yaml",str(Path(directory)/"controls.yaml"))
+			with patch("deye_inverter_core.control_catalog.urlopen",return_value=FakeSupervisorResponse(payload)):
+				catalog=load_remote_control_catalog(config)
+
+		self.assertEqual(catalog.source,"github")
+		self.assertEqual(catalog.commands[0]["key"],"grid_charge_current")
 
 	def test_catalog_covers_live_telemetry_and_configured_bms_packs(self) -> None:
 		candidates=load_scan_candidates(4)
@@ -468,6 +501,9 @@ class RuntimeTests(unittest.TestCase):
 		self.assertEqual(by_key["battery_4_bms_serial"].byte_order,"low_high")
 		self.assertEqual(by_key["battery_1_fault"].registers,[10060,10061])
 		self.assertEqual(by_key["battery_1_heat_memory_temperature"].registers,[10046])
+
+	def test_scan_candidates_wait_for_external_sensor_catalog(self) -> None:
+		self.assertEqual(load_scan_candidates(4,RemoteCatalog([],"built-in")),[])
 
 	def test_remote_full_register_catalog_matches_builtin_fallback(self) -> None:
 		path=APP_ROOT.parent/"deye-solarman-diagnostics/deye_sg04_sg05_3ph_lv_catalog.yaml"

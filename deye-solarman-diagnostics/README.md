@@ -1,12 +1,12 @@
-# Deye Solarman Diagnostics
+# SolarMan Diagnostics
 
 Dodatek Home Assistant OS do diagnostycznego, lokalnego odczytu falownika Deye przez logger Solarman TCP. Publikuje wybrane odczyty przez MQTT Discovery.
 
-Wersja `1.3.1` dodaje przełącznik szczegółowych logów oraz usuwa cztery nieużywane definicje sterowania. Sensory i sterowanie zachowują wspólne tematy stanu oraz identyfikatory Home Assistant. Mapa 115 encji sterowania pochodzi z profilu Sunsynk `three_phase_lv`. Szczegóły: [Encje sterowania](CONTROL_ENTITIES.md).
+Wersja `1.4.0` upraszcza pierwsze uruchomienie: domyślny profil i listy runtime są puste, a sensory oraz sterowanie są ładowane z osobnych adresów w sekcji `catalog` konfiguracji. Dodatek nazywa się `SolarMan Diagnostics`, używa domyślnie MQTT `client_id: solarman` i `base_topic: solarman_diagnostics`. Szczegóły: [Encje sterowania](CONTROL_ENTITIES.md).
 
 Dodatek jest przeznaczony jako wolniejsza sciezka diagnostyczna i uzupelnienie bezposredniej integracji RS485, na przyklad `Sunsynk or Deye Inverter add-on (multi)`. Nie zastepuje kanalu RS485.
 
-Dodatek samoczynnie odtwarza zamknieta sesje Solarman TCP, publikuje temperatury w standardowej jednostce Home Assistant `°C`, synchronizuje panel Ingress z motywem Home Assistant, pokazuje HEX i ASCII oraz pobiera pelna, aktualizowalna mape rejestrow YAML z GitHub z lokalnym cache i fallbackiem w obrazie. Zapis wyboru MQTT stosuje zmiany bez restartowania kontenera dodatku. Pulpit `Własne sensory` umozliwia dodanie recznych definicji Modbus oraz bezpiecznych skryptow odczytujacych rejestry przez `sensor(...)` i `RAW(...)`. Numery seryjne BMS sa dekodowane per sensor z `byte_order: low_high`.
+Dodatek samoczynnie odtwarza zamknieta sesje Solarman TCP, publikuje temperatury w standardowej jednostce Home Assistant `°C`, synchronizuje panel Ingress z motywem Home Assistant, pokazuje HEX i ASCII oraz pobiera aktualizowalne listy YAML z GitHub z lokalnym cache. Gdy lista i jej cache nie są dostępne, odpowiednia zakładka pozostaje pusta. Zapis wyboru MQTT stosuje zmiany bez restartowania kontenera dodatku. Pulpit `Własne sensory` umozliwia dodanie recznych definicji Modbus oraz bezpiecznych skryptow odczytujacych rejestry przez `sensor(...)` i `RAW(...)`. Numery seryjne BMS sa dekodowane per sensor z `byte_order: low_high`.
 
 Pelna instrukcja konfiguracji i skanowania jest w [DOCS.md](DOCS.md).
 

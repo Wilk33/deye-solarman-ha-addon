@@ -1,1 +1,1 @@
-"""Deye Solarman Diagnostics add-on."""
+"""SolarMan Diagnostics add-on."""

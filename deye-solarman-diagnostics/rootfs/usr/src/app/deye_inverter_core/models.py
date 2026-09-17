@@ -79,6 +79,8 @@ class CatalogConfig:
 	url: str
 	cache_file: str
 	timeout: int
+	control_url: str=""
+	control_cache_file: str=""
 
 
 @dataclass(slots=True)

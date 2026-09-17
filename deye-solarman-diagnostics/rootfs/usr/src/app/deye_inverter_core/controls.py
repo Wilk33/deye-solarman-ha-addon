@@ -27,6 +27,14 @@ RETIRED_CONTROLS={
 }
 
 
+def set_controls(entries: list[dict]) -> None:
+	keys=[entry["key"] for entry in entries]
+	if len(keys) != len(set(keys)):
+		raise ValueError("Control catalog has duplicate keys")
+	CONTROLS.clear()
+	CONTROLS.update({entry["key"]:entry for entry in entries})
+
+
 def component(entry: dict) -> str:
 	return {"NumberRWSensor": "number","SelectRWSensor": "select","SwitchRWSensor": "switch","TimeRWSensor": "select","SystemTimeRWSensor": "text"}[entry["method"]]
 
@@ -206,6 +214,18 @@ class ControlService:
 			data["available_sensors"]=[self.entry(entry["key"],entry) for entry in data["available_sensors"] if entry["key"] in CONTROLS]
 			return data
 
+	def published_definitions(self) -> dict[str,dict]:
+		with self.lock:
+			if not self.path.exists():
+				return {}
+			data=json.loads(self.path.read_text(encoding="utf-8"))
+			published=set(data.get("published",[]))
+			return {
+				entry["key"]:entry["definition"]
+				for entry in data.get("available_sensors",[])
+				if entry.get("key") in published and isinstance(entry.get("definition"),dict)
+			}
+
 	def store(self, data: dict) -> None:
 		with self.lock:
 			self.path.parent.mkdir(parents=True,exist_ok=True)
@@ -370,9 +390,10 @@ class ControlRuntime:
 			LOGGER.warning("Control command queue full")
 
 	def start(self) -> None:
+		previous_definitions=self.service.published_definitions()
 		data=self.service.load()
 		for key in data.get("published",[]):
-			definition=CONTROLS.get(key) or RETIRED_CONTROLS.get(key)
+			definition=CONTROLS.get(key) or RETIRED_CONTROLS.get(key) or previous_definitions.get(key)
 			if key not in self.enabled and definition:
 				self.mqtt.remove_control_discovery(definition)
 		self.mqtt.configure_controls(self.receive,list(self.enabled))

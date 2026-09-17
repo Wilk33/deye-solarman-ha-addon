@@ -1,6 +1,6 @@
 # Deye Solarman HA Add-on
 
-Wersja `1.3.1` dodatku Home Assistant OS do lokalnej komunikacji z falownikiem Deye przez logger Solarman TCP. Dodatek odczytuje telemetrię oraz aktualne ustawienia, pozwala zweryfikować ich dostępność w panelu Ingress i publikuje wybrane sensory oraz encje sterowania przez MQTT Discovery.
+Wersja `1.4.0` dodatku Home Assistant OS do lokalnej komunikacji z falownikiem Deye przez logger Solarman TCP. Dodatek odczytuje telemetrię oraz aktualne ustawienia, pozwala zweryfikować ich dostępność w panelu Ingress i publikuje wybrane sensory oraz encje sterowania przez MQTT Discovery.
 
 Zakładka **Sterowanie** korzysta ze 115 definicji profilu Sunsynk `three_phase_lv`. Skan wyłącznie odczytuje stan. Pola nieznane i definicje bez potwierdzonego zakresu mają blokadę zapisu. Dopiero komenda wysłana przez wybraną encję MQTT zmienia ustawienie. Szczegóły, źródła mapy i zasady walidacji opisuje [instrukcja encji sterowania](deye-solarman-diagnostics/CONTROL_ENTITIES.md).
 
@@ -50,7 +50,7 @@ Logger Solarman w LAN, TCP:8899
     |
     | pysolarmanv5, Modbus holding registers, tylko odczyt
     v
-Deye Solarman Diagnostics (HAOS add-on)
+SolarMan Diagnostics (HAOS add-on)
     |
     +-> panel Ingress: skan, wybor, konfiguracja i testy
     +-> pliki /config: wybor sensorow, sensory wlasne, cache i stan
@@ -65,7 +65,7 @@ Urzadzenie i encje Home Assistant
 Normalny cykl dodatku dziala nastepujaco:
 
 1. Wczytuje opcje dodatku i, gdy `mqtt.use_supervisor: true`, pobiera dane brokera z uslugi MQTT Home Assistant Supervisor.
-2. Odswieza katalog rejestrow z GitHub albo korzysta z ostatniej poprawnej kopii cache lub katalogu wbudowanego.
+2. Odswieza zewnętrzne katalogi sensorów i sterowania z GitHub albo korzysta z ostatnich poprawnych kopii cache. Przy braku obu źródeł lista pozostaje pusta.
 3. Scala profil domyslny, wybor po ostatnim skanie, lokalne nadpisania oraz sensory wlasne.
 4. Nawiazuje polaczenie TCP z loggerem i wykonuje probe `R10040`.
 5. Nawiazuje polaczenie MQTT, usuwa odznaczone encje Discovery i publikuje konfiguracje Discovery tylko dla aktywnych sensorow.
@@ -93,7 +93,7 @@ Adres `logger.host` wskazuje logger Solarman, a nie adres IP falownika. `logger.
 
 1. W Home Assistant otworz `Ustawienia -> Dodatki -> Sklep z dodatkami`.
 2. Otworz menu z trzema kropkami, wybierz `Repozytoria` i dodaj adres: `https://github.com/Wilk33/deye-solarman-ha-addon`.
-3. Wyszukaj `Deye Solarman Diagnostics`, zainstaluj dodatek i otworz jego zakladke `Konfiguracja`.
+3. Wyszukaj `SolarMan Diagnostics`, zainstaluj dodatek i otworz jego zakladke `Konfiguracja`.
 4. Uzupelnij sekcje `logger` oraz `inverter`.
 5. Pozostaw `mqtt.use_supervisor: true`, gdy korzystasz z Mosquitto w Home Assistant OS.
 6. Uruchom dodatek. Po poprawnym starcie w menu bocznym pojawi sie panel `Deye Solarman`.
@@ -120,19 +120,19 @@ mqtt:
   username: ""
   password: ""
   tls: false
-  client_id: deye-solarman-diagnostics
-  base_topic: deye_solarman
+  client_id: solarman
+  base_topic: solarman_diagnostics
   discovery_prefix: homeassistant
   retain: true
 
 inverter:
   serial_number: "2507092018"
-  name: Deye Solarman Diagnostics
+  name: SolarMan Diagnostics
   manufacturer: Deye
   model: SG05LP3
 
 profiles:
-  default_profile: deye_battery_packs
+  default_profile: []
   overrides_file: /config/user_sensors.yaml
   custom_sensors_file: /config/custom_sensors.yaml
   state_file: /config/runtime_state.json
@@ -164,6 +164,8 @@ catalog:
   refresh_on_start: true
   url: https://raw.githubusercontent.com/Wilk33/deye-solarman-ha-addon/main/deye-solarman-diagnostics/deye_sg04_sg05_3ph_lv_catalog.yaml
   cache_file: /config/deye_solarman_catalog.yaml
+  control_url: https://raw.githubusercontent.com/Wilk33/deye-solarman-ha-addon/main/catalogs/models/deye_sg04_sg05_3ph_lv/control.yaml
+  control_cache_file: /config/deye_solarman_control_catalog.yaml
   timeout: 5
 ```
 
@@ -175,7 +177,7 @@ Ustaw `mqtt.use_supervisor: false` wylacznie dla brokera zewnetrznego. Wtedy uzu
 
 ### Szczegółowe logi
 
-`advanced.detailed_logs` ma domyślnie wartość `false`. W tym trybie dodatek zapisuje komunikaty potrzebne do normalnej eksploatacji, ale pomija debugowanie i pojedyncze potwierdzenia każdej publikacji MQTT.
+`advanced.detailed_logs` ma domyślnie wartość `false`. Wartość jest zwykłą opcją konfiguracji dodatku, więc po zapisaniu w panelu Home Assistant pozostaje taka, jak wybrał użytkownik. W tym trybie dodatek zapisuje komunikaty potrzebne do normalnej eksploatacji, ale pomija debugowanie i pojedyncze potwierdzenia każdej publikacji MQTT.
 
 Przy zamknięciu sesji TCP normalny log zawiera tylko `Solarman TCP session closed; reconnecting` i informację o czasie oczekiwania. Nie zawiera zakresu rejestrów ani tracebacku, ponieważ jest to oczekiwany przypadek obsługiwany przez mechanizm ponownego połączenia.
 
@@ -225,7 +227,7 @@ Gdy sensor zostanie odznaczony lub usuniety, dodatek publikuje retained pusty pa
 
 Kanoniczna mapa jest w [deye_sg04_sg05_3ph_lv_catalog.yaml](deye-solarman-diagnostics/deye_sg04_sg05_3ph_lv_catalog.yaml). Nazwa opisuje rodziny `SG04LP3` i `SG05LP3`, falownik trojfazowy oraz low-voltage. Format `version: 2` zawiera 94 definicje telemetryczne oraz jeden szablon 23 pozycji BMS. Szablon wylicza adresy dla `bms_pack_count` od 1 do 10. Przy `bms_pack_count: 4` panel ma 186 kandydatow, a przy `10` - 324.
 
-Katalog z `catalog.url` jest pobierany podczas startu. Dodatek akceptuje tylko dane YAML, waliduje je i zapisuje poprawna kopie do `catalog.cache_file`. Format `version: 2` jest autorytatywny: gdy GitHub albo cache jest dostepny, brak wpisu w YAML oznacza brak tego kandydata w skanie. Jezeli GitHub jest niedostepny, uzywa ostatniej poprawnej kopii cache. Jezeli cache nie istnieje lub jest niepoprawny, dziala na wbudowanym katalogu awaryjnym [catalog.py](deye-solarman-diagnostics/rootfs/usr/src/app/deye_solarman_diagnostics/catalog.py). Katalog awaryjny jest objety testem zgodnosci z YAML.
+`catalog.url` jest linkiem do listy sensorów, a `catalog.control_url` - do listy sterowania. Podczas startu dodatek pobiera oba pliki YAML, waliduje je i zapisuje poprawne kopie odpowiednio w `catalog.cache_file` oraz `catalog.control_cache_file`. Lista w panelu jest budowana wyłącznie z aktualnie pobranego katalogu albo jego cache. Jeżeli źródło i cache nie są dostępne, odpowiednia lista jest pusta. Dzięki temu nowa instalacja nie włącza ukrytej, wbudowanej listy rejestrów.
 
 Aktualizuj mape przez commit do `deye_sg04_sg05_3ph_lv_catalog.yaml` w tym repozytorium. Nie edytuj `/config/deye_solarman_catalog.yaml`, poniewaz jest to cache nadpisywany po poprawnym pobraniu. Plik `catalog-overrides.yaml` pozostaje pusta, zgodna wstecz nakladka dla juz zainstalowanych konfiguracji i nie jest miejscem rozwoju mapy. Aktualizacja katalogu nie usuwa samodzielnie lokalnego wyniku skanu ani wyborow MQTT. Przycisk `Usun sensory` wymusza odswiezenie katalogu przy czyszczeniu listy wykryc. Typ `ascii` moze dodatkowo deklarowac `byte_order`: domyslne `high_low` zachowuje dotychczasowe dekodowanie, a `low_high` odwraca dwa bajty tylko w obrebie kazdego 16-bitowego rejestru. Katalog uzywa tego ustawienia wylacznie dla numerow seryjnych BMS.
 
@@ -246,9 +248,9 @@ homeassistant/sensor/deye_solarman_<serial_falownika>_<klucz>/config
 Stan i atrybuty sa publikowane pod:
 
 ```text
-deye_solarman/<serial_falownika>/<topic_suffix>
-deye_solarman/<serial_falownika>/<topic_suffix>/attributes
-deye_solarman/<serial_falownika>/<topic_suffix>/raw
+solarman_diagnostics/<serial_falownika>/<topic_suffix>
+solarman_diagnostics/<serial_falownika>/<topic_suffix>/attributes
+solarman_diagnostics/<serial_falownika>/<topic_suffix>/raw
 ```
 
 Temat `/raw` jest publikowany tylko przy `advanced.emit_raw_topics: true`. Atrybuty stanu zawieraja m.in. rejestry RAW, ASCII, wartosc zdekodowana, uzyty typ, mnoznik, offset, kolejnosc slow, interwal, opoznienie odczytu i licznik timeoutow. Formula dodaje rowniez uzyty skrypt i liste bezposrednich odczytow.

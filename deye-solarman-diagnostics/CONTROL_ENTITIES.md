@@ -1,6 +1,6 @@
 # Sterowanie
 
-Wersja 1.3.1 udostępnia zakładkę Ingress: **Sterowanie**. Ma osobny wynik skanu i wybór MQTT. Używa wyglądu, filtrów i układu kart znanych z zakładki Sensory.
+Wersja 1.4.0 udostępnia zakładkę Ingress: **Sterowanie**. Ma osobny wynik skanu i wybór MQTT. Używa wyglądu, filtrów i układu kart znanych z zakładki Sensory. Lista jest pobierana z `catalog.control_url` i zapisywana jako cache w `catalog.control_cache_file`; bez poprawnego źródła lub cache pozostaje pusta.
 
 ## Obsługa
 
@@ -39,7 +39,7 @@ Przykładowe wpisy:
 
 To definicje projektu Sunsynk, nie potwierdzenie zgodności każdego pola z lokalnym firmware. Skan potwierdza odczyt i dekodowanie; nie wykonuje próbnego zapisu.
 
-Eksporter `tools/import_sunsynk_controls.py` wymaga checkoutu dokładnie powyższej rewizji i zależności biblioteki Sunsynk w środowisku deweloperskim. Runtime dodatku nie importuje ani nie pobiera kodu Sunsynk. Katalog sterowania jest częścią obrazu, osobną od zdalnej mapy telemetrycznej YAML.
+Eksporter `tools/import_sunsynk_controls.py` wymaga checkoutu dokładnie powyższej rewizji i zależności biblioteki Sunsynk w środowisku deweloperskim. Runtime dodatku nie importuje ani nie pobiera kodu Sunsynk. Runtime pobiera wyłącznie zweryfikowane dane YAML z adresu ustawionego w `catalog.control_url`.
 
 ## Własność od 1.3.0
 

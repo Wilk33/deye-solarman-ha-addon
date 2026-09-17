@@ -16,9 +16,14 @@ class ScanCandidate:
 
 
 def load_scan_candidates(bms_pack_count: int, remote_catalog: RemoteCatalog | None=None) -> list[ScanCandidate]:
-	sensors=build_live_telemetry()+build_bms_pack_sensors(bms_pack_count)
-	if remote_catalog is not None:
-		sensors=apply_remote_catalog(sensors,remote_catalog,bms_pack_count)
+	if remote_catalog is None:
+		sensors=build_live_telemetry()+build_bms_pack_sensors(bms_pack_count)
+	elif remote_catalog.source in {"github","cache"}:
+		sensors=apply_remote_catalog([],remote_catalog,bms_pack_count)
+	elif remote_catalog.source == "built-in":
+		sensors=[]
+	else:
+		sensors=apply_remote_catalog(build_live_telemetry()+build_bms_pack_sensors(bms_pack_count),remote_catalog,bms_pack_count)
 	candidates=[
 		ScanCandidate(
 			sensor,

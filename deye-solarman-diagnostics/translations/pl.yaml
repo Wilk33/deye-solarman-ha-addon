@@ -1,0 +1,124 @@
+configuration:
+  logger:
+    name: Połączenie z loggerem SolarMan
+    description: Dane lokalnego loggera TCP, nie adres IP falownika.
+    fields:
+      host:
+        name: Adres IP loggera
+      port:
+        name: Port TCP
+      serial_number:
+        name: Numer seryjny loggera
+      modbus_id:
+        name: Identyfikator Modbus falownika
+      timeout:
+        name: Timeout odczytu w sekundach
+      reconnect_delay:
+        name: Czas ponownego połączenia w sekundach
+  mqtt:
+    name: MQTT i Home Assistant
+    description: Ustawienia połączenia z brokerem oraz nazw encji MQTT.
+    fields:
+      use_supervisor:
+        name: Użyj usługi MQTT Supervisora
+      host:
+        name: Host brokera
+      port:
+        name: Port brokera
+      username:
+        name: Użytkownik MQTT
+      password:
+        name: Hasło MQTT
+      tls:
+        name: Użyj TLS
+      client_id:
+        name: Identyfikator klienta MQTT
+      base_topic:
+        name: Główny temat MQTT
+      discovery_prefix:
+        name: Prefiks MQTT Discovery
+      retain:
+        name: Zachowuj ostatni stan MQTT
+  inverter:
+    name: Tożsamość falownika w Home Assistant
+    fields:
+      serial_number:
+        name: Numer seryjny falownika
+      name:
+        name: Nazwa urządzenia
+      manufacturer:
+        name: Producent
+      model:
+        name: Model
+  profiles:
+    name: Profile i lokalne dane
+    description: Domyślnie lista profili jest pusta. Sensory pojawiają się po załadowaniu katalogu i skanie.
+    fields:
+      default_profile:
+        name: Wbudowany profil startowy
+      overrides_file:
+        name: Plik lokalnych nadpisań sensorów
+      custom_sensors_file:
+        name: Plik własnych sensorów
+      state_file:
+        name: Plik stanu działania
+      scan_report_file:
+        name: Plik raportu skanu
+  polling:
+    name: Odczyt i publikacja
+    fields:
+      default_interval:
+        name: Domyślny interwał odczytu w sekundach
+      slow_interval:
+        name: Wolny interwał odczytu w sekundach
+      read_message_spacing:
+        name: Odstęp między zapytaniami w sekundach
+      batch_gap:
+        name: Maksymalna przerwa adresów w grupie
+      max_registers_per_request:
+        name: Maksymalna liczba rejestrów w zapytaniu
+      publish_unchanged_every:
+        name: Ponowna publikacja niezmienionego stanu w sekundach
+      startup_probe_register:
+        name: Rejestr testu połączenia
+      startup_probe_count:
+        name: Liczba rejestrów testu połączenia
+      allow_reconnect:
+        name: Automatycznie odnawiaj połączenie
+  advanced:
+    name: Diagnostyka
+    fields:
+      emit_raw_topics:
+        name: Publikuj tematy RAW
+      emit_scan_report:
+        name: Zapisuj raport cyklu odczytu
+      detailed_logs:
+        name: Szczegółowe logi
+        description: Włącza DEBUG, zakresy rejestrów, potwierdzenia publikacji MQTT i tracebacki.
+  scan:
+    name: Skanowanie sensorów
+    fields:
+      mode:
+        name: Tryb skanowania
+      report_file:
+        name: Plik raportu kandydatów
+      detected_sensors_file:
+        name: Plik wykrytych sensorów
+      bms_pack_count:
+        name: Liczba pakietów BMS
+  catalog:
+    name: Zewnętrzne źródła list sensorów i sterowania
+    description: Listy są pobierane z tych adresów i zapisywane lokalnie jako ostatnia poprawna kopia.
+    fields:
+      refresh_on_start:
+        name: Odśwież katalogi przy starcie
+      url:
+        name: Link do listy sensorów
+      cache_file:
+        name: Lokalna kopia listy sensorów
+      control_url:
+        name: Link do listy sterowania
+      control_cache_file:
+        name: Lokalna kopia listy sterowania
+      timeout:
+        name: Timeout pobierania w sekundach

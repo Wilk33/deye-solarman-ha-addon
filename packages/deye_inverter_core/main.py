@@ -7,7 +7,7 @@ import time
 from typing import Any
 from pathlib import Path
 
-from .controls import ControlService, ControlRuntime
+from .controls import ControlService, ControlRuntime, set_controls
 
 from .codec import apply_transform
 from .codec import decode_registers
@@ -27,6 +27,7 @@ from .scheduler import group_sensors_for_read
 from .scan_catalog import load_scan_candidates
 from .remote_catalog import RemoteCatalog
 from .remote_catalog import load_remote_catalog
+from .control_catalog import load_remote_control_catalog
 from .scanner import clear_detected_sensors
 from .scanner import clear_pending_discovery_removals
 from .scanner import load_pending_discovery_removals
@@ -45,10 +46,13 @@ from .ownership_config import OwnershipCoordinator
 LOGGER=logging.getLogger(__name__)
 
 
-def main(transport_factory: TransportFactory, source: str="solarman_tcp", source_name: str="Deye Solarman Local") -> None:
+def main(transport_factory: TransportFactory, source: str="solarman_tcp", source_name: str="SolarMan Diagnostics") -> None:
 	configure_logging()
 	config=load_config()
 	configure_logging(config.advanced.detailed_logs)
+	control_catalog=load_remote_control_catalog(config.catalog)
+	set_controls(control_catalog.commands)
+	LOGGER.info("Control catalog loaded source=%s entries=%s",control_catalog.source,len(control_catalog.commands))
 	access_lock=threading.Lock()
 	configuration_changed=threading.Event()
 	catalog_lock=threading.Lock()

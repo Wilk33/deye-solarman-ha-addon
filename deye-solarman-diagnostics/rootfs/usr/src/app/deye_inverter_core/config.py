@@ -50,6 +50,8 @@ def load_config(path: Path=OPTIONS_PATH) -> AppConfig:
 			"refresh_on_start": True,
 			"url": "https://raw.githubusercontent.com/Wilk33/deye-solarman-ha-addon/main/deye-solarman-diagnostics/deye_sg04_sg05_3ph_lv_catalog.yaml",
 			"cache_file": "/config/deye_solarman_catalog.yaml",
+			"control_url": "https://raw.githubusercontent.com/Wilk33/deye-solarman-ha-addon/main/catalogs/models/deye_sg04_sg05_3ph_lv/control.yaml",
+			"control_cache_file": "/config/deye_solarman_control_catalog.yaml",
 			"timeout": 5,
 		},
 	)
@@ -128,5 +130,7 @@ def load_config(path: Path=OPTIONS_PATH) -> AppConfig:
 			url=str(catalog["url"]),
 			cache_file=str(catalog["cache_file"]),
 			timeout=int(catalog["timeout"]),
+			control_url=str(catalog.get("control_url","")).strip(),
+			control_cache_file=str(catalog.get("control_cache_file","/config/deye_solarman_control_catalog.yaml")),
 		),
 	)

@@ -13,7 +13,7 @@ from urllib.error import HTTPError
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/"packages"))
 
-from deye_inverter_core.controls import CONTROLS, ControlService, ControlRuntime, decode, encode, write_control
+from deye_inverter_core.controls import CONTROLS, ControlService, ControlRuntime, decode, encode, set_controls, write_control
 from deye_inverter_core.mqtt import MqttPublisher
 from deye_inverter_core.models import InverterConfig, MqttConfig
 from deye_inverter_core.web import IngressPanel
@@ -334,6 +334,20 @@ class ControlTests(unittest.TestCase):
 		ControlRuntime(self.service,mqtt,Registers()).start()
 		mqtt.remove_control_discovery.assert_called_once_with(CONTROLS[key])
 		self.assertEqual(self.service.load()["published"],[])
+
+	def test_runtime_removes_persisted_discovery_after_catalog_becomes_empty(self):
+		key="control_grid_charge_battery_current"
+		entry=self.service.entry(key)
+		self.service.store({"available_sensors":[entry],"published":[key]})
+		catalog=list(CONTROLS.values())
+		set_controls([])
+		try:
+			mqtt=Mock()
+			ControlRuntime(self.service,mqtt,Registers()).start()
+			mqtt.remove_control_discovery.assert_called_once_with(entry["definition"])
+			self.assertEqual(self.service.load()["published"],[])
+		finally:
+			set_controls(catalog)
 
 	def test_transport_reconnect_preserves_write_block(self):
 		key="control_grid_charge_battery_current"

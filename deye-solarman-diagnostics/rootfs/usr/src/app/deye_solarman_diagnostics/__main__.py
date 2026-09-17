@@ -3,4 +3,4 @@ from .solarman import SolarmanClient
 
 
 if __name__ == "__main__":
-	main(SolarmanClient,source="solarman_tcp",source_name="Deye Solarman Local")
+	main(SolarmanClient,source="solarman_tcp",source_name="SolarMan Diagnostics")

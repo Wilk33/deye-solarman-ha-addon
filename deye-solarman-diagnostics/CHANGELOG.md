@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.0
+
+- Rename the add-on and default MQTT device name to `SolarMan Diagnostics`; the planned direct adapter will use `RS485 Diagnostics`.
+- Set default MQTT identifiers to `client_id: solarman` and `base_topic: solarman_diagnostics`.
+- Start with an empty profile and empty runtime lists. Load sensors from `catalog.url` and controls from the new `catalog.control_url`; each validated YAML list has a separate cache path.
+- Add Polish configuration-panel labels, descriptions and visible fields for both catalog URLs.
+- Make `advanced.detailed_logs` a stored add-on option: it is off after installation and keeps the saved user value after configuration-panel refresh.
+
 ## 1.3.1
 
 - Remove `US version grounding fault`, `Grid Standard`, `Configured Grid Phases` and `Allow Remote` from the control catalog. Previously published MQTT Discovery entries for these keys are removed during the next runtime start.

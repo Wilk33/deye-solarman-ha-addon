@@ -8,6 +8,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import yaml
+
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/"packages"))
 sys.path.insert(0,str(ROOT/"apps/deye-solarman/src"))
@@ -18,6 +20,17 @@ from deye_inverter_core.models import LoggerConfig
 
 
 class ArchitectureTests(unittest.TestCase):
+	def test_configuration_defaults_are_minimal_and_name_catalog_sources(self):
+		config=yaml.safe_load((ROOT/"deye-solarman-diagnostics/config.yaml").read_text(encoding="utf-8"))
+
+		self.assertEqual(config["name"],"SolarMan Diagnostics")
+		self.assertEqual(config["options"]["mqtt"]["client_id"],"solarman")
+		self.assertEqual(config["options"]["mqtt"]["base_topic"],"solarman_diagnostics")
+		self.assertEqual(config["options"]["inverter"]["name"],"SolarMan Diagnostics")
+		self.assertEqual(config["options"]["profiles"]["default_profile"],[])
+		self.assertIn("control_url",config["options"]["catalog"])
+		self.assertEqual(config["schema"]["advanced"]["detailed_logs"],"bool")
+
 	def test_core_does_not_import_concrete_transports(self):
 		for source in (ROOT/"packages/deye_inverter_core").glob("*.py"):
 			for node in ast.walk(ast.parse(source.read_text(encoding="utf-8"))):

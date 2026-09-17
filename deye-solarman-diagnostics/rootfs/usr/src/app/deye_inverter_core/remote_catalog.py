@@ -50,7 +50,7 @@ def load_remote_catalog(config: CatalogConfig, force_refresh: bool=False) -> Rem
 		catalog=_catalog_from_payload(cached,"cache")
 		success(LOGGER,"Remote register catalog loaded source=cache entries=%s",catalog.definition_count)
 		return catalog
-	LOGGER.info("Remote register catalog unavailable; using built-in catalog")
+	LOGGER.info("Remote register catalog unavailable; sensor list remains empty")
 	return RemoteCatalog([],"built-in")
 
 
