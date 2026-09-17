@@ -165,6 +165,10 @@ def sensor_from_payload(payload: dict[str, Any], enabled: bool=True) -> SensorDe
 	registers=payload.get("registers",[] if formula else None)
 	if not isinstance(registers,list):
 		raise ValueError("Sensor registers must be a list")
+	transports=payload.get("transports",["solarman_tcp","modbus_rtu"])
+	transport=payload.get("transport")
+	if transport is None:
+		transport="solarman_tcp" if isinstance(transports,list) and "solarman_tcp" in transports else (transports[0] if isinstance(transports,list) and transports else "solarman_tcp")
 	return SensorDefinition(
 		key=payload["key"],
 		name=payload.get("name", payload["key"].replace("_"," ").title()),
@@ -188,6 +192,8 @@ def sensor_from_payload(payload: dict[str, Any], enabled: bool=True) -> SensorDe
 		topic_suffix=payload.get("topic_suffix",payload["key"]),
 		formula=formula,
 		attributes=dict(payload.get("attributes",{})),
+		transport=transport,
+		transports=transports,
 	)
 
 

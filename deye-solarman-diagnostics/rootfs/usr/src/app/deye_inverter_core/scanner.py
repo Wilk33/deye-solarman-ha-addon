@@ -14,9 +14,11 @@ from .codec import apply_transform
 from .codec import decode_registers
 from .codec import registers_to_ascii
 from .models import PollingConfig
+from .models import TRANSPORT_IDS
 from .scan_catalog import ScanCandidate
 from .scheduler import group_sensors_for_read
 from .transport import RegisterTransport
+from .transport import TransportConnectionClosedError
 
 
 EDITABLE_DEFINITION_FIELDS={
@@ -37,7 +39,160 @@ EDITABLE_DEFINITION_FIELDS={
 	"icon",
 	"category",
 	"topic_suffix",
+	"transport",
 }
+
+
+def validate_transport_configuration(
+	transport: Any,
+	transports: Any,
+	*,
+	subject: str="Entity",
+) -> list[str]:
+	if (
+		not isinstance(transports,list)
+		or not transports
+		or any(item not in TRANSPORT_IDS for item in transports)
+		or len(set(transports)) != len(transports)
+	):
+		raise ValueError(f"{subject} transports must be a non-empty list of unique known transport ids")
+	if transport not in transports:
+		raise ValueError(f"{subject} transport must be one of the allowed transports")
+	return list(transports)
+
+
+def normalize_last_scan(last_scan: Any) -> dict[str,dict[str,Any]]:
+	if not isinstance(last_scan,dict):
+		return {}
+	branches={
+		transport_id: dict(last_scan[transport_id])
+		for transport_id in TRANSPORT_IDS
+		if isinstance(last_scan.get(transport_id),dict)
+	}
+	if not branches and last_scan:
+		branches["solarman_tcp"]=dict(last_scan)
+	return branches
+
+
+def select_transport(
+	transports: list[str],
+	last_scan: dict[str,dict[str,Any]],
+	previous: str | None=None,
+) -> str:
+	validate_transport_configuration(previous or transports[0],transports)
+	supported=[
+		transport_id
+		for transport_id in TRANSPORT_IDS
+		if transport_id in transports and last_scan.get(transport_id,{}).get("status") == "supported"
+	]
+	if previous in supported:
+		return previous
+	if len(supported) == 1:
+		return supported[0]
+	if supported:
+		return "solarman_tcp" if "solarman_tcp" in supported else supported[0]
+	if previous in transports:
+		return previous
+	return "solarman_tcp" if "solarman_tcp" in transports else transports[0]
+
+
+def scan_status(last_scan: dict[str,dict[str,Any]],transports: list[str]) -> str:
+	return "supported" if any(
+		last_scan.get(transport_id,{}).get("status") == "supported"
+		for transport_id in transports
+	) else "unknown"
+
+
+def last_scan_with_selected_alias(
+	last_scan: dict[str,dict[str,Any]],
+	transport: str,
+) -> dict[str,Any]:
+	payload={key:dict(value) for key,value in last_scan.items()}
+	payload.update(last_scan.get(transport,{}))
+	return payload
+
+
+def scan_transports_sequentially(
+	candidates: list[ScanCandidate],
+	manager: Any,
+	previous_entries: list[dict[str,Any]] | None=None,
+) -> list[dict[str,Any]]:
+	"""Scan SolarMan and then RS485, and merge their results per sensor."""
+	previous_by_key={
+		entry.get("key"):entry
+		for entry in previous_entries or []
+		if isinstance(entry,dict) and isinstance(entry.get("key"),str)
+	}
+	available={slot.transport_id:slot for slot in manager.available()}
+	results: dict[str,dict[str,dict[str,Any]]]={candidate.sensor.key:{} for candidate in candidates}
+
+	for transport_id in TRANSPORT_IDS:
+		allowed=[candidate for candidate in candidates if transport_id in candidate.sensor.transports]
+		for candidate in candidates:
+			if transport_id not in candidate.sensor.transports:
+				results[candidate.sensor.key][transport_id]=_scan_error(
+					candidate,"unsupported",f"Transport {transport_id} is not allowed by the catalog",
+				)
+		if not allowed:
+			continue
+		slot=available.get(transport_id)
+		if slot is None:
+			for candidate in allowed:
+				results[candidate.sensor.key][transport_id]=_scan_error(
+					candidate,"unavailable",f"Transport {transport_id} is not active",
+				)
+			continue
+		try:
+			report=manager.run(
+				transport_id,
+				lambda client:scan_candidates(allowed,client,slot.polling),
+			)
+		except TransportConnectionClosedError as error:
+			for candidate in allowed:
+				results[candidate.sensor.key][transport_id]=_scan_error(
+					candidate,"unavailable",str(error),
+				)
+		else:
+			for result in report:
+				results[result["key"]][transport_id]=result
+
+	merged=[]
+	for candidate in candidates:
+		key=candidate.sensor.key
+		previous=previous_by_key.get(key,{})
+		previous_definition=previous.get("definition",{})
+		previous_transport=(
+			previous_definition.get("transport")
+			if isinstance(previous_definition,dict)
+			else None
+		)
+		prior_scans=normalize_last_scan(previous.get("last_scan",{}))
+		transport_results={}
+		for transport_id,result in results[key].items():
+			prior=prior_scans.get(transport_id,{})
+			if result.get("status") in {"timeout","unavailable","unsupported"} and prior:
+				preserved=dict(prior)
+				preserved.update({
+					field:value
+					for field,value in result.items()
+					if field not in {"raw_registers","raw_hex","raw_ascii","decoded","value"}
+				})
+				result=preserved
+			transport_results[transport_id]=result
+		selected=select_transport(candidate.sensor.transports,transport_results,previous_transport)
+		definition=_sensor_to_payload(replace(candidate.sensor,transport=selected))
+		merged.append({
+			"key":key,
+			"name":candidate.sensor.name,
+			"definition":definition,
+			"transport":selected,
+			"transports":list(candidate.sensor.transports),
+			"status":scan_status(transport_results,candidate.sensor.transports),
+			"last_scan":last_scan_with_selected_alias(transport_results,selected),
+			"verification":candidate.verification,
+			"description":candidate.description,
+		})
+	return merged
 
 
 def scan_candidates(
@@ -59,6 +214,8 @@ def scan_candidates(
 			start=time.perf_counter()
 			values=solarman.read_holding_registers(group_start, count)
 			latency_ms=(time.perf_counter()-start)*1000
+		except TransportConnectionClosedError:
+			raise
 		except Exception as error:
 			status=_read_error_status(error)
 			for sensor in group:
@@ -80,7 +237,11 @@ def _read_error_status(error: Exception) -> str:
 		"illegal function",
 		"modbus exception",
 		"exception response",
-		"exception code",
+		"exceptionresponse",
+		"exception code 1",
+		"exception code 2",
+		"exception_code=1",
+		"exception_code=2",
 	)
 	if any(marker in message for marker in unsupported_markers):
 		return "unsupported"
@@ -109,27 +270,42 @@ def save_detected_sensors(path: str, report: list[dict[str, Any]]) -> None:
 			if key.endswith("_bms_serial") and "byte_order" not in previous_definition:
 				definition["byte_order"]="low_high"
 		definition["key"]=key
+		definition["transports"]=list(result.get("transports",definition.get("transports",TRANSPORT_IDS)))
+		definition["transport"]=result.get("transport",definition.get("transport","solarman_tcp"))
+		validate_transport_configuration(definition["transport"],definition["transports"],subject=f"Sensor {key}")
 
 		monitor=previous_entry.get("monitor",False)
 		if not isinstance(monitor, bool):
+			monitor=False
+		if "last_scan" in result:
+			last_scan=dict(result["last_scan"])
+		else:
+			legacy_scan={
+				"status": result["status"],
+				"raw_registers": result.get("raw_registers",[]),
+				"raw_hex": result.get("raw_hex",[]),
+				"raw_ascii": result.get("raw_ascii",""),
+				"decoded": result.get("decoded"),
+				"value": result.get("value"),
+				"latency_ms": result.get("latency_ms"),
+				"error": result.get("error"),
+				"verification": result["verification"],
+				"description": result["description"],
+			}
+			last_scan=last_scan_with_selected_alias({
+				"solarman_tcp":legacy_scan,
+				"modbus_rtu":{"status":"unavailable","error":"Transport modbus_rtu was not active during the legacy scan"},
+			},definition["transport"])
+		branches=normalize_last_scan(last_scan)
+		if branches.get(definition["transport"],{}).get("status") != "supported":
 			monitor=False
 		entries.append(
 			{
 				"key": key,
 				"monitor": monitor,
 				"definition": definition,
-				"last_scan": {
-					"status": result["status"],
-					"raw_registers": result.get("raw_registers",[]),
-					"raw_hex": result.get("raw_hex",[]),
-					"raw_ascii": result.get("raw_ascii",""),
-					"decoded": result.get("decoded"),
-					"value": result.get("value"),
-					"latency_ms": result.get("latency_ms"),
-					"error": result.get("error"),
-					"verification": result["verification"],
-					"description": result["description"],
-				},
+				"status":result.get("status",scan_status(branches,definition["transports"])),
+				"last_scan": last_scan,
 			}
 		)
 
@@ -226,7 +402,14 @@ def load_monitored_definitions(path: str) -> list[dict[str, Any]]:
 			raise ValueError(f"detected_sensors.yaml: available_sensors[{index}].definition must be an object")
 		if definition.get("key") != entry.get("key"):
 			raise ValueError(f"detected_sensors.yaml: available_sensors[{index}] has inconsistent key")
+		transport=definition.get("transport","solarman_tcp")
+		transports=definition.get("transports",list(TRANSPORT_IDS))
+		validate_transport_configuration(transport,transports,subject=f"Sensor {entry.get('key')}")
+		if normalize_last_scan(entry.get("last_scan",{})).get(transport,{}).get("status") != "supported":
+			raise ValueError(f"Sensor {entry.get('key')}: selected transport is not supported")
 		selected=dict(definition)
+		selected["transport"]=transport
+		selected["transports"]=transports
 		selected["enabled"]=True
 		definitions.append(selected)
 
@@ -241,7 +424,23 @@ def load_detected_sensors(path: str) -> dict[str, Any]:
 			"scanned_at": None,
 			"available_sensors": [],
 		}
-	return _load_yaml_mapping(target)
+	payload=_load_yaml_mapping(target)
+	entries=payload.get("available_sensors",[])
+	if not isinstance(entries,list):
+		raise ValueError("detected_sensors.yaml: available_sensors must be a list")
+	for entry in entries:
+		if not isinstance(entry,dict) or not isinstance(entry.get("definition"),dict):
+			continue
+		definition=entry["definition"]
+		definition.setdefault("transport","solarman_tcp")
+		definition.setdefault("transports",list(TRANSPORT_IDS))
+		validate_transport_configuration(definition["transport"],definition["transports"],subject=f"Sensor {entry.get('key')}")
+		branches=normalize_last_scan(entry.get("last_scan",{}))
+		entry["last_scan"]=last_scan_with_selected_alias(branches,definition["transport"])
+		entry["status"]=scan_status(branches,definition["transports"])
+		if entry.get("monitor") is True and branches.get(definition["transport"],{}).get("status") != "supported":
+			entry["monitor"]=False
+	return payload
 
 
 def update_detected_sensors(path: str, updates: list[dict[str, Any]]) -> dict[str, Any]:
@@ -274,6 +473,17 @@ def update_detected_sensors(path: str, updates: list[dict[str, Any]]) -> dict[st
 		if not isinstance(definition, dict):
 			raise ValueError(f"detected_sensors.yaml: {key} has no definition")
 
+		transports=definition.get("transports",list(TRANSPORT_IDS))
+		transport=definition.get("transport","solarman_tcp")
+		validate_transport_configuration(transport,transports,subject=f"Sensor {key}")
+		requested_transport=definition_update.get("transport",transport)
+		validate_transport_configuration(requested_transport,transports,subject=f"Sensor {key}")
+		branches=normalize_last_scan(entry.get("last_scan",{}))
+		if requested_transport != transport and branches.get(requested_transport,{}).get("status") != "supported":
+			raise ValueError(f"Sensor {key}: transport must have supported scan status")
+		if monitor and branches.get(requested_transport,{}).get("status") != "supported":
+			raise ValueError(f"Sensor {key}: selected transport must have supported scan status")
+
 		if entry.get("monitor") is True and not monitor:
 			removed_keys.add(key)
 		entry["monitor"]=monitor
@@ -281,6 +491,9 @@ def update_detected_sensors(path: str, updates: list[dict[str, Any]]) -> dict[st
 			if field not in EDITABLE_DEFINITION_FIELDS:
 				continue
 			definition[field]=_validate_definition_value(key, field, value)
+		definition["transport"]=requested_transport
+		definition["transports"]=transports
+		entry["last_scan"]=last_scan_with_selected_alias(branches,requested_transport)
 
 	_queue_discovery_removal_keys(target,removed_keys)
 	_write_yaml(target, payload)
@@ -373,6 +586,10 @@ def _validate_definition_value(key: str, field: str, value: Any) -> Any:
 	if field == "retain":
 		if not isinstance(value, bool):
 			raise ValueError(f"Update {key}: retain must be a boolean")
+		return value
+	if field == "transport":
+		if value not in TRANSPORT_IDS:
+			raise ValueError(f"Update {key}: unsupported transport")
 		return value
 	if field == "type":
 		if value not in {"uint16","int16","uint32","int32","hex","ascii"}:

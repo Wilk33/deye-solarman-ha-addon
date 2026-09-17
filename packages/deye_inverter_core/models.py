@@ -4,6 +4,9 @@ from dataclasses import dataclass, field
 from typing import Any
 
 
+TRANSPORT_IDS=("solarman_tcp","modbus_rtu")
+
+
 @dataclass(slots=True)
 class LoggerConfig:
 	host: str
@@ -136,6 +139,19 @@ class SensorDefinition:
 	topic_suffix: str=""
 	formula: str=""
 	attributes: dict[str, Any]=field(default_factory=dict)
+	transport: str="solarman_tcp"
+	transports: list[str]=field(default_factory=lambda:list(TRANSPORT_IDS))
+
+	def __post_init__(self) -> None:
+		if (
+			not isinstance(self.transports,list)
+			or not self.transports
+			or any(transport not in TRANSPORT_IDS for transport in self.transports)
+			or len(set(self.transports)) != len(self.transports)
+		):
+			raise ValueError("Sensor transports must be a non-empty list of unique known transport ids")
+		if self.transport not in self.transports:
+			raise ValueError("Sensor transport must be one of the allowed transports")
 
 
 @dataclass(slots=True)

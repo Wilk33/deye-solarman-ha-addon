@@ -15,9 +15,21 @@ sys.path.insert(0,str(ROOT/"packages"))
 sys.path.insert(0,str(ROOT/"apps/deye-solarman/src"))
 
 from deye_inverter_core.config import load_config
+from deye_inverter_core.controls import CONTROLS
+from deye_inverter_core.controls import ControlService
+from deye_inverter_core.controls import set_controls
+from deye_inverter_core.custom_sensors import load_custom_sensors
+from deye_inverter_core.custom_sensors import save_custom_sensors
+from deye_inverter_core.definitions import sensor_from_payload
+from deye_inverter_core.models import SensorDefinition
 from deye_inverter_core.models import Rs485Config
 from deye_inverter_core.models import SolarmanConfig
 from deye_inverter_core.models import TransportPollingConfig
+from deye_inverter_core.scan_catalog import ScanCandidate
+from deye_inverter_core.scanner import save_detected_sensors
+from deye_inverter_core.scanner import load_detected_sensors
+from deye_inverter_core.scanner import scan_transports_sequentially
+from deye_inverter_core.scanner import update_detected_sensors
 from deye_solarman_diagnostics.rs485 import ModbusRtuTransport
 from deye_solarman_diagnostics.solarman import SolarmanClient
 from deye_inverter_core.transport import TransportConnectionClosedError
@@ -192,6 +204,33 @@ class FakeManagedTransport:
 
 	def read_holding_registers(self, start: int, count: int) -> list[int]:
 		return [start,count]
+
+
+class SequentialScanTransport(FakeManagedTransport):
+	def __init__(self, transport_id: str, events: list[str], values: dict[int,int] | None=None) -> None:
+		super().__init__(transport_id)
+		self.events=events
+		self.values=values or {}
+		self.failures: dict[int,Exception]={}
+		self.active_counter=[0]
+		self.writes=[]
+
+	def read_holding_registers(self, start: int, count: int) -> list[int]:
+		if self.active_counter[0]:
+			raise AssertionError("transport scans overlapped")
+		self.active_counter[0]+=1
+		self.events.append(f"{self.transport_id}:start")
+		try:
+			if start in self.failures:
+				raise self.failures[start]
+			return [self.values.get(address,0) for address in range(start,start+count)]
+		finally:
+			self.events.append(f"{self.transport_id}:end")
+			self.active_counter[0]-=1
+
+	def write_holding_registers(self, start: int, values: list[int]) -> None:
+		self.writes.append((start,values))
+		raise AssertionError("scan must never write registers")
 
 
 class FakeSolarmanLibraryClient:
@@ -887,6 +926,297 @@ class TransportManagerTests(unittest.TestCase):
 			manager.get("unknown_transport")
 		with self.assertRaisesRegex(KeyError,"unknown_transport"):
 			manager.run("unknown_transport",lambda client: None)
+
+
+class EntityTransportSelectionTests(unittest.TestCase):
+	def candidate(self, *, transports: list[str] | None=None) -> ScanCandidate:
+		arguments={}
+		if transports is not None:
+			arguments["transports"]=transports
+		return ScanCandidate(
+			SensorDefinition("voltage","Voltage",[10],"uint16",0.1,**arguments),
+			"documented",
+			"test",
+		)
+
+	def manager(
+		self,
+		solarman: SequentialScanTransport | None,
+		rs485: SequentialScanTransport | None,
+	) -> TransportManager:
+		slots=[]
+		for transport in (solarman,rs485):
+			if transport is not None:
+				slots.append(
+					TransportSlot(
+						transport,
+						TransportPollingConfig(**make_polling()),
+						10,
+					)
+				)
+		return TransportManager(slots)
+
+	def test_sensor_model_defaults_legacy_payload_to_solarman_and_both_transports(self) -> None:
+		sensor=sensor_from_payload({"key":"voltage","registers":[10],"type":"uint16"})
+
+		self.assertEqual(sensor.transport,"solarman_tcp")
+		self.assertEqual(sensor.transports,["solarman_tcp","modbus_rtu"])
+		rs485_only=sensor_from_payload({
+			"key":"rs485_voltage",
+			"registers":[11],
+			"type":"uint16",
+			"transports":["modbus_rtu"],
+		})
+		self.assertEqual(rs485_only.transport,"modbus_rtu")
+
+	def test_sensor_model_rejects_duplicate_unknown_or_unselected_transport(self) -> None:
+		invalid=(
+			{"transport":"solarman_tcp","transports":[]},
+			{"transport":"solarman_tcp","transports":["solarman_tcp","solarman_tcp"]},
+			{"transport":"serial","transports":["serial"]},
+			{"transport":"modbus_rtu","transports":["solarman_tcp"]},
+		)
+		for fields in invalid:
+			with self.subTest(fields=fields),self.assertRaises(ValueError):
+				sensor_from_payload({"key":"voltage","registers":[10],"type":"uint16",**fields})
+
+	def test_dual_supported_scan_is_sequential_and_preserves_rs485_selection(self) -> None:
+		events=[]
+		solarman=SequentialScanTransport("solarman_tcp",events,{10:500})
+		rs485=SequentialScanTransport("modbus_rtu",events,{10:501})
+		shared_counter=[0]
+		solarman.active_counter=shared_counter
+		rs485.active_counter=shared_counter
+		previous=[{"key":"voltage","definition":{"transport":"modbus_rtu"}}]
+
+		entry=scan_transports_sequentially([self.candidate()],self.manager(solarman,rs485),previous)[0]
+
+		self.assertEqual(events,["solarman_tcp:start","solarman_tcp:end","modbus_rtu:start","modbus_rtu:end"])
+		self.assertEqual(entry["status"],"supported")
+		self.assertEqual(entry["definition"]["transport"],"modbus_rtu")
+		self.assertEqual(entry["definition"]["transports"],["solarman_tcp","modbus_rtu"])
+		self.assertEqual(entry["last_scan"]["solarman_tcp"]["status"],"supported")
+		self.assertEqual(entry["last_scan"]["modbus_rtu"]["status"],"supported")
+
+	def test_scan_selects_the_only_supported_transport_and_defaults_new_dual_to_solarman(self) -> None:
+		for supported,expected in (("solarman_tcp","solarman_tcp"),("modbus_rtu","modbus_rtu")):
+			with self.subTest(supported=supported):
+				events=[]
+				solarman=SequentialScanTransport("solarman_tcp",events,{10:500})
+				rs485=SequentialScanTransport("modbus_rtu",events,{10:501})
+				failed=rs485 if supported == "solarman_tcp" else solarman
+				failed.failures[10]=TimeoutError("offline read")
+				entry=scan_transports_sequentially([self.candidate()],self.manager(solarman,rs485))[0]
+				self.assertEqual(entry["definition"]["transport"],expected)
+				self.assertEqual(entry["last_scan"][supported]["status"],"supported")
+		dual=scan_transports_sequentially(
+			[self.candidate()],
+			self.manager(
+				SequentialScanTransport("solarman_tcp",[],{10:500}),
+				SequentialScanTransport("modbus_rtu",[],{10:501}),
+			),
+		)[0]
+		self.assertEqual(dual["definition"]["transport"],"solarman_tcp")
+
+	def test_scan_distinguishes_unavailable_unsupported_and_unknown(self) -> None:
+		events=[]
+		solarman=SequentialScanTransport("solarman_tcp",events)
+		solarman.failures[10]=TimeoutError("no reply")
+		entry=scan_transports_sequentially([self.candidate()],self.manager(solarman,None))[0]
+		self.assertEqual(entry["status"],"unknown")
+		self.assertEqual(entry["last_scan"]["solarman_tcp"]["status"],"timeout")
+		self.assertEqual(entry["last_scan"]["modbus_rtu"]["status"],"unavailable")
+
+		restricted=scan_transports_sequentially(
+			[self.candidate(transports=["solarman_tcp"])],
+			self.manager(SequentialScanTransport("solarman_tcp",[],{10:500}),None),
+		)[0]
+		self.assertEqual(restricted["last_scan"]["modbus_rtu"]["status"],"unsupported")
+
+		events=[]
+		rs485=SequentialScanTransport("modbus_rtu",events)
+		rs485.failures[10]=TransportProtocolError(
+			"Modbus read holding registers failed: ExceptionResponse(dev_id=1, function_code=131, exception_code=2)"
+		)
+		protocol_unsupported=scan_transports_sequentially(
+			[self.candidate()],self.manager(None,rs485),
+		)[0]
+		self.assertEqual(protocol_unsupported["last_scan"]["modbus_rtu"]["status"],"unsupported")
+
+		class InvalidValueTransport(SequentialScanTransport):
+			def read_holding_registers(self, start: int, count: int) -> list[int]:
+				self.events.append(f"{self.transport_id}:start")
+				self.events.append(f"{self.transport_id}:end")
+				return []
+
+		invalid=scan_transports_sequentially(
+			[self.candidate()],
+			self.manager(InvalidValueTransport("solarman_tcp",[]),None),
+		)[0]
+		self.assertEqual(invalid["last_scan"]["solarman_tcp"]["status"],"invalid_value")
+
+	def test_detected_sensor_migrates_legacy_scan_and_validates_selection(self) -> None:
+		with tempfile.TemporaryDirectory() as directory:
+			path=Path(directory)/"detected.yaml"
+			legacy={
+				"version":1,
+				"available_sensors":[{
+					"key":"voltage",
+					"monitor":False,
+					"definition":{"key":"voltage","name":"Voltage","registers":[10],"type":"uint16"},
+					"last_scan":{"status":"supported","value":50.0,"raw_registers":[500]},
+				}],
+			}
+			path.write_text(yaml.safe_dump(legacy),encoding="utf-8")
+			report=scan_transports_sequentially(
+				[self.candidate()],
+				self.manager(SequentialScanTransport("solarman_tcp",[],{10:500}),None),
+				legacy["available_sensors"],
+			)
+			save_detected_sensors(str(path),report)
+			entry=yaml.safe_load(path.read_text(encoding="utf-8"))["available_sensors"][0]
+			self.assertEqual(entry["definition"]["transport"],"solarman_tcp")
+			self.assertEqual(entry["definition"]["transports"],["solarman_tcp","modbus_rtu"])
+			self.assertEqual(entry["last_scan"]["solarman_tcp"]["raw_registers"],[500])
+			with self.assertRaisesRegex(ValueError,"transport"):
+				update_detected_sensors(str(path),[{"key":"voltage","monitor":False,"definition":{"transport":"modbus_rtu"}}])
+			invalid=yaml.safe_load(path.read_text(encoding="utf-8"))
+			invalid["available_sensors"][0]["definition"]["transport"]="modbus_rtu"
+			path.write_text(yaml.safe_dump(invalid),encoding="utf-8")
+			with self.assertRaisesRegex(ValueError,"supported"):
+				update_detected_sensors(str(path),[{"key":"voltage","monitor":True,"definition":{}}])
+
+	def test_custom_sensor_persistence_keeps_transport_fields(self) -> None:
+		with tempfile.TemporaryDirectory() as directory:
+			path=Path(directory)/"custom.yaml"
+			payload=save_custom_sensors(str(path),[{
+				"key":"custom_voltage",
+				"monitor":True,
+				"definition":{
+					"key":"custom_voltage",
+					"registers":[10],
+					"type":"uint16",
+					"transport":"modbus_rtu",
+					"transports":["solarman_tcp","modbus_rtu"],
+				},
+			}])
+			definition=payload["sensors"][0]["definition"]
+			self.assertEqual(definition["transport"],"modbus_rtu")
+			self.assertEqual(definition["transports"],["solarman_tcp","modbus_rtu"])
+
+	def test_legacy_sensor_files_load_with_solarman_selection_and_nested_scan(self) -> None:
+		with tempfile.TemporaryDirectory() as directory:
+			detected_path=Path(directory)/"detected.yaml"
+			custom_path=Path(directory)/"custom.yaml"
+			definition={"key":"voltage","registers":[10],"type":"uint16"}
+			detected_path.write_text(yaml.safe_dump({
+				"version":1,
+				"available_sensors":[{
+					"key":"voltage",
+					"monitor":True,
+					"definition":definition,
+					"last_scan":{"status":"supported","raw_registers":[500]},
+				}],
+			}),encoding="utf-8")
+			custom_path.write_text(yaml.safe_dump({
+				"version":1,
+				"sensors":[{"key":"voltage","monitor":True,"definition":definition}],
+			}),encoding="utf-8")
+
+			detected=load_detected_sensors(str(detected_path))["available_sensors"][0]
+			custom=load_custom_sensors(str(custom_path))["sensors"][0]
+
+			self.assertEqual(detected["definition"]["transport"],"solarman_tcp")
+			self.assertEqual(detected["last_scan"]["solarman_tcp"]["raw_registers"],[500])
+			self.assertEqual(custom["definition"]["transport"],"solarman_tcp")
+			self.assertEqual(custom["definition"]["transports"],["solarman_tcp","modbus_rtu"])
+
+	def test_control_scan_uses_both_transports_read_only_and_preserves_selection(self) -> None:
+		catalog=list(CONTROLS.values())
+		control=dict(CONTROLS["control_grid_charge_battery_current"])
+		set_controls([control])
+		try:
+			with tempfile.TemporaryDirectory() as directory:
+				events=[]
+				solarman=SequentialScanTransport("solarman_tcp",events,{128:37})
+				rs485=SequentialScanTransport("modbus_rtu",events,{128:38})
+				manager=self.manager(solarman,rs485)
+				service=ControlService(
+					str(Path(directory)/"controls.json"),
+					None,
+					threading.Lock(),
+					0,
+					transport_manager=manager,
+				)
+				previous=service.entry(control["key"])
+				previous["definition"]["transport"]="modbus_rtu"
+				service.store({"available_sensors":[previous],"published":[]})
+
+				service._scan(lambda:None)
+
+				entry=service.load()["available_sensors"][0]
+				self.assertEqual(entry["definition"]["transport"],"modbus_rtu")
+				self.assertEqual(entry["last_scan"]["solarman_tcp"]["status"],"supported")
+				self.assertEqual(entry["last_scan"]["modbus_rtu"]["status"],"supported")
+				self.assertEqual(solarman.writes+rs485.writes,[])
+				self.assertLess(events.index("solarman_tcp:end"),events.index("modbus_rtu:start"))
+		finally:
+			set_controls(catalog)
+
+	def test_control_selection_requires_an_allowed_supported_writable_transport(self) -> None:
+		catalog=list(CONTROLS.values())
+		control=dict(CONTROLS["control_grid_charge_battery_current"])
+		set_controls([control])
+		try:
+			with tempfile.TemporaryDirectory() as directory:
+				service=ControlService(str(Path(directory)/"controls.json"),None,threading.Lock(),0)
+				entry=service.entry(control["key"])
+				branches={
+					"solarman_tcp":{"status":"supported","write_allowed":True},
+					"modbus_rtu":{"status":"supported","write_allowed":True},
+				}
+				entry["last_scan"]={**branches,**branches["solarman_tcp"]}
+				service.store({"available_sensors":[entry],"published":[]})
+				updated=service.update([{
+					"key":control["key"],
+					"monitor":True,
+					"definition":{"transport":"modbus_rtu"},
+				}])
+				self.assertEqual(updated["available_sensors"][0]["definition"]["transport"],"modbus_rtu")
+
+				entry=updated["available_sensors"][0]
+				entry["last_scan"]["solarman_tcp"]={"status":"timeout"}
+				service.store(updated)
+				with self.assertRaisesRegex(ValueError,"poprawny odczyt"):
+					service.update([{
+						"key":control["key"],
+						"monitor":True,
+						"definition":{"transport":"solarman_tcp"},
+					}])
+		finally:
+			set_controls(catalog)
+
+	def test_control_scan_maps_unknown_decoding_to_invalid_value(self) -> None:
+		catalog=list(CONTROLS.values())
+		control=dict(CONTROLS["control_load_limit"])
+		set_controls([control])
+		try:
+			with tempfile.TemporaryDirectory() as directory:
+				service=ControlService(
+					str(Path(directory)/"controls.json"),
+					None,
+					threading.Lock(),
+					0,
+					transport_manager=self.manager(
+						SequentialScanTransport("solarman_tcp",[],{142:99}),
+						None,
+					),
+				)
+				service._scan(lambda:None)
+				entry=service.load()["available_sensors"][0]
+				self.assertEqual(entry["last_scan"]["solarman_tcp"]["status"],"invalid_value")
+		finally:
+			set_controls(catalog)
 
 
 if __name__ == "__main__":

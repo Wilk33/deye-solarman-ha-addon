@@ -1930,6 +1930,7 @@
   "purpose": "control",
   "writable": true,
   "transports": [
-    "solarman_tcp"
+    "solarman_tcp",
+    "modbus_rtu"
   ]
 }

@@ -216,6 +216,9 @@ def _merge_definition(current: SensorDefinition | None, payload: dict[str, Any])
 		data.setdefault("name",data.get("key",""))
 		data.setdefault("register_type",payload.get("type","uint16"))
 		data.setdefault("registers",[])
+	transports=data.get("transports")
+	if "transport" not in payload and isinstance(transports,list) and transports and data.get("transport") not in transports:
+		data["transport"]="solarman_tcp" if "solarman_tcp" in transports else transports[0]
 	if not isinstance(data.get("key"),str) or not data["key"]:
 		raise ValueError("catalog sensor key must be a non-empty string")
 	if not isinstance(data.get("name"),str) or not data["name"]:

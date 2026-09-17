@@ -14,7 +14,15 @@ def load_custom_sensors(path: str) -> dict[str, Any]:
 	target=Path(path)
 	if not target.exists():
 		return {"version": 1,"sensors": []}
-	return _load_yaml_mapping(target)
+	payload=_load_yaml_mapping(target)
+	entries=payload.get("sensors",[])
+	if isinstance(entries,list):
+		for entry in entries:
+			if not isinstance(entry,dict) or not isinstance(entry.get("definition"),dict):
+				continue
+			entry["definition"].setdefault("transport","solarman_tcp")
+			entry["definition"].setdefault("transports",["solarman_tcp","modbus_rtu"])
+	return payload
 
 
 def save_custom_sensors(path: str, entries: list[dict[str, Any]]) -> dict[str, Any]:
@@ -95,6 +103,8 @@ def _normalized_definition(sensor: Any) -> dict[str, Any]:
 		"category": sensor.category,
 		"topic_suffix": sensor.topic_suffix,
 		"formula": sensor.formula,
+		"transport": sensor.transport,
+		"transports": sensor.transports,
 	}
 
 

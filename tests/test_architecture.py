@@ -54,8 +54,9 @@ class ArchitectureTests(unittest.TestCase):
 			{"control_us_version_grounding_fault","control_grid_standard","control_configured_grid_phases","control_allow_remote"}
 			& {entry["key"] for entry in controls}
 		)
-		with self.assertRaises(ValueError):
-			load_map("telemetry_plus","modbus_rtu")
+		for map_id in ("telemetry","telemetry_plus","control"):
+			for transport_id in ("solarman_tcp","modbus_rtu"):
+				self.assertEqual(load_map(map_id,transport_id)["map_id"],map_id)
 		with tempfile.TemporaryDirectory() as directory:
 			path=Path(directory)
 			index={"format":1,"catalog_set":"deye_sg04_sg05_3ph_lv","maps":{"control":{"file":"control.yaml","sha256":"wrong","transports":["solarman_tcp"]}}}

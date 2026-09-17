@@ -213,6 +213,7 @@ class ControlTests(unittest.TestCase):
 	def test_saved_catalog_migrates_without_losing_custom_settings(self):
 		entry=self.service.entry("control_battery_capacity_current")
 		entry["definition"].update(name="Battery Capacity current",unit="A",read_every=123)
+		entry["last_scan"]={"status":"supported","value":100,"raw_registers":[100],"write_allowed":True}
 		entry["monitor"]=True
 		self.service.store({"available_sensors":[entry],"published":[]})
 		updated=self.service.load()["available_sensors"][0]

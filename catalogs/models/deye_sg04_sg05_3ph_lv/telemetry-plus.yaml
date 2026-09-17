@@ -5,7 +5,8 @@
   "purpose": "telemetry_plus",
   "writable": false,
   "transports": [
-    "solarman_tcp"
+    "solarman_tcp",
+    "modbus_rtu"
   ],
   "bms_pack": {
     "base_register": 10032,

@@ -30,7 +30,7 @@ class OwnershipApiTests(unittest.TestCase):
 		self.custom=self.directory/"custom.yaml"
 		self.queue=self.directory/"deye_solarman_discovery_removals.yaml"
 		self.definition={"key":"pv_power","name":"PV","registers":[672],"type":"uint16"}
-		self.detected.write_text(json.dumps({"available_sensors":[{"key":"pv_power","definition":self.definition,"monitor":False}]}))
+		self.detected.write_text(json.dumps({"available_sensors":[{"key":"pv_power","definition":self.definition,"monitor":False,"last_scan":{"status":"supported"}}]}))
 		self.controls=ControlService(str(self.directory/"controls.json"),None,threading.Lock())
 		self.controls.ownership=self.own
 		control=self.controls.entry("control_grid_charge_battery_current")
