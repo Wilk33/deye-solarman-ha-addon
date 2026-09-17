@@ -649,6 +649,19 @@ class ControlTests(unittest.TestCase):
 		mqtt._on_control_message(None,None,SimpleNamespace(topic=old_topic,payload=b"25",retain=False))
 		old_handler.assert_not_called()
 
+	def test_control_subscription_return_code_prevents_handler_activation(self):
+		config=MqttConfig("broker",1883,"","","test","deye","homeassistant",True)
+		mqtt=MqttPublisher(config,InverterConfig("123","Inverter","Deye","SG05LP3"))
+		mqtt._client=Mock()
+		mqtt._client.subscribe.return_value=(4,1)
+		handler=Mock()
+
+		with self.assertRaisesRegex(ConnectionError,"subscribe.*code=4"):
+			mqtt.configure_controls(handler,["control_inverter_enabled"])
+
+		self.assertIsNone(mqtt._control_handler)
+		handler.assert_not_called()
+
 	def test_ingress_control_routes_and_test_have_no_write_side_effect(self):
 		key="control_grid_charge_battery_current"
 		self.select(key)
