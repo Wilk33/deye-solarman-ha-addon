@@ -1,6 +1,6 @@
 # Sterowanie
 
-Wersja 1.2.1 udostępnia zakładkę Ingress: **Sterowanie**. Ma osobny wynik skanu i wybór MQTT. Używa wyglądu, filtrów i układu kart znanych z zakładki Sensory.
+Wersja 1.3.0 udostępnia zakładkę Ingress: **Sterowanie**. Ma osobny wynik skanu i wybór MQTT. Używa wyglądu, filtrów i układu kart znanych z zakładki Sensory.
 
 ## Obsługa
 
@@ -41,6 +41,12 @@ To definicje projektu Sunsynk, nie potwierdzenie zgodności każdego pola z loka
 
 Eksporter `tools/import_sunsynk_controls.py` wymaga checkoutu dokładnie powyższej rewizji i zależności biblioteki Sunsynk w środowisku deweloperskim. Runtime dodatku nie importuje ani nie pobiera kodu Sunsynk. Katalog sterowania jest częścią obrazu, osobną od zdalnej mapy telemetrycznej YAML.
 
+## Własność od 1.3.0
+
+Stan i atrybuty są nadal wspólne, a Discovery i unique_id pozostają bez zmian. Temat komend jest właściwy dla źródła. `/share/entity_owners.json` i stabilny plik blokady uniemożliwiają równoczesne przydzielenie tej samej encji dwóm transportom. Wybór zajętej encji jest zablokowany w panelu i odrzucany przez API (HTTP 409). Runtime sprawdza właściciela ponownie pod blokadą przed zapisem i read-back; stara kolejka nie może usunąć Discovery nowego właściciela.
+
+Źródła mają osobne identyfikatory połączenia MQTT oraz `origin`. Przeniesienie wykonuje się przez wyłączenie MQTT i zapis w pierwszej aplikacji, następnie włączenie i zapis w drugiej. Sam restart/zatrzymanie nie zwalnia rejestracji. Rozwiązanie wymaga wspólnego rejestru i obsługi protokołu przez oba dodatki; nie steruje istniejącym zewnętrznym Sunsynk multi.
+
 ## Komendy i odczyty
 
 Wiadomości MQTT trafiają do ograniczonej kolejki. Runtime obsługuje je przez tę samą blokadę co telemetrię, formuły i skany. Zmiana ustawienia wykonuje kolejno: odczyt aktualnego słowa, odczyt zależnych granic, walidację, kodowanie, zapis FC16 oraz odczyt kontrolny. Przy masce bitowej pozostałe bity pozostają zachowane.
@@ -53,9 +59,9 @@ MQTT Discovery ma `optimistic: false` i `retain: false` dla komend. Stan i atryb
 
 ```text
 <base_topic>/<inverter_serial>/controls/<control_key>/state
-<base_topic>/<inverter_serial>/controls/<control_key>/set
+<base_topic>/<inverter_serial>/source/solarman_tcp/controls/<control_key>/set
 <base_topic>/<inverter_serial>/controls/<control_key>/attributes
-<base_topic>/<inverter_serial>/controls/<control_key>/availability
+<base_topic>/<inverter_serial>/source/solarman_tcp/controls/<control_key>/availability
 ```
 
 Konfiguracja, wynik skanu i lista opublikowanych encji są zapisywane atomowo do `control_sensors.json`, w tym samym katalogu co `detected_sensors.yaml` (domyślnie `/config/control_sensors.json`). Usunięcie encji wycofuje Discovery z właściwej domeny `number`, `switch`, `select` lub `text`.

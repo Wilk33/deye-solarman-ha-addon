@@ -222,3 +222,7 @@ Domyslny profil zawiera definicje BMS, ale wszystkie sa wylaczone. W normalnym t
 - [Developer089 - mapa Deye SUN-3PH Hybrid](https://github.com/Developer089/deye-modbus-ha/blob/main/custom_components/deye_modbus/maps/sun_3ph_hybrid.yaml) - zrodlo katalogu 68 telemetrycznych rejestrow SG04LP3 / SG05LP3.
 - [Lewa-Reka - Deye SUN-12K SG05LP3 BMS](https://gist.github.com/Lewa-Reka/9796390db54fa5b317f27bc435a2a320) - zrodlo kandydatow per-pakiet BMS, wymagajacych walidacji na konkretnym urzadzeniu.
 - [Home Assistant - Add-on configuration](https://developers.home-assistant.io/docs/apps/configuration/) - ograniczenia statycznego schematu opcji dodatku Supervisor.
+
+## Własność encji (1.3.0)
+
+`/share/entity_owners.json` przechowuje właścicieli encji. Panel pokazuje aplikację, która używa danej encji; konflikt zwraca HTTP 409. Własność nie wygasa po zatrzymaniu dodatku. Tematy stanu i identyfikatory HA pozostają wspólne. Komendy używają `<base>/<serial>/source/solarman_tcp/controls/<key>/set`. Więcej: [Sterowanie](CONTROL_ENTITIES.md).

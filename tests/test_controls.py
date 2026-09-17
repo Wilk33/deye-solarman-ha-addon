@@ -374,7 +374,7 @@ class ControlTests(unittest.TestCase):
 			self.assertFalse(json.loads(payload)["optimistic"])
 		callback=Mock()
 		mqtt.configure_controls(callback,["control_load_limit"])
-		mqtt._on_control_message(None,None,SimpleNamespace(topic=mqtt.control_base()+"/control_load_limit/set",payload=b"Essentials",retain=False))
+		mqtt._on_control_message(None,None,SimpleNamespace(topic=mqtt.control_command_topic("control_load_limit"),payload=b"Essentials",retain=False))
 		callback.assert_called_once_with("control_load_limit","Essentials",False)
 
 	def test_ingress_control_routes_and_test_have_no_write_side_effect(self):

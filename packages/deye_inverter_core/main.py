@@ -38,12 +38,14 @@ from .storage import load_state
 from .storage import save_scan_report
 from .storage import save_state
 from .web import IngressPanel
+from .ownership import EntityOwnership, EntityOwnershipRegistry
+from .ownership_config import OwnershipCoordinator
 
 
 LOGGER=logging.getLogger(__name__)
 
 
-def main(transport_factory: TransportFactory) -> None:
+def main(transport_factory: TransportFactory, source: str="solarman_tcp", source_name: str="Deye Solarman Local") -> None:
 	configure_logging()
 	config=load_config()
 	access_lock=threading.Lock()
@@ -51,6 +53,19 @@ def main(transport_factory: TransportFactory) -> None:
 	catalog_lock=threading.Lock()
 	catalog_state={"current": load_remote_catalog(config.catalog)}
 	controls=ControlService(str(Path(config.scan.detected_sensors_file).with_name("control_sensors.json")),config.logger,access_lock,config.polling.read_message_spacing,transport_factory)
+	ownership=EntityOwnership(EntityOwnershipRegistry(),config.inverter.serial_number,source,source_name)
+	controls.ownership=ownership
+
+	def desired_entities():
+		from .controls import component
+		sensors=load_sensor_definitions(config.profiles.default_profile,config.profiles.overrides_file,config.scan.detected_sensors_file,config.profiles.custom_sensors_file)
+		return {("sensor",sensor.key) for sensor in sensors if sensor.enabled}|{(component(entry["definition"]),entry["key"]) for entry in controls.load()["available_sensors"] if entry["monitor"]}
+
+	files={config.scan.detected_sensors_file,config.profiles.custom_sensors_file,str(controls.path)}
+	files.update(str(Path(path).with_name("deye_solarman_discovery_removals.yaml")) for path in (config.scan.detected_sensors_file,config.profiles.custom_sensors_file))
+	coordinator=OwnershipCoordinator(ownership,files,desired_entities)
+	controls.configuration_action=lambda action:coordinator.apply(action,strict=False)
+	coordinator.reconcile()
 
 	def current_catalog() -> RemoteCatalog:
 		with catalog_lock:
@@ -64,7 +79,7 @@ def main(transport_factory: TransportFactory) -> None:
 
 	panel=IngressPanel(
 		config.scan.detected_sensors_file,
-		lambda: _run_manual_scan(config,access_lock,current_catalog(),transport_factory),
+		lambda: _run_manual_scan(config,access_lock,current_catalog(),transport_factory,coordinator),
 		lambda: _reset_panel_configuration(config,current_catalog()),
 		lambda: _clear_panel_sensors(config,refresh_catalog()),
 		configuration_changed.set,
@@ -72,10 +87,11 @@ def main(transport_factory: TransportFactory) -> None:
 		lambda definition: _test_custom_sensor(config,access_lock,definition,transport_factory),
 		lambda entries: _save_custom_sensor_configuration(config,entries),
 		control_service=controls,
+		ownership_coordinator=coordinator,
 	)
 	panel.start()
 	try:
-		_run_addon(config,access_lock,current_catalog(),transport_factory,configuration_changed,controls)
+		_run_addon(config,access_lock,current_catalog(),transport_factory,configuration_changed,controls,coordinator)
 	finally:
 		panel.stop()
 
@@ -87,18 +103,20 @@ def _run_addon(
 	transport_factory: TransportFactory,
 	configuration_changed: threading.Event | None=None,
 	control_service: ControlService | None=None,
+	ownership_coordinator: OwnershipCoordinator | None=None,
 ) -> None:
 	state=load_state(config.profiles.state_file)
 	change_event=configuration_changed or threading.Event()
 
 	while True:
 		change_event.clear()
-		sensors=load_sensor_definitions(
-			config.profiles.default_profile,
-			config.profiles.overrides_file,
-			config.scan.detected_sensors_file,
-			config.profiles.custom_sensors_file,
-		)
+		ownership=ownership_coordinator.ownership if ownership_coordinator else None
+		with ownership.registry.locked() if ownership else nullcontext():
+			if ownership_coordinator:
+				conflicts=ownership_coordinator.reconcile()
+				if conflicts:
+					LOGGER.warning("Ownership conflicts, local publication disabled: %s",conflicts)
+			sensors=load_sensor_definitions(config.profiles.default_profile,config.profiles.overrides_file,config.scan.detected_sensors_file,config.profiles.custom_sensors_file)
 		for sensor in sensors:
 			state.setdefault(sensor.key, SensorState())
 		success(
@@ -109,7 +127,7 @@ def _run_addon(
 			config.scan.detected_sensors_file,
 		)
 		solarman=transport_factory(config.logger)
-		mqtt=MqttPublisher(config.mqtt, config.inverter)
+		mqtt=MqttPublisher(config.mqtt,config.inverter,ownership=ownership)
 		try:
 			with access_lock:
 				solarman.connect()
@@ -132,7 +150,10 @@ def _run_addon(
 						config.polling,
 					)
 				save_scan_report(config.scan.report_file, scan_report)
-				save_detected_sensors(config.scan.detected_sensors_file, scan_report)
+				if ownership_coordinator:
+					ownership_coordinator.apply(lambda:save_detected_sensors(config.scan.detected_sensors_file,scan_report),strict=False)
+				else:
+					save_detected_sensors(config.scan.detected_sensors_file,scan_report)
 				_log_scan_summary(scan_report, config.scan.detected_sensors_file)
 				if config.scan.mode == "scan_only":
 					LOGGER.info("Scan complete. MQTT publishing is disabled while the Ingress panel remains available.")
@@ -147,23 +168,24 @@ def _run_addon(
 					state.setdefault(sensor.key, SensorState())
 
 			mqtt.connect()
-			removal_paths={
-				config.scan.detected_sensors_file,
-				config.profiles.custom_sensors_file,
-			}
-			pending_removals=sorted(
-				{
-					key
-					for path in removal_paths
-					for key in load_pending_discovery_removals(path)
+			with ownership.registry.locked() if ownership else nullcontext():
+				removal_paths={
+					config.scan.detected_sensors_file,
+					config.profiles.custom_sensors_file,
 				}
-			)
-			for sensor_key in pending_removals:
-				mqtt.remove_discovery(sensor_key)
-			if pending_removals:
-				for path in removal_paths:
-					clear_pending_discovery_removals(path)
-				success(LOGGER,"Removed MQTT Discovery entities=%s",len(pending_removals))
+				pending_removals=sorted(
+					{
+						key
+						for path in removal_paths
+						for key in load_pending_discovery_removals(path)
+					}
+				)
+				for sensor_key in pending_removals:
+					mqtt.remove_discovery(sensor_key)
+				if pending_removals:
+					for path in removal_paths:
+						clear_pending_discovery_removals(path)
+					success(LOGGER,"Removed MQTT Discovery entities=%s",len(pending_removals))
 			enabled_sensors=[sensor for sensor in sensors if sensor.enabled]
 			LOGGER.info(
 				"Publishing MQTT Discovery sensors=%s prefix=%s inverter_serial=%s",
@@ -173,6 +195,8 @@ def _run_addon(
 			)
 			for sensor in enabled_sensors:
 				mqtt.publish_discovery(sensor)
+				state[sensor.key].last_read_at=0
+				state[sensor.key].last_published_value=None
 			control_runtime=ControlRuntime(control_service,mqtt,solarman) if control_service is not None else None
 			if control_runtime is not None:
 				control_runtime.start()
@@ -218,7 +242,7 @@ def _run_addon(
 			change_event.wait(config.logger.reconnect_delay)
 
 
-def _run_manual_scan(config: Any, access_lock: Any, remote_catalog: RemoteCatalog, transport_factory: TransportFactory) -> dict[str, Any]:
+def _run_manual_scan(config: Any, access_lock: Any, remote_catalog: RemoteCatalog, transport_factory: TransportFactory, coordinator: OwnershipCoordinator | None=None) -> dict[str, Any]:
 	solarman=transport_factory(config.logger)
 	try:
 		with access_lock:
@@ -234,7 +258,10 @@ def _run_manual_scan(config: Any, access_lock: Any, remote_catalog: RemoteCatalo
 				config.polling,
 			)
 		save_scan_report(config.scan.report_file, scan_report)
-		save_detected_sensors(config.scan.detected_sensors_file, scan_report)
+		if coordinator:
+			coordinator.apply(lambda:save_detected_sensors(config.scan.detected_sensors_file,scan_report),strict=False)
+		else:
+			save_detected_sensors(config.scan.detected_sensors_file,scan_report)
 		_log_scan_summary(scan_report,config.scan.detected_sensors_file)
 		statuses: dict[str,int]={}
 		for result in scan_report:

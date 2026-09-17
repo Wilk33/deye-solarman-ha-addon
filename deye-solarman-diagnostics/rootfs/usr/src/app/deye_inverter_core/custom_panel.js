@@ -89,7 +89,8 @@ function customCard(entry)
 		${customSelect(entry.key,"word_order","Kolejnosc slow",definition.word_order,["high_low","low_high"])}
 		${customSelect(entry.key,"byte_order","Kolejnosc bajtow ASCII",definition.byte_order,["high_low","low_high"])}`;
 	return `<article class="custom-sensor ${entry.monitor ? "enabled" : ""}" data-custom-sensor="${customEsc(entry.key)}">
-		<div class="sensor-head"><div><h3>${customEsc(definition.name || entry.key)}</h3><span class="key">${customEsc(entry.key)}${formula ? " / formula" : " / R"+customEsc((definition.registers || []).join(","))}</span></div><label class="toggle"><input data-custom-monitor="${customEsc(entry.key)}" type="checkbox" ${entry.monitor ? "checked" : ""}> MQTT</label></div>
+		<div class="sensor-head"><div><h3>${customEsc(definition.name || entry.key)}</h3><span class="key">${customEsc(entry.key)}${formula ? " / formula" : " / R"+customEsc((definition.registers || []).join(","))}</span></div><label class="toggle"><input data-custom-monitor="${customEsc(entry.key)}" type="checkbox" ${entry.monitor ? "checked" : ""} ${ownershipToggle(entry)}> MQTT</label></div>
+		${ownershipBadge(entry)}
 		<div class="fields">
 			${customInput(entry.key,"name","Nazwa",definition.name,"text",true)}
 			${customInput(entry.key,"key","Klucz MQTT",entry.key,"text",true)}

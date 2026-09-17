@@ -1,8 +1,18 @@
 # Deye Solarman HA Add-on
 
-Wersja `1.2.1` dodatku Home Assistant OS do lokalnej komunikacji z falownikiem Deye przez logger Solarman TCP. Dodatek odczytuje telemetrię oraz aktualne ustawienia, pozwala zweryfikować ich dostępność w panelu Ingress i publikuje wybrane sensory oraz encje sterowania przez MQTT Discovery.
+Wersja `1.3.0` dodatku Home Assistant OS do lokalnej komunikacji z falownikiem Deye przez logger Solarman TCP. Dodatek odczytuje telemetrię oraz aktualne ustawienia, pozwala zweryfikować ich dostępność w panelu Ingress i publikuje wybrane sensory oraz encje sterowania przez MQTT Discovery.
 
 Zakładka **Sterowanie** korzysta ze 119 definicji profilu Sunsynk `three_phase_lv`. Skan wyłącznie odczytuje stan. Pola nieznane i definicje bez potwierdzonego zakresu mają blokadę zapisu. Dopiero komenda wysłana przez wybraną encję MQTT zmienia ustawienie. Szczegóły, źródła mapy i zasady walidacji opisuje [instrukcja encji sterowania](deye-solarman-diagnostics/CONTROL_ENTITIES.md).
+
+## Wspólna własność encji od 1.3.0
+
+Rejestr `/share/entity_owners.json` przydziela encję jednemu źródłu: `solarman_tcp` lub przyszłemu `modbus_rtu`. Tożsamość jest wyznaczana przez numer falownika, komponent MQTT i klucz. Dotychczasowe tematy stanu, RAW, atrybutów, Discovery i `unique_id` pozostają wspólne. Komendy sterowania i dostępność transportu mają osobne tematy źródłowe. Identyfikator połączenia MQTT ma dopisany sufiks `-solarman_tcp`.
+
+Panel pokazuje właściciela; zajęte encje mają zablokowany wybór MQTT. Konflikt zapisu zwraca HTTP 409. Przeniesienie wymaga odznaczenia i zapisania u dotychczasowego właściciela, a następnie zaznaczenia u nowego. Zatrzymanie dodatku nie zwalnia encji. Błąd odczytu rejestru blokuje operacje zamiast uznawać wszystko za wolne.
+
+Po aktualizacji istniejące wybory są automatycznie uzgadniane z rejestrem. Nie trzeba usuwać ani ponownie tworzyć encji HA. Automatyzacje publikujące komendy bezpośrednio do MQTT muszą używać nowego tematu `<base>/<serial>/source/solarman_tcp/controls/<key>/set`; encje HA dostają go przez aktualizację Discovery. Stan nadal pozostaje pod `<base>/<serial>/controls/<key>/state`.
+
+Wymagana jest wspólna ścieżka `/share`, ten sam broker/prefiksy i zgodne klucze. Protokół dotyczy dodatków tego projektu korzystających ze wspólnego rdzenia. Zewnętrzny Sunsynk multi nie używa tego rejestru; RS485 tego projektu pozostaje przyszłym adapterem. [Opis architektury](docs/architecture/ENTITY_OWNERSHIP.md).
 
 ## Źródła i pakowanie od wersji 1.2.0
 

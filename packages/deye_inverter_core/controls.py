@@ -8,6 +8,7 @@ import re
 import threading
 import time
 from copy import deepcopy
+from contextlib import nullcontext
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -186,6 +187,8 @@ class ControlService:
 		self.spacing=spacing
 		self.lock=threading.RLock()
 		self.writes_blocked=False
+		self.ownership=None
+		self.configuration_action=lambda action:action()
 		self.job={"status":"idle","message":"Skan odczytuje aktualny stan."}
 
 	def load(self) -> dict:
@@ -287,12 +290,14 @@ class ControlService:
 				result=self.read(client,key)
 			finally:
 				client.close()
-		with self.lock:
-			data=self.load()
-			for entry in data["available_sensors"]:
-				if entry["key"] == key:
-					entry["last_scan"]=result
-			self.store(data)
+		def save_result():
+			with self.lock:
+				data=self.load()
+				for entry in data["available_sensors"]:
+					if entry["key"] == key:
+						entry["last_scan"]=result
+				self.store(data)
+		self.configuration_action(save_result)
 		return result
 
 	def start_scan(self, changed: Any) -> bool:
@@ -322,11 +327,13 @@ class ControlService:
 						time.sleep(self.spacing)
 				finally:
 					client.close()
-			with self.lock:
-				data=self.load()
-				data["available_sensors"]=entries
-				self.store(data)
-				self.job={"status":"completed","message":"Odczyt zakończony. Wybierz encje sterowania MQTT."}
+			def save_scan():
+				with self.lock:
+					data=self.load()
+					data["available_sensors"]=entries
+					self.store(data)
+					self.job={"status":"completed","message":"Odczyt zakończony. Wybierz encje sterowania MQTT."}
+			self.configuration_action(save_scan)
 			changed()
 		except Exception as error:
 			LOGGER.exception("Control scan failed")
@@ -337,6 +344,7 @@ class ControlService:
 class ControlRuntime:
 	def __init__(self, service: ControlService, mqtt: Any, client: Any) -> None:
 		self.service=service
+		self.ownership=service.ownership
 		self.mqtt=mqtt
 		self.client=client
 		self.queue=queue.Queue(maxsize=32)
@@ -362,10 +370,11 @@ class ControlRuntime:
 				self.mqtt.remove_control_discovery(CONTROLS[key])
 		self.mqtt.configure_controls(self.receive,list(self.enabled))
 		# Persist before publication so interrupted starts can remove retained entries later.
-		with self.service.lock:
-			data=self.service.load()
-			data["published"]=list(self.enabled)
-			self.service.store(data)
+		with self.ownership.registry.locked() if self.ownership else nullcontext():
+			with self.service.lock:
+				data=self.service.load()
+				data["published"]=list(self.enabled)
+				self.service.store(data)
 		self.tick()
 
 	def tick(self) -> None:
@@ -385,7 +394,15 @@ class ControlRuntime:
 							live=self.service.load()
 							if not any(e["key"] == key and e["monitor"] for e in live["available_sensors"]):
 								raise ValueError("Control deselected")
-							write_control(self.client,CONTROLS[key],value)
+							with self.ownership.guard(component(CONTROLS[key]),key) if self.ownership else nullcontext(True) as owned:
+								if not owned:
+									raise ValueError("Control belongs to another application")
+								if time.monotonic()-created > 10:
+									raise ValueError("Control command expired while waiting for ownership")
+								# Reload selection while holding ownership through the physical write.
+								if not any(e["key"] == key and e["monitor"] for e in self.service.load()["available_sensors"]):
+									raise ValueError("Control deselected")
+								write_control(self.client,CONTROLS[key],value)
 						self.last_read.pop(key,None)
 						self.last_value.pop(key,None)
 						self.last_command=now
@@ -398,6 +415,8 @@ class ControlRuntime:
 							self.mqtt.control_availability(control_key,False)
 						LOGGER.exception("Control writes blocked until configuration reload")
 		for key,entry in self.enabled.items():
+			if self.ownership and not self.ownership.owns(component(CONTROLS[key]),key):
+				continue
 			if now-self.last_read.get(key,-math.inf) < entry["definition"]["read_every"]:
 				continue
 			self.last_read[key]=now

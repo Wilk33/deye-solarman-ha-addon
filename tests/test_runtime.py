@@ -72,7 +72,7 @@ class FakePahoClient:
 	def __init__(self) -> None:
 		self.messages: list[tuple[str, object, bool]]=[]
 
-	def publish(self, topic: str, payload: object, retain: bool=False) -> None:
+	def publish(self, topic: str, payload: object, retain: bool=False, qos: int=0) -> None:
 		self.messages.append((topic, payload, retain))
 
 

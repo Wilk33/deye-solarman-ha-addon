@@ -16,3 +16,4 @@ jobs:
       - run: python -W error::SyntaxWarning -m compileall -q packages apps/deye-solarman/src deye-solarman-diagnostics/rootfs/usr/src/app
       - run: node --check packages/deye_inverter_core/control_panel.js
       - run: node --check packages/deye_inverter_core/custom_panel.js
+      - run: node --check packages/deye_inverter_core/ownership_panel.js

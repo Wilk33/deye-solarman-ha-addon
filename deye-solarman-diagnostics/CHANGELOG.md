@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.3.0
+
+- Add a shared `/share/entity_owners.json` registry with an OS file lock and ownership by inverter serial, MQTT component and canonical key.
+- Keep state, RAW, attribute and Discovery topics shared and retain existing unique IDs. Scope control commands, transport availability and MQTT client IDs by source; include Discovery origin.
+- Serialize selection, reset and deletion with ownership. Return HTTP 409 and roll back configuration on conflicts; reconcile existing enabled definitions at startup without stealing foreign entries.
+- Guard publication and delayed Discovery deletion under the registry lock until MQTT QoS 1 acknowledgement. Recheck control ownership immediately before writing registers.
+- Show the owner and disable occupied MQTT choices in all three Ingress tabs; refresh ownership metadata every five seconds without replacing unsaved form fields.
+- Add multiprocess, MQTT handoff and HTTP regression tests. The shared protocol prepares for the future RS485 adapter; existing external Sunsynk add-ons do not participate in this registry.
+
 ## 1.2.1
 
 - Rename the Ingress tabs to `Sensory` and `Sterowanie`; remove per-control Test buttons.
