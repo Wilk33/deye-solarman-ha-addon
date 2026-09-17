@@ -106,6 +106,8 @@ class FakeModbusSerialClient:
 		self.write_calls: list[dict[str,object]]=[]
 		self.read_response=FakeModbusResponse(registers=[101,202])
 		self.write_response=FakeModbusResponse()
+		self.read_error: Exception | None=None
+		self.write_error: Exception | None=None
 
 	def connect(self) -> bool:
 		self.connected=self.connect_result
@@ -117,10 +119,14 @@ class FakeModbusSerialClient:
 
 	def read_holding_registers(self, **kwargs: object) -> FakeModbusResponse:
 		self.read_calls.append(kwargs)
+		if self.read_error is not None:
+			raise self.read_error
 		return self.read_response
 
 	def write_registers(self, **kwargs: object) -> FakeModbusResponse:
 		self.write_calls.append(kwargs)
+		if self.write_error is not None:
+			raise self.write_error
 		return self.write_response
 
 
@@ -360,6 +366,36 @@ class ModbusRtuTransportTests(unittest.TestCase):
 		client.write_response=FakeModbusResponse(error=True)
 		with self.assertRaisesRegex(TransportProtocolError,"write holding registers"):
 			transport.write_holding_registers(128,[25])
+
+	def test_read_io_error_with_stale_connected_flag_requests_reconnect(self) -> None:
+		client=FakeModbusSerialClient()
+		client.read_error=OSError("USB device disappeared")
+		transport=ModbusRtuTransport(
+			make_rs485_config(),
+			client_factory=RecordingModbusClientFactory([client]),
+		)
+		transport.connect()
+
+		with self.assertRaisesRegex(TransportConnectionClosedError,"USB device disappeared"):
+			transport.read_holding_registers(10040,1)
+
+		self.assertTrue(client.connected)
+		self.assertEqual(len(client.read_calls),1)
+
+	def test_write_io_error_with_stale_connected_flag_is_not_retried(self) -> None:
+		client=FakeModbusSerialClient()
+		client.write_error=OSError("serial port write failed")
+		transport=ModbusRtuTransport(
+			make_rs485_config(),
+			client_factory=RecordingModbusClientFactory([client]),
+		)
+		transport.connect()
+
+		with self.assertRaisesRegex(TransportConnectionClosedError,"serial port write failed"):
+			transport.write_holding_registers(128,[25])
+
+		self.assertTrue(client.connected)
+		self.assertEqual(len(client.write_calls),1)
 
 	def test_operations_require_an_active_connection(self) -> None:
 		client=FakeModbusSerialClient()

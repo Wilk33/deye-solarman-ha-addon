@@ -140,5 +140,5 @@ class ModbusRtuTransport:
 
 	@staticmethod
 	def _raise_if_connection_closed(client: ModbusSerialClientProtocol,error: Exception) -> None:
-		if isinstance(error,ConnectionError) or not client.connected:
+		if isinstance(error,OSError) or not client.connected:
 			raise TransportConnectionClosedError(f"RS485 connection failed: {error}") from error
