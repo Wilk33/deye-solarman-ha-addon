@@ -5,6 +5,7 @@ import time
 from typing import Protocol
 from typing import Any
 
+from pysolarmanv5 import NoSocketAvailableError
 from pysolarmanv5 import PySolarmanV5
 
 from deye_inverter_core.models import LoggerConfig
@@ -55,14 +56,18 @@ class SolarmanClient:
 			self._config.serial_number,
 			self._config.modbus_id,
 		)
-		self._client=PySolarmanV5(
-			address=self._config.host,
-			serial=self._config.serial_number,
-			port=self._config.port,
-			mb_slave_id=self._config.modbus_id,
-			socket_timeout=self._config.timeout,
-			auto_reconnect=False,
-		)
+		try:
+			self._client=PySolarmanV5(
+				address=self._config.host,
+				serial=self._config.serial_number,
+				port=self._config.port,
+				mb_slave_id=self._config.modbus_id,
+				socket_timeout=self._config.timeout,
+				auto_reconnect=False,
+			)
+		except (NoSocketAvailableError,OSError) as error:
+			self._client=None
+			raise TransportConnectionClosedError(str(error)) from error
 
 	def disconnect(self) -> None:
 		if self._client is None:

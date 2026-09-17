@@ -19,6 +19,10 @@ ResultT=TypeVar("ResultT")
 MonotonicClock=Callable[[],float]
 
 
+class _ReconnectPendingError(TransportConnectionClosedError):
+	"""A slot is inside its reconnect cooldown."""
+
+
 @dataclass(slots=True)
 class TransportStatus:
 	online: bool=False
@@ -97,7 +101,13 @@ class TransportManager:
 	) -> ResultT:
 		slot=self.get(transport_id)
 		with slot.lock:
-			self._ensure_connected(slot)
+			try:
+				self._ensure_connected(slot)
+			except _ReconnectPendingError:
+				raise
+			except TransportConnectionClosedError as error:
+				self._record_connection_failure(slot,error)
+				raise
 			started_at=self._clock()
 			try:
 				result=operation(slot.client)
@@ -118,19 +128,15 @@ class TransportManager:
 			return
 		now=self._clock()
 		if now < slot.status.next_reconnect_at:
-			raise TransportConnectionClosedError(
+			raise _ReconnectPendingError(
 				f"Transport {slot.transport_id} reconnect is allowed at "
 				f"{slot.status.next_reconnect_at:.6f}, current time is {now:.6f}",
 			)
-		try:
-			if slot._has_connected:
-				slot.client.reconnect()
-			else:
-				slot.client.connect()
-				slot._has_connected=True
-		except TransportConnectionClosedError as error:
-			self._record_connection_failure(slot,error)
-			raise
+		if slot._has_connected:
+			slot.client.reconnect()
+		else:
+			slot.client.connect()
+			slot._has_connected=True
 		slot.status.online=True
 		slot.status.next_reconnect_at=0.0
 
