@@ -18,6 +18,9 @@ from deye_inverter_core.models import TransportPollingConfig
 from deye_solarman_diagnostics.rs485 import ModbusRtuTransport
 from deye_inverter_core.transport import TransportConnectionClosedError
 from deye_inverter_core.transport import TransportProtocolError
+from deye_inverter_core.transport_manager import TransportManager
+from deye_inverter_core.transport_manager import TransportSlot
+from deye_inverter_core.transport_manager import TransportStatus
 
 
 def make_common_options() -> dict[str,object]:
@@ -138,6 +141,50 @@ class RecordingModbusClientFactory:
 	def __call__(self, **kwargs: object) -> FakeModbusSerialClient:
 		self.calls.append(kwargs)
 		return self.clients[len(self.calls)-1]
+
+
+class ManualClock:
+	def __init__(self, value: float=0.0) -> None:
+		self.value=value
+
+	def __call__(self) -> float:
+		return self.value
+
+	def advance(self, seconds: float) -> None:
+		self.value+=seconds
+
+
+class FakeManagedTransport:
+	def __init__(self, transport_id: str) -> None:
+		self.transport_id=transport_id
+		self.connect_calls=0
+		self.reconnect_calls=0
+		self.close_calls=0
+
+	def connect(self) -> None:
+		self.connect_calls+=1
+
+	def reconnect(self) -> None:
+		self.reconnect_calls+=1
+
+	def close(self) -> None:
+		self.close_calls+=1
+
+	def read_holding_registers(self, start: int, count: int) -> list[int]:
+		return [start,count]
+
+
+def make_transport_slot(
+	transport_id: str,
+	*,
+	default_interval: int=60,
+	reconnect_delay: float=10.0,
+) -> TransportSlot:
+	return TransportSlot(
+		client=FakeManagedTransport(transport_id),
+		polling=TransportPollingConfig(**make_polling(default_interval)),
+		reconnect_delay=reconnect_delay,
+	)
 
 
 class DualTransportConfigTests(unittest.TestCase):
@@ -444,6 +491,160 @@ class ModbusRtuTransportTests(unittest.TestCase):
 
 		self.assertIs(addon["uart"],True)
 		self.assertIn("pymodbus==3.14.0",requirements)
+
+
+class TransportManagerTests(unittest.TestCase):
+	def test_slots_have_independent_locks_polling_and_reconnect_delays(self) -> None:
+		solarman=make_transport_slot("solarman_tcp",default_interval=61,reconnect_delay=11)
+		rs485=make_transport_slot("modbus_rtu",default_interval=13,reconnect_delay=7)
+		manager=TransportManager([solarman,rs485])
+
+		self.assertIsNot(solarman.lock,rs485.lock)
+		self.assertEqual(manager.get("solarman_tcp").polling.default_interval,61)
+		self.assertEqual(manager.get("solarman_tcp").reconnect_delay,11)
+		self.assertEqual(manager.get("modbus_rtu").polling.default_interval,13)
+		self.assertEqual(manager.get("modbus_rtu").reconnect_delay,7)
+		self.assertIsInstance(solarman.status,TransportStatus)
+
+	def test_available_preserves_configuration_order_for_single_and_dual_modes(self) -> None:
+		rs485=make_transport_slot("modbus_rtu")
+		solarman=make_transport_slot("solarman_tcp")
+
+		dual=TransportManager([rs485,solarman])
+		single=TransportManager([solarman])
+
+		self.assertEqual([slot.transport_id for slot in dual.available()],["modbus_rtu","solarman_tcp"])
+		self.assertEqual([slot.transport_id for slot in single.available()],["solarman_tcp"])
+
+	def test_first_run_connects_before_executing_operation(self) -> None:
+		slot=make_transport_slot("solarman_tcp")
+		manager=TransportManager([slot])
+		events: list[str]=[]
+		client=slot.client
+
+		def operation(received: FakeManagedTransport) -> str:
+			self.assertIs(received,client)
+			events.append("operation")
+			return "value"
+
+		original_connect=client.connect
+		def connect() -> None:
+			events.append("connect")
+			original_connect()
+		client.connect=connect
+
+		result=manager.run("solarman_tcp",operation)
+
+		self.assertEqual(result,"value")
+		self.assertEqual(events,["connect","operation"])
+		self.assertTrue(slot.online)
+
+	def test_connection_failure_blocks_until_delay_then_reconnects_future_operation(self) -> None:
+		clock=ManualClock(100.0)
+		slot=make_transport_slot("solarman_tcp",reconnect_delay=7)
+		manager=TransportManager([slot],clock=clock)
+		calls=0
+
+		def failing_operation(client: FakeManagedTransport) -> None:
+			nonlocal calls
+			calls+=1
+			raise TransportConnectionClosedError("socket closed")
+
+		with self.assertRaisesRegex(TransportConnectionClosedError,"socket closed"):
+			manager.run("solarman_tcp",failing_operation)
+
+		self.assertEqual(calls,1)
+		self.assertFalse(slot.online)
+		self.assertEqual(slot.error_count,1)
+		self.assertEqual(slot.last_error,"socket closed")
+		self.assertEqual(slot.next_reconnect_at,107.0)
+		self.assertEqual(slot.client.connect_calls,1)
+		self.assertEqual(slot.client.reconnect_calls,0)
+
+		clock.advance(6.9)
+		with self.assertRaisesRegex(TransportConnectionClosedError,"reconnect"):
+			manager.run("solarman_tcp",lambda client: "too early")
+
+		self.assertEqual(slot.client.connect_calls,1)
+		self.assertEqual(slot.client.reconnect_calls,0)
+		self.assertEqual(slot.error_count,1)
+
+		clock.advance(0.1)
+		result=manager.run("solarman_tcp",lambda client: "recovered")
+
+		self.assertEqual(result,"recovered")
+		self.assertEqual(slot.client.connect_calls,1)
+		self.assertEqual(slot.client.reconnect_calls,1)
+		self.assertTrue(slot.online)
+		self.assertEqual(slot.error_count,0)
+		self.assertIsNone(slot.last_error)
+
+	def test_failed_transport_does_not_stop_other_transport(self) -> None:
+		clock=ManualClock()
+		solarman=make_transport_slot("solarman_tcp",reconnect_delay=11)
+		rs485=make_transport_slot("modbus_rtu",reconnect_delay=7)
+		manager=TransportManager([solarman,rs485],clock=clock)
+
+		with self.assertRaisesRegex(TransportConnectionClosedError,"logger offline"):
+			manager.run(
+				"solarman_tcp",
+				lambda client: (_ for _ in ()).throw(TransportConnectionClosedError("logger offline")),
+			)
+
+		result=manager.run("modbus_rtu",lambda client: client.transport_id)
+
+		self.assertEqual(result,"modbus_rtu")
+		self.assertFalse(solarman.online)
+		self.assertTrue(rs485.online)
+		self.assertEqual(solarman.next_reconnect_at,11.0)
+		self.assertEqual(rs485.next_reconnect_at,0.0)
+
+	def test_latency_is_measured_per_slot_with_injected_monotonic_clock(self) -> None:
+		clock=ManualClock(20.0)
+		solarman=make_transport_slot("solarman_tcp")
+		rs485=make_transport_slot("modbus_rtu")
+		manager=TransportManager([solarman,rs485],clock=clock)
+
+		def solarman_operation(client: FakeManagedTransport) -> None:
+			clock.advance(0.125)
+
+		def rs485_operation(client: FakeManagedTransport) -> None:
+			clock.advance(0.007)
+
+		manager.run("solarman_tcp",solarman_operation)
+		manager.run("modbus_rtu",rs485_operation)
+
+		self.assertAlmostEqual(solarman.latency_ms,125.0)
+		self.assertAlmostEqual(rs485.latency_ms,7.0)
+
+	def test_protocol_error_does_not_retry_operation_or_switch_transport(self) -> None:
+		solarman=make_transport_slot("solarman_tcp")
+		rs485=make_transport_slot("modbus_rtu")
+		manager=TransportManager([solarman,rs485])
+		calls=[]
+
+		def operation(client: FakeManagedTransport) -> None:
+			calls.append(client.transport_id)
+			raise TransportProtocolError("invalid response")
+
+		with self.assertRaisesRegex(TransportProtocolError,"invalid response"):
+			manager.run("solarman_tcp",operation)
+
+		self.assertEqual(calls,["solarman_tcp"])
+		self.assertEqual(solarman.client.connect_calls,1)
+		self.assertEqual(solarman.client.reconnect_calls,0)
+		self.assertEqual(rs485.client.connect_calls,0)
+		self.assertTrue(solarman.online)
+		self.assertEqual(solarman.error_count,1)
+		self.assertEqual(solarman.last_error,"invalid response")
+
+	def test_unknown_transport_is_rejected(self) -> None:
+		manager=TransportManager([make_transport_slot("solarman_tcp")])
+
+		with self.assertRaisesRegex(KeyError,"unknown_transport"):
+			manager.get("unknown_transport")
+		with self.assertRaisesRegex(KeyError,"unknown_transport"):
+			manager.run("unknown_transport",lambda client: None)
 
 
 if __name__ == "__main__":
