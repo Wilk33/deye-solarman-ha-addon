@@ -27,8 +27,7 @@ function controlCard(entry)
 		<div class="reading"><b>${esc(scan.value ?? "-")} ${esc(definition.unit)}</b><div class="raw-line"><span class="raw-label">HEX</span><code>${esc((scan.raw_hex || []).join(", ") || "-")}</code></div></div>
 		<div class="badges">${statusBadge(scan.status)}<span class="badge">${esc(controlMethodNames[definition.method])}</span></div>
 		${scan.error ? `<p class="notice">${esc(scan.error)}</p>` : ""}</div>
-		<label class="toggle"><input type="checkbox" data-control-monitor="${esc(entry.key)}" ${entry.monitor ? "checked" : ""} ${ownershipToggle(entry,kind,Boolean(definition.read_only || ((scan.status !== "supported" || scan.write_allowed === false) && !entry.monitor)))}> MQTT</label></div>
-		${ownershipBadge(entry,kind)}
+		<label class="toggle"><input type="checkbox" data-control-monitor="${esc(entry.key)}" ${entry.monitor ? "checked" : ""} ${definition.read_only || ((scan.status !== "supported" || scan.write_allowed === false) && !entry.monitor) ? "disabled" : ""}> MQTT</label></div>
 		${writeReason ? `<p class="notice">${esc(writeReason)}</p>` : ""}
 		<details><summary>Konfiguruj encję i odpytywanie</summary><div class="fields">
 		${controlField(entry,"name","Nazwa")}${controlField(entry,"icon","Ikona")}

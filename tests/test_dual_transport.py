@@ -5,6 +5,7 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import yaml
@@ -26,6 +27,7 @@ from deye_inverter_core.models import SensorDefinition
 from deye_inverter_core.models import Rs485Config
 from deye_inverter_core.models import SolarmanConfig
 from deye_inverter_core.models import TransportPollingConfig
+from deye_inverter_core.main import build_transport_manager
 from deye_inverter_core.scan_catalog import ScanCandidate
 from deye_inverter_core.scheduler import PerEntityScheduler
 from deye_inverter_core.scheduler import group_sensors_for_read
@@ -290,6 +292,36 @@ class RecordingTransportManager(TransportManager):
 
 
 class DualTransportConfigTests(unittest.TestCase):
+	def test_runtime_builds_only_enabled_transport_slots_for_all_three_modes(self) -> None:
+		class RecordingFactory:
+			def __init__(self, transport_id: str) -> None:
+				self.transport_id=transport_id
+				self.configs=[]
+
+			def __call__(self, config):
+				self.configs.append(config)
+				return FakeManagedTransport(self.transport_id)
+
+		for solarman_enabled,rs485_enabled,expected in (
+			(True,False,["solarman_tcp"]),
+			(False,True,["modbus_rtu"]),
+			(True,True,["solarman_tcp","modbus_rtu"]),
+		):
+			with self.subTest(solarman=solarman_enabled,rs485=rs485_enabled):
+				solarman=make_solarman_config()
+				rs485=make_rs485_config()
+				solarman.enabled=solarman_enabled
+				rs485.enabled=rs485_enabled
+				config=SimpleNamespace(solarman=solarman,rs485=rs485)
+				solarman_factory=RecordingFactory("solarman_tcp")
+				rs485_factory=RecordingFactory("modbus_rtu")
+
+				manager=build_transport_manager(config,solarman_factory,rs485_factory)
+
+				self.assertEqual([slot.transport_id for slot in manager.available()],expected)
+				self.assertEqual(solarman_factory.configs,[solarman] if solarman_enabled else [])
+				self.assertEqual(rs485_factory.configs,[rs485] if rs485_enabled else [])
+
 	def test_loads_version_2_transport_sections_with_independent_polling(self) -> None:
 		options=make_common_options()
 		options["solarman"]={
@@ -1695,6 +1727,7 @@ class EntityTransportSelectionTests(unittest.TestCase):
 		self.assertIn('[transport]:{...previousScan,status:"timeout",error:error.message}',custom_script)
 		self.assertIn('const testedDefinition=customFrozenCopy(entry.definition)',custom_script)
 		self.assertIn('definition_snapshot:definitionSnapshot',custom_script)
+		self.assertNotIn('transport !== "solarman_tcp"',custom_script)
 
 	def test_custom_sensor_pending_test_keeps_snapshot_of_submitted_definition(self) -> None:
 		custom_script=(ROOT/"packages/deye_inverter_core/custom_panel.js").read_text(encoding="utf-8")
@@ -1714,8 +1747,6 @@ globalThis.document={
 };
 globalThis.CSS={escape:value=>value};
 globalThis.window={confirm:()=>true};
-globalThis.ownershipToggle=()=>"";
-globalThis.ownershipBadge=()=>"";
 globalThis.fetch=()=>new Promise(resolve=>{ resolveFetch=resolve; });
 '''
 		harness=r'''

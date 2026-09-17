@@ -18,8 +18,6 @@ from .custom_sensors import save_custom_sensors
 from .scanner import load_detected_sensors
 from .scanner import update_detected_sensors
 from .logging_utils import success
-from .ownership import OwnershipConflict, OwnershipUnavailable
-from contextlib import nullcontext
 
 
 LOGGER=logging.getLogger(__name__)
@@ -27,7 +25,6 @@ MAX_REQUEST_BYTES=1_000_000
 PANEL_SCRIPT=Path(__file__).with_name("panel.js").read_text(encoding="utf-8")
 CUSTOM_PANEL_SCRIPT=Path(__file__).with_name("custom_panel.js").read_text(encoding="utf-8")
 CONTROL_PANEL_SCRIPT=Path(__file__).with_name("control_panel.js").read_text(encoding="utf-8")
-OWNERSHIP_PANEL_SCRIPT=Path(__file__).with_name("ownership_panel.js").read_text(encoding="utf-8")
 
 
 class IngressPanel:
@@ -43,7 +40,6 @@ class IngressPanel:
 		custom_save_handler: Callable[[list[dict[str, Any]]], dict[str, Any]] | None=None,
 		port: int=8099,
 		control_service: Any=None,
-		ownership_coordinator: Any=None,
 	) -> None:
 		self._detected_sensors_file=detected_sensors_file
 		self._scan_handler=scan_handler
@@ -55,7 +51,7 @@ class IngressPanel:
 		self._custom_save_handler=custom_save_handler
 		self._port=port
 		self._controls=control_service
-		self._coordinator=ownership_coordinator
+		self._configuration_lock=threading.RLock()
 		self._job_lock=threading.Lock()
 		self._job={
 			"status": "idle",
@@ -93,10 +89,7 @@ class IngressPanel:
 
 		class PanelHandler(BaseHTTPRequestHandler):
 			def do_GET(self) -> None:
-				try:
-					self._get()
-				except OwnershipUnavailable as error:
-					self._send_json({"error":str(error)},HTTPStatus.SERVICE_UNAVAILABLE)
+				self._get()
 
 			def _get(self) -> None:
 				path=self.path.split("?",1)[0]
@@ -109,9 +102,6 @@ class IngressPanel:
 					return
 				if path == "/control-panel.js":
 					self._send_script(CONTROL_PANEL_SCRIPT)
-					return
-				if path == "/ownership-panel.js":
-					self._send_script(OWNERSHIP_PANEL_SCRIPT)
 					return
 				if path in {"/api/controls","/api/controls/scan-status"} and panel._controls is not None:
 					if path == "/api/controls":
@@ -135,13 +125,6 @@ class IngressPanel:
 						self._send_json({"error": "Custom sensors are unavailable"},HTTPStatus.NOT_FOUND)
 						return
 					self._send_json(panel._view(lambda:load_custom_sensors(panel._custom_sensors_file),field="sensors"))
-					return
-				if path == "/api/ownership":
-					if panel._coordinator is None:
-						self._send_json({"source":None,"owners":{}})
-					else:
-						owner=panel._coordinator.ownership
-						self._send_json({"source":owner.source,"owners":{key.removeprefix(owner.serial+":"):value for key,value in owner.registry.snapshot().items() if key.startswith(owner.serial+":")}})
 					return
 				self._send_json({"error": "Not found"},HTTPStatus.NOT_FOUND)
 
@@ -227,12 +210,6 @@ class IngressPanel:
 							raise ValueError("Custom sensor definition must be an object")
 						self._send_json(panel._custom_test_handler(definition))
 						return
-				except OwnershipConflict as error:
-					self._send_json({"error":str(error)},HTTPStatus.CONFLICT)
-					return
-				except OwnershipUnavailable as error:
-					self._send_json({"error":str(error)},HTTPStatus.SERVICE_UNAVAILABLE)
-					return
 				except ValueError as error:
 					self._send_json({"error": str(error)},HTTPStatus.BAD_REQUEST)
 					return
@@ -256,10 +233,6 @@ class IngressPanel:
 					updated=panel._configuration_action(lambda:delete_custom_sensor(panel._custom_sensors_file,key))
 					panel._notify_configuration_changed()
 					self._send_json(panel._view(lambda:updated,field="sensors"))
-				except OwnershipConflict as error:
-					self._send_json({"error":str(error)},HTTPStatus.CONFLICT)
-				except OwnershipUnavailable as error:
-					self._send_json({"error":str(error)},HTTPStatus.SERVICE_UNAVAILABLE)
 				except ValueError as error:
 					self._send_json({"error": str(error)},HTTPStatus.BAD_REQUEST)
 
@@ -365,13 +338,12 @@ class IngressPanel:
 			return result
 
 	def _configuration_action(self, action):
-		return self._coordinator.apply(action) if self._coordinator else action()
+		with self._configuration_lock:
+			return action()
 
 	def _view(self, loader, field="available_sensors", controls=False):
-		owner=self._coordinator.ownership if self._coordinator else None
-		with owner.registry.locked() if owner else nullcontext():
-			payload=loader()
-			return owner.annotate(payload,field,controls) if owner else payload
+		with self._configuration_lock:
+			return loader()
 
 	def _notify_configuration_changed(self) -> None:
 		if self._configuration_changed_handler is None:
@@ -599,7 +571,6 @@ summary { padding: 11px 0; color: var(--green); cursor: pointer; font-family: "C
   </div>
 </section>
 <script src="panel.js"></script>
-<script src="ownership-panel.js"></script>
 <script>
 let sensors=[];
 let scanTimer=null;
@@ -705,9 +676,8 @@ function sensorCard(entry) {
         <div class="reading"><b>${value}</b><div class="raw-line"><span class="raw-label">HEX</span><code>${esc(raw)}</code></div><div class="raw-line ascii"><span class="raw-label">ASCII</span><code>${esc(rawAscii)}</code></div></div>
         <div class="badges">${statusBadge(scan.status)}<span class="badge ${esc(scan.verification)}">${esc(scan.verification || "unknown")}</span><span class="badge">${esc(definition.type)}</span></div>
       </div>
-      <label class="toggle"><input data-monitor="${esc(entry.key)}" type="checkbox" ${entry.monitor ? "checked" : ""} ${ownershipToggle(entry)}> MQTT</label>
+      <label class="toggle"><input data-monitor="${esc(entry.key)}" type="checkbox" ${entry.monitor ? "checked" : ""}> MQTT</label>
     </div>
-    ${ownershipBadge(entry)}
     <details><summary>Konfiguruj dekodowanie i odpytywanie</summary><div class="fields">
       ${input(entry.key,"name","Nazwa",definition.name,"text",true)}
       ${input(entry.key,"multiplier","Mnoznik",definition.multiplier,"number")}

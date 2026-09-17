@@ -24,6 +24,7 @@ from .models import SensorState
 from .models import PollingConfig
 from .mqtt import MqttPublisher
 from .scheduler import group_sensors_for_read
+from .scheduler import PerEntityScheduler
 from .scan_catalog import load_scan_candidates
 from .remote_catalog import RemoteCatalog
 from .remote_catalog import load_remote_catalog
@@ -32,45 +33,194 @@ from .scanner import clear_detected_sensors
 from .scanner import clear_pending_discovery_removals
 from .scanner import load_pending_discovery_removals
 from .scanner import reset_detected_sensors
+from .scanner import load_detected_sensors
 from .scanner import save_detected_sensors
-from .scanner import scan_candidates
+from .scanner import scan_transports_sequentially
 from .transport import RegisterTransport, TransportFactory, TransportConnectionClosedError
+from .transport_manager import TransportManager
+from .transport_manager import TransportSlot
+from .transport_runtime import TransportWorker
 from .storage import load_state
 from .storage import save_scan_report
 from .storage import save_state
 from .web import IngressPanel
-from .ownership import EntityOwnership, EntityOwnershipRegistry
-from .ownership_config import OwnershipCoordinator
 
 
 LOGGER=logging.getLogger(__name__)
 
 
-def main(transport_factory: TransportFactory, source: str="solarman_tcp", source_name: str="SolarMan Diagnostics") -> None:
+def build_transport_manager(
+	config: Any,
+	solarman_factory: TransportFactory,
+	rs485_factory: TransportFactory,
+) -> TransportManager:
+	slots=[]
+	if config.solarman.enabled:
+		slots.append(TransportSlot(
+			client=solarman_factory(config.solarman),
+			polling=config.solarman.polling,
+			reconnect_delay=config.solarman.reconnect_delay,
+		))
+	if config.rs485.enabled:
+		slots.append(TransportSlot(
+			client=rs485_factory(config.rs485),
+			polling=config.rs485.polling,
+			reconnect_delay=config.rs485.reconnect_delay,
+		))
+	return TransportManager(slots)
+
+
+class SensorRuntime:
+	"""Run one independently scheduled monitoring worker per active transport."""
+
+	def __init__(
+		self,
+		manager: TransportManager,
+		mqtt: Any,
+		sensors: list[SensorDefinition],
+		state: dict[str,SensorState],
+		*,
+		emit_raw_topics: bool=False,
+		detailed_logs: bool=False,
+		state_file: str | None=None,
+		scan_report_file: str | None=None,
+		emit_scan_report: bool=False,
+		clock: Any=time.monotonic,
+	) -> None:
+		self.manager=manager
+		self.mqtt=mqtt
+		self.state=state
+		self.emit_raw_topics=emit_raw_topics
+		self.detailed_logs=detailed_logs
+		self.state_file=state_file
+		self.scan_report_file=scan_report_file
+		self.emit_scan_report=emit_scan_report
+		self.clock=clock
+		self._state_lock=threading.RLock()
+		self._stop=threading.Event()
+		self._wake={slot.transport_id:threading.Event() for slot in manager.available()}
+		self._threads: list[threading.Thread]=[]
+		self._sensors: dict[str,tuple[SensorDefinition,...]]={}
+		self._reports: dict[str,list[dict[str,Any]]]={}
+		self._schedulers={}
+		self._workers={}
+		for slot in manager.available():
+			transport_sensors=[sensor for sensor in sensors if sensor.enabled and sensor.transport == slot.transport_id]
+			scheduler=PerEntityScheduler(transport_sensors,slot.polling,clock=clock)
+			self._schedulers[slot.transport_id]=scheduler
+			self._workers[slot.transport_id]=TransportWorker(
+				manager,
+				slot,
+				scheduler,
+				self._read_callback(slot),
+				clock=clock,
+			)
+		self.reload(sensors)
+
+	@property
+	def worker_ids(self) -> tuple[str,...]:
+		return tuple(slot.transport_id for slot in self.manager.available())
+
+	def reload(self,sensors: list[SensorDefinition]) -> None:
+		for sensor in sensors:
+			self.state.setdefault(sensor.key,SensorState())
+		for slot in self.manager.available():
+			selected=tuple(sensor for sensor in sensors if sensor.enabled and sensor.transport == slot.transport_id)
+			self._sensors[slot.transport_id]=selected
+			self._schedulers[slot.transport_id].sync(selected,now=self.clock())
+			self._wake[slot.transport_id].set()
+
+	def start(self) -> None:
+		if self._threads:
+			return
+		for transport_id in self.worker_ids:
+			thread=threading.Thread(
+				target=self._worker_loop,
+				args=(transport_id,),
+				daemon=True,
+				name=f"sensor-{transport_id}",
+			)
+			self._threads.append(thread)
+			thread.start()
+
+	def stop(self) -> None:
+		self._stop.set()
+		for event in self._wake.values():
+			event.set()
+		for thread in self._threads:
+			thread.join(timeout=5)
+		self._threads=[]
+
+	def run_once(self,transport_id: str,now: float | None=None) -> list[dict[str,Any]] | None:
+		try:
+			report=self._workers[transport_id].run_due(now)
+		except Exception as error:
+			for sensor in self._sensors.get(transport_id,()):
+				self._publish_sensor_availability(sensor,False)
+			if self.detailed_logs:
+				LOGGER.exception("Transport worker failed transport=%s",transport_id)
+			else:
+				LOGGER.warning("Transport worker failed transport=%s error=%s",transport_id,error)
+			return None
+		if report is None:
+			return None
+		with self._state_lock:
+			self._reports[transport_id]=report
+			if self.state_file:
+				save_state(self.state_file,self.state)
+			if self.emit_scan_report and self.scan_report_file:
+				combined=[item for slot in self.manager.available() for item in self._reports.get(slot.transport_id,[])]
+				save_scan_report(self.scan_report_file,combined)
+		return report
+
+	def _read_callback(self,slot: TransportSlot):
+		def read(client: RegisterTransport,sensors: tuple[SensorDefinition,...],mark_attempted: Any):
+			return run_iteration(
+				list(sensors),
+				self.state,
+				client,
+				self.mqtt,
+				slot.polling,
+				self.emit_raw_topics,
+				detailed_logs=self.detailed_logs,
+				force=True,
+				mark_attempted=mark_attempted,
+			)
+		return read
+
+	def _worker_loop(self,transport_id: str) -> None:
+		wake=self._wake[transport_id]
+		while not self._stop.is_set():
+			wake.clear()
+			self.run_once(transport_id)
+			wait=self._workers[transport_id].wait_time()
+			wake.wait(wait)
+
+	def _publish_sensor_availability(self,sensor: SensorDefinition,available: bool) -> None:
+		callback=getattr(self.mqtt,"sensor_availability",None)
+		if callback is not None:
+			callback(sensor,available)
+
+
+def main(solarman_factory: TransportFactory,rs485_factory: TransportFactory) -> None:
 	configure_logging()
 	config=load_config()
 	configure_logging(config.advanced.detailed_logs)
 	control_catalog=load_remote_control_catalog(config.catalog)
 	set_controls(control_catalog.commands)
 	LOGGER.info("Control catalog loaded source=%s entries=%s",control_catalog.source,len(control_catalog.commands))
-	access_lock=threading.Lock()
+	manager=build_transport_manager(config,solarman_factory,rs485_factory)
 	configuration_changed=threading.Event()
 	catalog_lock=threading.Lock()
 	catalog_state={"current": load_remote_catalog(config.catalog)}
-	controls=ControlService(str(Path(config.scan.detected_sensors_file).with_name("control_sensors.json")),config.logger,access_lock,config.polling.read_message_spacing,transport_factory)
-	ownership=EntityOwnership(EntityOwnershipRegistry(),config.inverter.serial_number,source,source_name)
-	controls.ownership=ownership
-
-	def desired_entities():
-		from .controls import component
-		sensors=load_sensor_definitions(config.profiles.default_profile,config.profiles.overrides_file,config.scan.detected_sensors_file,config.profiles.custom_sensors_file)
-		return {("sensor",sensor.key) for sensor in sensors if sensor.enabled}|{(component(entry["definition"]),entry["key"]) for entry in controls.load()["available_sensors"] if entry["monitor"]}
-
-	files={config.scan.detected_sensors_file,config.profiles.custom_sensors_file,str(controls.path)}
-	files.update(str(Path(path).with_name("deye_solarman_discovery_removals.yaml")) for path in (config.scan.detected_sensors_file,config.profiles.custom_sensors_file))
-	coordinator=OwnershipCoordinator(ownership,files,desired_entities)
-	controls.configuration_action=lambda action:coordinator.apply(action,strict=False)
-	coordinator.reconcile()
+	spacing=min(slot.polling.read_message_spacing for slot in manager.available())
+	controls=ControlService(
+		str(Path(config.scan.detected_sensors_file).with_name("control_sensors.json")),
+		None,
+		threading.RLock(),
+		spacing,
+		transport_manager=manager,
+	)
 
 	def current_catalog() -> RemoteCatalog:
 		with catalog_lock:
@@ -84,203 +234,153 @@ def main(transport_factory: TransportFactory, source: str="solarman_tcp", source
 
 	panel=IngressPanel(
 		config.scan.detected_sensors_file,
-		lambda: _run_manual_scan(config,access_lock,current_catalog(),transport_factory,coordinator),
+		lambda: _run_manual_scan(config,current_catalog(),manager),
 		lambda: _reset_panel_configuration(config,current_catalog()),
 		lambda: _clear_panel_sensors(config,refresh_catalog()),
 		configuration_changed.set,
 		config.profiles.custom_sensors_file,
-		lambda definition: _test_custom_sensor(config,access_lock,definition,transport_factory),
+		lambda definition: _test_custom_sensor(manager,definition),
 		lambda entries: _save_custom_sensor_configuration(config,entries),
 		control_service=controls,
-		ownership_coordinator=coordinator,
 	)
 	panel.start()
 	try:
-		_run_addon(config,access_lock,current_catalog(),transport_factory,configuration_changed,controls,coordinator)
+		_run_addon(config,manager,current_catalog(),configuration_changed,controls)
 	finally:
 		panel.stop()
+		for slot in manager.available():
+			try:
+				slot.client.close()
+			except Exception as error:
+				LOGGER.warning("Transport close failed transport=%s error=%s",slot.transport_id,error)
 
 
 def _run_addon(
 	config: Any,
-	access_lock: Any,
+	manager: TransportManager,
 	remote_catalog: RemoteCatalog,
-	transport_factory: TransportFactory,
 	configuration_changed: threading.Event | None=None,
 	control_service: ControlService | None=None,
-	ownership_coordinator: OwnershipCoordinator | None=None,
 ) -> None:
 	state=load_state(config.profiles.state_file)
 	change_event=configuration_changed or threading.Event()
-
-	while True:
-		change_event.clear()
-		ownership=ownership_coordinator.ownership if ownership_coordinator else None
-		with ownership.registry.locked() if ownership else nullcontext():
-			if ownership_coordinator:
-				conflicts=ownership_coordinator.reconcile()
-				if conflicts:
-					LOGGER.warning("Ownership conflicts, local publication disabled: %s",conflicts)
-			sensors=load_sensor_definitions(config.profiles.default_profile,config.profiles.overrides_file,config.scan.detected_sensors_file,config.profiles.custom_sensors_file)
-		for sensor in sensors:
-			state.setdefault(sensor.key, SensorState())
-		success(
-			LOGGER,
-			"Sensor configuration loaded total=%s enabled=%s selected_file=%s",
-			len(sensors),
-			sum(sensor.enabled for sensor in sensors),
-			config.scan.detected_sensors_file,
-		)
-		solarman=transport_factory(config.logger)
-		mqtt=MqttPublisher(config.mqtt,config.inverter,ownership=ownership,detailed_logs=config.advanced.detailed_logs)
-		try:
-			with access_lock:
-				solarman.connect()
-				probe_values=solarman.read_holding_registers(
-					config.polling.startup_probe_register,
-					config.polling.startup_probe_count,
-				)
-			success(
-				LOGGER,
-				"Startup probe ok register=%s count=%s values=%s",
-				config.polling.startup_probe_register,
-				config.polling.startup_probe_count,
-				probe_values,
-			)
-			if config.scan.mode != "disabled":
-				with access_lock:
-					scan_report=scan_candidates(
-						load_scan_candidates(config.scan.bms_pack_count,remote_catalog),
-						solarman,
-						config.polling,
-					)
-				save_scan_report(config.scan.report_file, scan_report)
-				if ownership_coordinator:
-					ownership_coordinator.apply(lambda:save_detected_sensors(config.scan.detected_sensors_file,scan_report),strict=False)
-				else:
-					save_detected_sensors(config.scan.detected_sensors_file,scan_report)
-				_log_scan_summary(scan_report, config.scan.detected_sensors_file)
-				if config.scan.mode == "scan_only":
-					LOGGER.info("Scan complete. MQTT publishing is disabled while the Ingress panel remains available.")
-					_wait_for_stop()
-				sensors=load_sensor_definitions(
-					config.profiles.default_profile,
-					config.profiles.overrides_file,
-					config.scan.detected_sensors_file,
-					config.profiles.custom_sensors_file,
-				)
-				for sensor in sensors:
-					state.setdefault(sensor.key, SensorState())
-
-			mqtt.connect()
-			with ownership.registry.locked() if ownership else nullcontext():
-				removal_paths={
-					config.scan.detected_sensors_file,
-					config.profiles.custom_sensors_file,
-				}
-				pending_removals=sorted(
-					{
-						key
-						for path in removal_paths
-						for key in load_pending_discovery_removals(path)
-					}
-				)
-				for sensor_key in pending_removals:
-					mqtt.remove_discovery(sensor_key)
-				if pending_removals:
-					for path in removal_paths:
-						clear_pending_discovery_removals(path)
-					success(LOGGER,"Removed MQTT Discovery entities=%s",len(pending_removals))
-			enabled_sensors=[sensor for sensor in sensors if sensor.enabled]
-			LOGGER.info(
-				"Publishing MQTT Discovery sensors=%s prefix=%s inverter_serial=%s",
-				len(enabled_sensors),
-				config.mqtt.discovery_prefix,
-				config.inverter.serial_number,
-			)
-			for sensor in enabled_sensors:
-				mqtt.publish_discovery(sensor)
-				state[sensor.key].last_read_at=0
-				state[sensor.key].last_published_value=None
-			control_runtime=ControlRuntime(control_service,mqtt,solarman) if control_service is not None else None
-			if control_runtime is not None:
-				control_runtime.start()
-
-			runtime_reload=False
-			while True:
-				iteration_report=run_iteration(
-					sensors,
-					state,
-					solarman,
-					mqtt,
-					config.polling,
-					config.advanced.emit_raw_topics,
-					access_lock,
-					config.advanced.detailed_logs,
-				)
-				save_state(config.profiles.state_file, state)
-				if config.advanced.emit_scan_report:
-					save_scan_report(config.profiles.scan_report_file, iteration_report)
-				deadline=time.monotonic()+config.polling.default_interval
-				while not change_event.is_set() and time.monotonic() < deadline:
-					if control_runtime is not None:
-						control_runtime.tick()
-					change_event.wait(min(0.25,max(0,deadline-time.monotonic())))
-				if change_event.is_set():
-					runtime_reload=True
-					break
-			if runtime_reload:
-				success(LOGGER,"Applying updated panel configuration without add-on restart")
-				continue
-		except KeyboardInterrupt:
-			LOGGER.info("Stopping add-on")
-			return
-		except Exception as error:
-			if isinstance(error,TransportConnectionClosedError) and not config.advanced.detailed_logs:
-				pass
-			elif config.advanced.detailed_logs:
-				LOGGER.exception("Add-on cycle failed")
-			else:
-				LOGGER.error("Add-on cycle failed: %s",error)
-			if not config.polling.allow_reconnect:
-				raise
-			LOGGER.info("Retrying connection in %s seconds", config.logger.reconnect_delay)
-		finally:
-			mqtt.disconnect()
-			solarman.close()
-
-		if config.polling.allow_reconnect:
-			change_event.wait(config.logger.reconnect_delay)
-
-
-def _run_manual_scan(config: Any, access_lock: Any, remote_catalog: RemoteCatalog, transport_factory: TransportFactory, coordinator: OwnershipCoordinator | None=None) -> dict[str, Any]:
-	solarman=transport_factory(config.logger)
+	_probe_transports(manager)
+	if config.scan.mode != "disabled":
+		_run_scan(config,remote_catalog,manager)
+		if config.scan.mode == "scan_only":
+			LOGGER.info("Scan complete. MQTT publishing is disabled while the Ingress panel remains available.")
+			_wait_for_stop()
+	sensors=_load_runtime_sensors(config,state)
+	mqtt=MqttPublisher(config.mqtt,config.inverter,detailed_logs=config.advanced.detailed_logs)
+	sensor_runtime=None
 	try:
-		with access_lock:
-			solarman.connect()
-			probe_values=solarman.read_holding_registers(
-				config.polling.startup_probe_register,
-				config.polling.startup_probe_count,
-			)
-			success(LOGGER,"Manual panel scan probe values=%s",probe_values)
-			scan_report=scan_candidates(
-				load_scan_candidates(config.scan.bms_pack_count,remote_catalog),
-				solarman,
-				config.polling,
-			)
-		save_scan_report(config.scan.report_file, scan_report)
-		if coordinator:
-			coordinator.apply(lambda:save_detected_sensors(config.scan.detected_sensors_file,scan_report),strict=False)
-		else:
-			save_detected_sensors(config.scan.detected_sensors_file,scan_report)
-		_log_scan_summary(scan_report,config.scan.detected_sensors_file)
-		statuses: dict[str,int]={}
-		for result in scan_report:
-			status=str(result["status"])
-			statuses[status]=statuses.get(status,0)+1
-		return {"count": len(scan_report),"statuses": statuses}
+		mqtt.connect()
+		_publish_sensor_configuration(config,mqtt,sensors,state)
+		sensor_runtime=SensorRuntime(
+			manager,
+			mqtt,
+			sensors,
+			state,
+			emit_raw_topics=config.advanced.emit_raw_topics,
+			detailed_logs=config.advanced.detailed_logs,
+			state_file=config.profiles.state_file,
+			scan_report_file=config.profiles.scan_report_file,
+			emit_scan_report=config.advanced.emit_scan_report,
+		)
+		sensor_runtime.start()
+		control_runtime=ControlRuntime(control_service,mqtt,manager) if control_service is not None else None
+		if control_runtime is not None:
+			control_runtime.start()
+		while True:
+			if change_event.wait(0.25):
+				change_event.clear()
+				sensors=_load_runtime_sensors(config,state)
+				_publish_sensor_configuration(config,mqtt,sensors,state)
+				sensor_runtime.reload(sensors)
+				control_runtime=ControlRuntime(control_service,mqtt,manager) if control_service is not None else None
+				if control_runtime is not None:
+					control_runtime.start()
+				success(LOGGER,"Applied updated panel configuration without reconnecting transports or MQTT")
+			if control_runtime is not None:
+				control_runtime.tick()
+	except KeyboardInterrupt:
+		LOGGER.info("Stopping add-on")
 	finally:
-		solarman.close()
+		if sensor_runtime is not None:
+			sensor_runtime.stop()
+		mqtt.disconnect()
+
+
+def _probe_transports(manager: TransportManager) -> None:
+	for slot in manager.available():
+		try:
+			values=manager.run(
+				slot.transport_id,
+				lambda client:client.read_holding_registers(
+					slot.polling.startup_probe_register,
+					slot.polling.startup_probe_count,
+				),
+			)
+			success(LOGGER,"Startup probe ok transport=%s values=%s",slot.transport_id,values)
+		except Exception as error:
+			LOGGER.warning("Startup probe failed transport=%s error=%s",slot.transport_id,error)
+
+
+def _load_runtime_sensors(config: Any,state: dict[str,SensorState]) -> list[SensorDefinition]:
+	sensors=load_sensor_definitions(
+		config.profiles.default_profile,
+		config.profiles.overrides_file,
+		config.scan.detected_sensors_file,
+		config.profiles.custom_sensors_file,
+	)
+	for sensor in sensors:
+		state.setdefault(sensor.key,SensorState())
+	success(
+		LOGGER,
+		"Sensor configuration loaded total=%s enabled=%s selected_file=%s",
+		len(sensors),
+		sum(sensor.enabled for sensor in sensors),
+		config.scan.detected_sensors_file,
+	)
+	return sensors
+
+
+def _publish_sensor_configuration(config: Any,mqtt: MqttPublisher,sensors: list[SensorDefinition],state: dict[str,SensorState]) -> None:
+	removal_paths={config.scan.detected_sensors_file,config.profiles.custom_sensors_file}
+	pending=sorted({key for path in removal_paths for key in load_pending_discovery_removals(path)})
+	for sensor_key in pending:
+		mqtt.remove_discovery(sensor_key)
+	if pending:
+		for path in removal_paths:
+			clear_pending_discovery_removals(path)
+		success(LOGGER,"Removed MQTT Discovery entities=%s",len(pending))
+	for sensor in (item for item in sensors if item.enabled):
+		mqtt.publish_discovery(sensor)
+		mqtt.sensor_availability(sensor,False)
+		state[sensor.key].last_read_at=0
+		state[sensor.key].last_published_value=None
+
+
+def _run_scan(config: Any,remote_catalog: RemoteCatalog,manager: TransportManager) -> list[dict[str,Any]]:
+	previous=load_detected_sensors(config.scan.detected_sensors_file).get("available_sensors",[])
+	report=scan_transports_sequentially(
+		load_scan_candidates(config.scan.bms_pack_count,remote_catalog),
+		manager,
+		previous,
+	)
+	save_scan_report(config.scan.report_file,report)
+	save_detected_sensors(config.scan.detected_sensors_file,report)
+	_log_scan_summary(report,config.scan.detected_sensors_file)
+	return report
+
+
+def _run_manual_scan(config: Any,remote_catalog: RemoteCatalog,manager: TransportManager) -> dict[str,Any]:
+	report=_run_scan(config,remote_catalog,manager)
+	statuses: dict[str,int]={}
+	for result in report:
+		status=str(result["status"])
+		statuses[status]=statuses.get(status,0)+1
+	return {"count":len(report),"statuses":statuses}
 
 
 def _reset_panel_configuration(config: Any, remote_catalog: RemoteCatalog) -> dict[str, Any]:
@@ -321,34 +421,31 @@ def _save_custom_sensor_configuration(config: Any, entries: list[dict[str, Any]]
 	return save_custom_sensors(config.profiles.custom_sensors_file,entries)
 
 
-def _test_custom_sensor(config: Any, access_lock: Any, definition: dict[str, Any], transport_factory: TransportFactory) -> dict[str, Any]:
+def _test_custom_sensor(manager: TransportManager,definition: dict[str,Any]) -> dict[str,Any]:
 	sensor=sensor_from_payload(definition,enabled=True)
 	from .definitions import _validate_sensor_definitions
 
 	_validate_sensor_definitions([sensor])
-	solarman=transport_factory(config.logger)
-	try:
-		with access_lock:
-			solarman.connect()
-			if sensor.formula:
-				result=_evaluate_formula_sensor(sensor,solarman)
-				return _formula_result_payload(result)
-			start=time.perf_counter()
-			start_register=min(sensor.registers)
-			values=solarman.read_holding_registers(start_register,max(sensor.registers)-start_register+1)
-			latency_ms=(time.perf_counter()-start)*1000
-			raw_values=[values[register-start_register] for register in sensor.registers]
-			decoded=decode_registers(raw_values,sensor.register_type,sensor.word_order,sensor.byte_order)
-			value=apply_transform(decoded,sensor.multiplier,sensor.offset)
-			return {
-				"value": value,
-				"raw_registers": raw_values,
-				"raw_hex": [f"0x{raw:04X}" for raw in raw_values],
-				"decoded": decoded,
-				"latency_ms": round(latency_ms,2),
-			}
-	finally:
-		solarman.close()
+	def read(client: RegisterTransport) -> dict[str,Any]:
+		if sensor.formula:
+			result=_evaluate_formula_sensor(sensor,client)
+			return {**_formula_result_payload(result),"transport":sensor.transport}
+		start=time.perf_counter()
+		start_register=min(sensor.registers)
+		values=client.read_holding_registers(start_register,max(sensor.registers)-start_register+1)
+		latency_ms=(time.perf_counter()-start)*1000
+		raw_values=[values[register-start_register] for register in sensor.registers]
+		decoded=decode_registers(raw_values,sensor.register_type,sensor.word_order,sensor.byte_order)
+		value=apply_transform(decoded,sensor.multiplier,sensor.offset)
+		return {
+			"value":value,
+			"raw_registers":raw_values,
+			"raw_hex":[f"0x{raw:04X}" for raw in raw_values],
+			"decoded":decoded,
+			"latency_ms":round(latency_ms,2),
+			"transport":sensor.transport,
+		}
+	return manager.run(sensor.transport,read)
 
 
 def _wait_for_stop() -> None:
@@ -378,14 +475,13 @@ def run_iteration(
 	emit_raw_topics: bool,
 	read_lock: Any | None=None,
 	detailed_logs: bool=False,
+	*,
+	force: bool=False,
+	mark_attempted: Any | None=None,
 ) -> list[dict[str, Any]]:
 	report: list[dict[str, Any]]=[]
 	failed_groups=0
-	due_sensors=[
-		sensor
-		for sensor in sensors
-		if sensor.enabled and _is_due(sensor, state[sensor.key], polling)
-	]
+	due_sensors=[sensor for sensor in sensors if sensor.enabled and (force or _is_due(sensor,state[sensor.key],polling))]
 	direct_sensors=[sensor for sensor in due_sensors if not sensor.formula]
 	formula_sensors=[sensor for sensor in due_sensors if sensor.formula]
 	groups=group_sensors_for_read(direct_sensors, polling)
@@ -398,6 +494,8 @@ def run_iteration(
 		try:
 			start=time.perf_counter()
 			with read_lock if read_lock is not None else nullcontext():
+				if mark_attempted is not None:
+					mark_attempted(sensor.key for sensor in group)
 				values=solarman.read_holding_registers(group_start, count)
 			latency_ms=(time.perf_counter()-start)*1000
 		except TransportConnectionClosedError as error:
@@ -410,6 +508,7 @@ def run_iteration(
 			LOGGER.warning("Read failed start=%s count=%s error=%s", group_start, count, exc)
 			failed_groups+=1
 			for sensor in group:
+				_publish_sensor_availability(mqtt,sensor,False)
 				current_state=state[sensor.key]
 				current_state.last_status="timeout"
 				current_state.timeout_count+=1
@@ -437,6 +536,7 @@ def run_iteration(
 					polling.publish_unchanged_every,
 				)
 			)
+			_publish_sensor_availability(mqtt,sensor,True)
 
 		if index < len(groups)-1 and polling.read_message_spacing > 0:
 			time.sleep(polling.read_message_spacing)
@@ -448,6 +548,8 @@ def run_iteration(
 		try:
 			start=time.perf_counter()
 			with read_lock if read_lock is not None else nullcontext():
+				if mark_attempted is not None:
+					mark_attempted((sensor.key,))
 				formula_result=_evaluate_formula_sensor(sensor,solarman)
 			latency_ms=(time.perf_counter()-start)*1000
 			report.append(
@@ -461,6 +563,7 @@ def run_iteration(
 					polling.publish_unchanged_every,
 				)
 			)
+			_publish_sensor_availability(mqtt,sensor,formula_result.value is not None)
 		except TransportConnectionClosedError as error:
 			if detailed_logs:
 				LOGGER.warning("Solarman TCP session closed for formula sensor=%s; reconnecting",sensor.key)
@@ -468,6 +571,7 @@ def run_iteration(
 				LOGGER.warning("Solarman TCP session closed; reconnecting")
 			raise error
 		except Exception as error:
+			_publish_sensor_availability(mqtt,sensor,False)
 			LOGGER.warning("Formula read failed sensor=%s error=%s",sensor.key,error)
 			current_state=state[sensor.key]
 			current_state.last_status="formula_error"
@@ -475,6 +579,12 @@ def run_iteration(
 			report.append({"sensor": sensor.key,"status": "formula_error","error": str(error)})
 
 	return report
+
+
+def _publish_sensor_availability(mqtt: Any,sensor: SensorDefinition,available: bool) -> None:
+	callback=getattr(mqtt,"sensor_availability",None)
+	if callback is not None:
+		callback(sensor,available)
 
 
 def _is_due(sensor: SensorDefinition, sensor_state: SensorState, polling: PollingConfig) -> bool:
@@ -508,6 +618,7 @@ def _handle_sensor(
 	should_publish=_should_publish(sensor, sensor_state, now, value, publish_unchanged_every)
 	if should_publish:
 		attributes={
+			"transport": sensor.transport,
 			"raw_registers": raw_values,
 			"raw_ascii": registers_to_ascii(raw_values,sensor.byte_order),
 			"decoded": decoded,
@@ -598,6 +709,7 @@ def _handle_formula_sensor(
 	sensor_state.last_status="supported"
 	if _should_publish(sensor,sensor_state,now,value,publish_unchanged_every):
 		attributes={
+			"transport": sensor.transport,
 			"formula": sensor.formula,
 			"type": "auto",
 			"formula_reads": _formula_result_payload(formula_result)["reads"],

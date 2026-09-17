@@ -115,8 +115,7 @@ function customCard(entry)
 		${customSelect(entry.key,"byte_order","Kolejnosc bajtow ASCII",definition.byte_order,["high_low","low_high"])}
 		<div class="formula-toolbar"><button class="button secondary" type="button" data-custom-test="${customEsc(entry.key)}">Test / odczyt</button></div>`;
 	return `<article class="custom-sensor ${entry.monitor ? "enabled" : ""}" data-custom-sensor="${customEsc(entry.key)}">
-		<div class="sensor-head"><div><h3>${customEsc(definition.name || entry.key)}</h3><span class="key">${customEsc(entry.key)}${formula ? " / formula" : " / R"+customEsc((definition.registers || []).join(","))}</span></div><label class="toggle"><input data-custom-monitor="${customEsc(entry.key)}" type="checkbox" ${entry.monitor ? "checked" : ""} ${ownershipToggle(entry)}> MQTT</label></div>
-		${ownershipBadge(entry)}
+		<div class="sensor-head"><div><h3>${customEsc(definition.name || entry.key)}</h3><span class="key">${customEsc(entry.key)}${formula ? " / formula" : " / R"+customEsc((definition.registers || []).join(","))}</span></div><label class="toggle"><input data-custom-monitor="${customEsc(entry.key)}" type="checkbox" ${entry.monitor ? "checked" : ""}> MQTT</label></div>
 		<div class="fields">
 			${customInput(entry.key,"name","Nazwa",definition.name,"text",true)}
 			${customInput(entry.key,"key","Klucz MQTT",entry.key,"text",true)}
@@ -256,7 +255,6 @@ async function testCustomSensor(key,formulaText=null)
 		if (!entry) throw new Error("Nie znaleziono sensora");
 		if (formulaText !== null) entry.definition.formula=formulaText;
 		const transport=entry.definition.transport || "solarman_tcp";
-		if (transport !== "solarman_tcp") throw new Error("Test w tej wersji obsluguje tylko transport solarman_tcp");
 		const testedDefinition=customFrozenCopy(entry.definition);
 		const definitionSnapshot=customFrozenCopy(customReadSnapshot(testedDefinition,transport));
 		const result=await customRequest("api/custom-sensors/test",{method:"POST",body:JSON.stringify({definition:testedDefinition})});

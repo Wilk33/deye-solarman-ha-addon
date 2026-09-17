@@ -20,6 +20,18 @@ from deye_inverter_core.web import IngressPanel
 from deye_inverter_core.transport import TransportConnectionClosedError as SolarmanConnectionClosedError
 
 
+class RecordingManager:
+	_is_transport_manager=True
+
+	def __init__(self, clients):
+		self.clients=clients
+		self.calls=[]
+
+	def run(self, transport_id, operation):
+		self.calls.append(transport_id)
+		return operation(self.clients[transport_id])
+
+
 class Registers:
 	def __init__(self, values=None):
 		self.values=values or {}
@@ -81,6 +93,28 @@ class ControlTests(unittest.TestCase):
 		self.assertEqual(result["value"],37)
 		self.assertEqual(client.writes,[])
 		self.assertEqual(self.service.load()["available_sensors"][0]["last_scan"]["value"],37)
+
+	def test_read_test_uses_the_transport_selected_in_the_saved_definition(self):
+		key="control_grid_charge_battery_current"
+		entry=self.select(key)
+		entry["definition"]["transport"]="modbus_rtu"
+		entry["last_scan"]={
+			"solarman_tcp":{"status":"supported","write_allowed":True},
+			"modbus_rtu":{"status":"supported","write_allowed":True},
+			"status":"supported",
+		}
+		self.service.store({"available_sensors":[entry],"published":[]})
+		solarman=Registers({128:11})
+		rs485=Registers({128:37})
+		manager=RecordingManager({"solarman_tcp":solarman,"modbus_rtu":rs485})
+		self.service.transport_manager=manager
+
+		result=self.service.test(key)
+
+		self.assertEqual(result["value"],37)
+		self.assertEqual(manager.calls,["modbus_rtu"])
+		self.assertEqual(solarman.reads,[])
+		self.assertEqual(solarman.writes+rs485.writes,[])
 
 	def test_scan_is_read_only_and_preserves_selections(self):
 		key="control_grid_charge_battery_current"
@@ -378,6 +412,77 @@ class ControlTests(unittest.TestCase):
 		self.assertEqual(client.writes,[(128,[25])])
 		self.assertEqual(mqtt.publish_control_state.call_args.args[1]["value"],25)
 
+	def test_runtime_routes_each_command_once_to_live_selected_transport_without_fallback(self):
+		key="control_grid_charge_battery_current"
+		entry=self.select(key)
+		entry["definition"]["transport"]="modbus_rtu"
+		entry["last_scan"]={
+			"solarman_tcp":{"status":"supported","write_allowed":True},
+			"modbus_rtu":{"status":"supported","write_allowed":True},
+			"status":"supported",
+		}
+		self.service.store({"available_sensors":[entry],"published":[]})
+		solarman=Registers({128:10})
+		rs485=Registers({128:10})
+		manager=RecordingManager({"solarman_tcp":solarman,"modbus_rtu":rs485})
+		runtime=ControlRuntime(self.service,Mock(),manager)
+		runtime.receive(key,"25",False)
+
+		runtime.tick()
+
+		self.assertEqual(manager.calls,["modbus_rtu"])
+		self.assertEqual(solarman.writes,[])
+		self.assertEqual(rs485.writes,[(128,[25])])
+
+	def test_runtime_does_not_fallback_after_uncertain_selected_transport_write(self):
+		key="control_grid_charge_battery_current"
+		entry=self.select(key)
+		entry["definition"]["transport"]="modbus_rtu"
+		entry["last_scan"]={
+			"solarman_tcp":{"status":"supported","write_allowed":True},
+			"modbus_rtu":{"status":"supported","write_allowed":True},
+			"status":"supported",
+		}
+		self.service.store({"available_sensors":[entry],"published":[]})
+		solarman=Registers({128:10})
+		rs485=Registers({128:10})
+		rs485.fail_write=True
+		manager=RecordingManager({"solarman_tcp":solarman,"modbus_rtu":rs485})
+		runtime=ControlRuntime(self.service,Mock(),manager)
+		runtime.receive(key,"25",False)
+
+		runtime.tick()
+
+		self.assertEqual(manager.calls,["modbus_rtu"])
+		self.assertEqual(solarman.writes,[])
+		self.assertEqual(len(rs485.writes),1)
+		self.assertTrue(runtime.blocked)
+
+	def test_control_availability_is_isolated_by_selected_transport(self):
+		failed=self.service.entry("control_grid_charge_battery_current")
+		failed["definition"]["transport"]="modbus_rtu"
+		failed["last_scan"]={"modbus_rtu":{"status":"supported","write_allowed":True}}
+		failed["monitor"]=True
+		working=self.service.entry("control_inverter_enabled")
+		working["definition"]["transport"]="solarman_tcp"
+		working["last_scan"]={"solarman_tcp":{"status":"supported","write_allowed":True}}
+		working["monitor"]=True
+		self.service.store({"available_sensors":[failed,working],"published":[]})
+		modbus=Registers({128:10})
+		modbus.read_holding_registers=Mock(side_effect=SolarmanConnectionClosedError("serial offline"))
+		solarman=Registers({80:1})
+		manager=RecordingManager({"solarman_tcp":solarman,"modbus_rtu":modbus})
+		mqtt=Mock()
+
+		ControlRuntime(self.service,mqtt,manager).tick()
+
+		availability=[call.args for call in mqtt.control_availability.call_args_list]
+		self.assertIn(("control_grid_charge_battery_current",False),availability)
+		self.assertIn(("control_inverter_enabled",True),availability)
+		published=mqtt.publish_control_state.call_args
+		self.assertEqual(published.args[0]["key"],"control_inverter_enabled")
+		self.assertEqual(published.args[1]["transport"],"solarman_tcp")
+
 	def test_mqtt_discovery_components_and_command_dispatch(self):
 		config=MqttConfig("broker",1883,"","","test","deye","homeassistant",True)
 		mqtt=MqttPublisher(config,InverterConfig("123","Inverter","Deye","SG05LP3"))
@@ -393,6 +498,10 @@ class ControlTests(unittest.TestCase):
 		callback=Mock()
 		mqtt.configure_controls(callback,["control_load_limit"])
 		mqtt._on_control_message(None,None,SimpleNamespace(topic=mqtt.control_command_topic("control_load_limit"),payload=b"Essentials",retain=False))
+		callback.assert_called_once_with("control_load_limit","Essentials",False)
+		mqtt._on_control_message(None,None,SimpleNamespace(topic="base/123/controls/unknown/set",payload=b"x",retain=False))
+		mqtt._on_control_message(None,None,SimpleNamespace(topic=mqtt.control_command_topic("control_load_limit"),payload=b"x"*129,retain=False))
+		mqtt._on_control_message(None,None,SimpleNamespace(topic=mqtt.control_command_topic("control_load_limit"),payload=b"\xff",retain=False))
 		callback.assert_called_once_with("control_load_limit","Essentials",False)
 
 	def test_ingress_control_routes_and_test_have_no_write_side_effect(self):

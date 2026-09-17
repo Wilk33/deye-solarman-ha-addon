@@ -20,6 +20,17 @@ from deye_inverter_core.models import LoggerConfig
 
 
 class ArchitectureTests(unittest.TestCase):
+	def test_ownership_modules_are_removed_from_sources_and_generated_bundle(self):
+		for relative in (
+			"packages/deye_inverter_core/ownership.py",
+			"packages/deye_inverter_core/ownership_config.py",
+			"packages/deye_inverter_core/ownership_panel.js",
+			"deye-solarman-diagnostics/rootfs/usr/src/app/deye_inverter_core/ownership.py",
+			"deye-solarman-diagnostics/rootfs/usr/src/app/deye_inverter_core/ownership_config.py",
+			"deye-solarman-diagnostics/rootfs/usr/src/app/deye_inverter_core/ownership_panel.js",
+		):
+			self.assertFalse((ROOT/relative).exists(),relative)
+
 	def test_configuration_defaults_are_minimal_and_name_catalog_sources(self):
 		config=yaml.safe_load((ROOT/"deye-solarman-diagnostics/config.yaml").read_text(encoding="utf-8"))
 
@@ -67,7 +78,7 @@ class ArchitectureTests(unittest.TestCase):
 
 	def test_packaged_runtime_imports_without_repository_sources(self):
 		app=str(ROOT/"deye-solarman-diagnostics/rootfs/usr/src/app")
-		code="import sys; sys.path.insert(0,sys.argv[1]); from deye_solarman_diagnostics.solarman import SolarmanClient; from deye_inverter_core.main import main; from deye_inverter_core.controls import CONTROLS; from deye_inverter_core.catalog import build_live_telemetry; assert len(CONTROLS)==115; assert len(build_live_telemetry())==94"
+		code="import sys; sys.path.insert(0,sys.argv[1]); import deye_solarman_diagnostics.__main__; from deye_solarman_diagnostics.solarman import SolarmanClient; from deye_solarman_diagnostics.rs485 import ModbusRtuTransport; from deye_inverter_core.main import main; from deye_inverter_core.controls import CONTROLS; from deye_inverter_core.catalog import build_live_telemetry; assert len(CONTROLS)==115; assert len(build_live_telemetry())==94"
 		with tempfile.TemporaryDirectory() as directory:
 			result=subprocess.run([sys.executable,"-I","-c",code,app],cwd=directory,capture_output=True,text=True)
 		self.assertEqual(result.returncode,0,result.stdout+result.stderr)

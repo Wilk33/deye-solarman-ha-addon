@@ -8,12 +8,12 @@ import re
 import threading
 import time
 from copy import deepcopy
-from contextlib import nullcontext
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from .transport import TransportFactory, TransportConnectionClosedError
+from .transport_manager import TransportManager
 from .catalog_bundle import load_map
 from .models import TRANSPORT_IDS
 from .scanner import _read_error_status
@@ -236,7 +236,6 @@ class ControlService:
 		self.spacing=spacing
 		self.lock=threading.RLock()
 		self.writes_blocked=False
-		self.ownership=None
 		self.configuration_action=lambda action:action()
 		self.job={"status":"idle","message":"Skan odczytuje aktualny stan."}
 
@@ -384,20 +383,30 @@ class ControlService:
 	def test(self, key: str) -> dict:
 		if key not in CONTROLS:
 			raise ValueError("Unknown control key")
-		with self.access_lock:
-			client=self.transport_factory(self.logger)
-			try:
-				client.connect()
-				result=self.read(client,key)
-			finally:
-				client.close()
+		with self.lock:
+			data=self.load()
+			selected=next((entry for entry in data["available_sensors"] if entry["key"] == key),None)
+			if selected is None:
+				raise ValueError("Unknown saved control key")
+			transport_id=selected["definition"]["transport"]
+		if self.transport_manager is not None:
+			result=self.transport_manager.run(transport_id,lambda client:self.read(client,key))
+		else:
+			with self.access_lock:
+				client=self.transport_factory(self.logger)
+				try:
+					client.connect()
+					result=self.read(client,key)
+				finally:
+					client.close()
+		result={**result,"transport":transport_id}
 		def save_result():
 			with self.lock:
 				data=self.load()
 				for entry in data["available_sensors"]:
 					if entry["key"] == key:
 						branches=normalize_last_scan(entry.get("last_scan",{}))
-						branches["solarman_tcp"]=result
+						branches[transport_id]=result
 						entry["last_scan"]=last_scan_with_selected_alias(branches,entry["definition"]["transport"])
 						entry["status"]=scan_status(branches,entry["definition"]["transports"])
 				self.store(data)
@@ -525,11 +534,11 @@ class ControlService:
 
 
 class ControlRuntime:
-	def __init__(self, service: ControlService, mqtt: Any, client: Any) -> None:
+	def __init__(self, service: ControlService, mqtt: Any, transport: Any) -> None:
 		self.service=service
-		self.ownership=service.ownership
 		self.mqtt=mqtt
-		self.client=client
+		self.manager=transport if isinstance(transport,TransportManager) or getattr(transport,"_is_transport_manager",False) is True else None
+		self.client=None if self.manager is not None else transport
 		self.queue=queue.Queue(maxsize=32)
 		self.enabled={entry["key"]:entry for entry in service.load()["available_sensors"] if entry["monitor"]}
 		self.last_read={}
@@ -555,11 +564,10 @@ class ControlRuntime:
 				self.mqtt.remove_control_discovery(definition)
 		self.mqtt.configure_controls(self.receive,list(self.enabled))
 		# Persist before publication so interrupted starts can remove retained entries later.
-		with self.ownership.registry.locked() if self.ownership else nullcontext():
-			with self.service.lock:
-				data=self.service.load()
-				data["published"]=list(self.enabled)
-				self.service.store(data)
+		with self.service.lock:
+			data=self.service.load()
+			data["published"]=list(self.enabled)
+			self.service.store(data)
 		self.tick()
 
 	def tick(self) -> None:
@@ -572,24 +580,28 @@ class ControlRuntime:
 			else:
 				if not self.blocked and now-created <= 10:
 					try:
-						# Shared lock covers dependency reads, read-modify-write and read-back.
-						with self.service.access_lock:
+						with self.service.lock:
 							if time.monotonic()-created > 10:
 								raise ValueError("Control command expired while waiting for transport")
 							live=self.service.load()
-							if not any(e["key"] == key and e["monitor"] for e in live["available_sensors"]):
+							live_entry=next((entry for entry in live["available_sensors"] if entry["key"] == key and entry["monitor"]),None)
+							if live_entry is None:
 								raise ValueError("Control deselected")
-							with self.ownership.guard(component(CONTROLS[key]),key) if self.ownership else nullcontext(True) as owned:
-								if not owned:
-									raise ValueError("Control belongs to another application")
-								if time.monotonic()-created > 10:
-									raise ValueError("Control command expired while waiting for ownership")
-								# Reload selection while holding ownership through the physical write.
-								if not any(e["key"] == key and e["monitor"] for e in self.service.load()["available_sensors"]):
-									raise ValueError("Control deselected")
-								write_control(self.client,CONTROLS[key],value)
-						self.last_read.pop(key,None)
-						self.last_value.pop(key,None)
+							transport_id=live_entry["definition"]["transport"]
+							if self.manager is not None:
+								result=self.manager.run(
+									transport_id,
+									lambda client:write_control(client,CONTROLS[key],value),
+								)
+							else:
+								with self.service.access_lock:
+									result=write_control(self.client,CONTROLS[key],value)
+						result={**result,"transport":transport_id}
+						self.mqtt.publish_control_state(live_entry,result)
+						self.mqtt.control_availability(key,True)
+						self.last_read[key]=now
+						self.last_publish[key]=now
+						self.last_value[key]=result["value"]
 						self.last_command=now
 					except ValueError as error:
 						LOGGER.warning("Control command rejected key=%s: %s",key,error)
@@ -599,15 +611,20 @@ class ControlRuntime:
 						for control_key in self.enabled:
 							self.mqtt.control_availability(control_key,False)
 						LOGGER.exception("Control writes blocked until configuration reload")
+		if self.blocked:
+			return
 		for key,entry in self.enabled.items():
-			if self.ownership and not self.ownership.owns(component(CONTROLS[key]),key):
-				continue
 			if now-self.last_read.get(key,-math.inf) < entry["definition"]["read_every"]:
 				continue
 			self.last_read[key]=now
 			try:
-				with self.service.access_lock:
-					result=self.service.read(self.client,key)
+				transport_id=entry["definition"]["transport"]
+				if self.manager is not None:
+					result=self.manager.run(transport_id,lambda client:self.service.read(client,key))
+				else:
+					with self.service.access_lock:
+						result=self.service.read(self.client,key)
+				result={**result,"transport":transport_id}
 				if result["write_allowed"]:
 					self.mqtt.publish_control_discovery(entry,result)
 				value=result["value"]
@@ -622,7 +639,8 @@ class ControlRuntime:
 				self.mqtt.control_availability(key,not self.blocked and result["write_allowed"])
 			except TransportConnectionClosedError:
 				self.mqtt.control_availability(key,False)
-				raise
+				if self.manager is None:
+					raise
 			except Exception as error:
 				self.mqtt.control_availability(key,False)
 				LOGGER.warning("Control read failed key=%s: %s",key,error)
