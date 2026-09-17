@@ -98,9 +98,13 @@ class TransportManager:
 		self,
 		transport_id: str,
 		operation: Callable[[RegisterTransport],ResultT],
+		*,
+		before_io: Callable[[],None] | None=None,
 	) -> ResultT:
 		slot=self.get(transport_id)
 		with slot.lock:
+			if before_io is not None:
+				before_io()
 			try:
 				self._ensure_connected(slot)
 			except _ReconnectPendingError:

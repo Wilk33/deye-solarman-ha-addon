@@ -27,8 +27,10 @@ class RecordingManager:
 		self.clients=clients
 		self.calls=[]
 
-	def run(self, transport_id, operation):
+	def run(self, transport_id, operation, *, before_io=None):
 		self.calls.append(transport_id)
+		if before_io is not None:
+			before_io()
 		return operation(self.clients[transport_id])
 
 
@@ -56,6 +58,14 @@ class Registers:
 			raise TimeoutError("timeout after send")
 		if not self.mismatch:
 			self.values.update({start+index:value for index,value in enumerate(values)})
+
+
+class ManualClock:
+	def __init__(self,value=0.0):
+		self.value=value
+
+	def __call__(self):
+		return self.value
 
 
 class ControlTests(unittest.TestCase):
@@ -457,6 +467,101 @@ class ControlTests(unittest.TestCase):
 		self.assertEqual(solarman.writes,[])
 		self.assertEqual(len(rs485.writes),1)
 		self.assertTrue(runtime.blocked)
+
+	def test_command_ttl_is_rechecked_inside_selected_slot_before_register_io(self):
+		key="control_grid_charge_battery_current"
+		entry=self.select(key)
+		entry["definition"]["transport"]="modbus_rtu"
+		entry["last_scan"]={"modbus_rtu":{"status":"supported","write_allowed":True}}
+		self.service.store({"available_sensors":[entry],"published":[]})
+		clock=ManualClock(1.0)
+		client=Registers({128:10})
+		class DelayedManager(RecordingManager):
+			def run(self,transport_id,operation, *, before_io=None):
+				self.calls.append(transport_id)
+				clock.value=11.1
+				if before_io is not None:
+					before_io()
+				return operation(self.clients[transport_id])
+		manager=DelayedManager({"modbus_rtu":client})
+		runtime=ControlRuntime(self.service,Mock(),manager,clock=clock)
+		runtime.last_read[key]=1.0
+		runtime.receive(key,"25",False)
+
+		runtime.tick()
+
+		self.assertEqual(manager.calls,["modbus_rtu"])
+		self.assertEqual(client.reads,[])
+		self.assertEqual(client.writes,[])
+
+	def test_command_configuration_load_failure_does_not_escape_or_block_transport(self):
+		key="control_grid_charge_battery_current"
+		entry=self.select(key)
+		entry["definition"]["transport"]="modbus_rtu"
+		entry["last_scan"]={"modbus_rtu":{"status":"supported","write_allowed":True}}
+		self.service.store({"available_sensors":[entry],"published":[]})
+		clock=ManualClock(1.0)
+		runtime=ControlRuntime(
+			self.service,
+			Mock(),
+			RecordingManager({"modbus_rtu":Registers({128:10})}),
+			clock=clock,
+		)
+		runtime.last_read[key]=clock()
+		runtime.receive(key,"25",False)
+
+		with patch.object(self.service,"load",side_effect=OSError("configuration unavailable")):
+			runtime.tick()
+
+		self.assertEqual(runtime.blocked_transports,set())
+
+	def test_prewrite_transport_failure_does_not_block_future_writes(self):
+		key="control_grid_charge_battery_current"
+		entry=self.select(key)
+		entry["definition"]["transport"]="modbus_rtu"
+		entry["last_scan"]={"modbus_rtu":{"status":"supported","write_allowed":True}}
+		self.service.store({"available_sensors":[entry],"published":[]})
+		client=Registers({128:10})
+		client.read_holding_registers=Mock(side_effect=SolarmanConnectionClosedError("offline before write"))
+		clock=ManualClock(1.0)
+		runtime=ControlRuntime(self.service,Mock(),RecordingManager({"modbus_rtu":client}),clock=clock)
+		runtime.receive(key,"25",False)
+
+		runtime.tick()
+
+		self.assertEqual(runtime.blocked_transports,set())
+		self.assertEqual(client.writes,[])
+
+	def test_uncertain_write_blocks_only_selected_transport(self):
+		failed=self.service.entry("control_grid_charge_battery_current")
+		failed["definition"]["transport"]="modbus_rtu"
+		failed["last_scan"]={"modbus_rtu":{"status":"supported","write_allowed":True}}
+		failed["monitor"]=True
+		working=self.service.entry("control_inverter_enabled")
+		working["definition"]["transport"]="solarman_tcp"
+		working["last_scan"]={"solarman_tcp":{"status":"supported","write_allowed":True}}
+		working["monitor"]=True
+		self.service.store({"available_sensors":[failed,working],"published":[]})
+		modbus=Registers({128:10})
+		modbus.fail_write=True
+		solarman=Registers({80:0})
+		clock=ManualClock(1.0)
+		runtime=ControlRuntime(
+			self.service,
+			Mock(),
+			RecordingManager({"solarman_tcp":solarman,"modbus_rtu":modbus}),
+			clock=clock,
+		)
+		runtime.receive(failed["key"],"25",False)
+		runtime.tick()
+		clock.value=2.1
+		runtime.receive(working["key"],"ON",False)
+
+		runtime.tick()
+
+		self.assertEqual(runtime.blocked_transports,{"modbus_rtu"})
+		self.assertEqual(len(modbus.writes),1)
+		self.assertEqual(solarman.writes,[(80,[1])])
 
 	def test_control_availability_is_isolated_by_selected_transport(self):
 		failed=self.service.entry("control_grid_charge_battery_current")

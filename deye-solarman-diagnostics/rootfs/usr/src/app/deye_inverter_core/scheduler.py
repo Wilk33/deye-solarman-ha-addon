@@ -80,6 +80,13 @@ class PerEntityScheduler:
 			sensor=self._sensors[key]
 			self._next_due[key]=current+self._effective_interval(sensor)
 
+	def make_due(self,keys: Iterable[str],now: float | None=None) -> None:
+		current=self._clock() if now is None else now
+		with self._lock:
+			for key in keys:
+				if key in self._next_due:
+					self._next_due[key]=current
+
 	def sync(self, sensors: Iterable[SensorDefinition], *, now: float | None=None) -> None:
 		current=self._clock() if now is None else now
 		active: dict[str,SensorDefinition]={}

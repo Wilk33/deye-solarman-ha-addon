@@ -286,9 +286,9 @@ class RecordingTransportManager(TransportManager):
 		super().__init__(slots,clock=clock)
 		self.run_transport_ids: list[str]=[]
 
-	def run(self, transport_id: str, operation):
+	def run(self, transport_id: str, operation, *, before_io=None):
 		self.run_transport_ids.append(transport_id)
-		return super().run(transport_id,operation)
+		return super().run(transport_id,operation,before_io=before_io)
 
 
 class DualTransportConfigTests(unittest.TestCase):
@@ -688,6 +688,19 @@ class SolarmanConnectionTests(unittest.TestCase):
 
 
 class TransportManagerTests(unittest.TestCase):
+	def test_before_io_guard_runs_inside_slot_lock_before_connect(self) -> None:
+		slot=make_transport_slot("modbus_rtu")
+		manager=TransportManager([slot])
+
+		with self.assertRaisesRegex(ValueError,"expired"):
+			manager.run(
+				"modbus_rtu",
+				lambda client:self.fail("operation must not run"),
+				before_io=lambda:(_ for _ in ()).throw(ValueError("expired")),
+			)
+
+		self.assertEqual(slot.client.connect_calls,0)
+
 	def test_slots_have_independent_locks_polling_and_reconnect_delays(self) -> None:
 		solarman=make_transport_slot("solarman_tcp",default_interval=61,reconnect_delay=11)
 		rs485=make_transport_slot("modbus_rtu",default_interval=13,reconnect_delay=7)
@@ -1518,6 +1531,35 @@ class EntityTransportSelectionTests(unittest.TestCase):
 				self.assertEqual(entry["last_scan"]["modbus_rtu"]["status"],"supported")
 				self.assertEqual(solarman.writes+rs485.writes,[])
 				self.assertLess(events.index("solarman_tcp:end"),events.index("modbus_rtu:start"))
+		finally:
+			set_controls(catalog)
+
+	def test_control_scan_uses_each_transport_slot_message_spacing(self) -> None:
+		catalog=list(CONTROLS.values())
+		control=dict(CONTROLS["control_grid_charge_battery_current"])
+		set_controls([control])
+		try:
+			with tempfile.TemporaryDirectory() as directory:
+				events=[]
+				solarman=SequentialScanTransport("solarman_tcp",events,{128:37})
+				rs485=SequentialScanTransport("modbus_rtu",events,{128:38})
+				solarman_polling=TransportPollingConfig(**{**make_polling(),"read_message_spacing":0.11})
+				rs485_polling=TransportPollingConfig(**{**make_polling(),"read_message_spacing":0.22})
+				manager=TransportManager([
+					TransportSlot(solarman,solarman_polling,10),
+					TransportSlot(rs485,rs485_polling,10),
+				])
+				service=ControlService(
+					str(Path(directory)/"controls.json"),
+					None,
+					threading.Lock(),
+					0.99,
+					transport_manager=manager,
+				)
+				with patch("deye_inverter_core.controls.time.sleep") as sleep:
+					service._scan(lambda:None)
+
+				self.assertEqual([call.args[0] for call in sleep.call_args_list],[0.11,0.22])
 		finally:
 			set_controls(catalog)
 

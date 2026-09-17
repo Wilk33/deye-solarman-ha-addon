@@ -15,6 +15,7 @@ from urllib.parse import unquote
 from .custom_sensors import delete_custom_sensor
 from .custom_sensors import load_custom_sensors
 from .custom_sensors import save_custom_sensors
+from .configuration_coordinator import ConfigurationCoordinator
 from .scanner import load_detected_sensors
 from .scanner import update_detected_sensors
 from .logging_utils import success
@@ -51,7 +52,16 @@ class IngressPanel:
 		self._custom_save_handler=custom_save_handler
 		self._port=port
 		self._controls=control_service
-		self._configuration_lock=threading.RLock()
+		tracked=[Path(detected_sensors_file)]
+		tracked.append(Path(detected_sensors_file).with_name("deye_solarman_discovery_removals.yaml"))
+		if custom_sensors_file is not None:
+			tracked.append(Path(custom_sensors_file))
+			tracked.append(Path(custom_sensors_file).with_name("deye_solarman_discovery_removals.yaml"))
+		if control_service is not None:
+			tracked.append(control_service.path)
+		self._configuration=ConfigurationCoordinator(tracked)
+		if self._controls is not None:
+			self._controls.configuration_action=self._configuration.apply
 		self._job_lock=threading.Lock()
 		self._job={
 			"status": "idle",
@@ -338,11 +348,10 @@ class IngressPanel:
 			return result
 
 	def _configuration_action(self, action):
-		with self._configuration_lock:
-			return action()
+		return self._configuration.apply(action)
 
 	def _view(self, loader, field="available_sensors", controls=False):
-		with self._configuration_lock:
+		with self._configuration.locked():
 			return loader()
 
 	def _notify_configuration_changed(self) -> None:

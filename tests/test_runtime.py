@@ -228,6 +228,38 @@ def make_polling() -> PollingConfig:
 
 
 class RuntimeTests(unittest.TestCase):
+	def test_panel_configuration_transaction_rolls_back_every_tracked_file(self) -> None:
+		from deye_inverter_core.controls import ControlService
+
+		with tempfile.TemporaryDirectory() as directory:
+			root=Path(directory)
+			detected=root/"detected.yaml"
+			custom=root/"custom.yaml"
+			queue=root/"deye_solarman_discovery_removals.yaml"
+			controls=ControlService(str(root/"controls.json"),None,threading.Lock(),0)
+			detected.write_text("detected-before",encoding="utf-8")
+			custom.write_text("custom-before",encoding="utf-8")
+			panel=IngressPanel(
+				str(detected),
+				lambda:{},
+				custom_sensors_file=str(custom),
+				control_service=controls,
+			)
+			def fail_after_writes():
+				detected.write_text("detected-after",encoding="utf-8")
+				custom.write_text("custom-after",encoding="utf-8")
+				queue.write_text("queued",encoding="utf-8")
+				controls.path.write_text("controls-after",encoding="utf-8")
+				raise OSError("disk full")
+
+			with self.assertRaisesRegex(OSError,"disk full"):
+				panel._configuration_action(fail_after_writes)
+
+			self.assertEqual(detected.read_text(encoding="utf-8"),"detected-before")
+			self.assertEqual(custom.read_text(encoding="utf-8"),"custom-before")
+			self.assertFalse(queue.exists())
+			self.assertFalse(controls.path.exists())
+
 	def test_worker_iteration_marks_each_group_and_formula_before_physical_read(self) -> None:
 		events=[]
 		class OrderedTransport(RuntimeTransport):
@@ -291,6 +323,181 @@ class RuntimeTests(unittest.TestCase):
 		self.assertEqual([state[0] for state in mqtt.states],["serial","serial"])
 		self.assertIn(("logger",False),mqtt.availability)
 		self.assertNotIn(("serial",False),mqtt.availability)
+
+	def test_sensor_runtime_discards_stale_read_after_definition_reload(self) -> None:
+		started=threading.Event()
+		release=threading.Event()
+		class BlockingTransport(RuntimeTransport):
+			def read_holding_registers(self,start: int,count: int) -> list[int]:
+				self.reads.append((start,count))
+				if start == 100:
+					started.set()
+					self.assert_release()
+				return [self.values.get(register,0) for register in range(start,start+count)]
+
+			def assert_release(self) -> None:
+				if not release.wait(5):
+					raise TimeoutError("test did not release transport")
+
+		clock=RuntimeClock()
+		transport=BlockingTransport("modbus_rtu",{100:11,101:22})
+		manager=TransportManager([TransportSlot(transport,make_polling(),10)],clock=clock)
+		old=SensorDefinition("value","Value",[100],"uint16",read_every=1,transport="modbus_rtu")
+		updated=SensorDefinition("value","Value",[101],"uint16",read_every=1,transport="modbus_rtu")
+		mqtt=FakeMqtt()
+		state={"value":SensorState()}
+		runtime=SensorRuntime(manager,mqtt,[old],state,clock=clock)
+		worker=threading.Thread(target=lambda:runtime.run_once("modbus_rtu",clock()))
+
+		worker.start()
+		self.assertTrue(started.wait(5))
+		runtime.reload([updated])
+		release.set()
+		worker.join(5)
+
+		self.assertEqual(mqtt.states,[])
+		runtime.run_once("modbus_rtu",clock())
+		self.assertEqual([(key,value) for key,value,_ in mqtt.states],[("value",22)])
+		self.assertEqual(state["value"].last_value,22)
+
+	def test_sensor_runtime_persistence_failure_does_not_escape_or_mark_transport_offline(self) -> None:
+		clock=RuntimeClock()
+		transport=RuntimeTransport("modbus_rtu",{100:7})
+		manager=TransportManager([TransportSlot(transport,make_polling(),10)],clock=clock)
+		sensor=SensorDefinition("value","Value",[100],"uint16",read_every=1,transport="modbus_rtu")
+		mqtt=FakeMqtt()
+		runtime=SensorRuntime(
+			manager,
+			mqtt,
+			[sensor],
+			{"value":SensorState()},
+			state_file="ignored.json",
+			scan_report_file="ignored-report.json",
+			emit_scan_report=True,
+			clock=clock,
+		)
+
+		with patch("deye_inverter_core.main.save_state",side_effect=OSError("disk full")),patch(
+			"deye_inverter_core.main.save_scan_report",
+			side_effect=OSError("disk full"),
+		):
+			first=runtime.run_once("modbus_rtu",clock())
+			clock.value=1.0
+			second=runtime.run_once("modbus_rtu",clock())
+
+		self.assertIsNotNone(first)
+		self.assertIsNotNone(second)
+		self.assertEqual(transport.reads,[(100,1),(100,1)])
+		self.assertNotIn(("value",False),mqtt.availability)
+
+	def test_sensor_worker_survives_mqtt_publish_failure_and_runs_next_deadline(self) -> None:
+		class FlakyMqtt(FakeMqtt):
+			def __init__(self):
+				super().__init__()
+				self.attempts=0
+				self.recovered=threading.Event()
+
+			def publish_state(self,sensor,value,attributes):
+				self.attempts+=1
+				if self.attempts == 1:
+					raise ConnectionError("broker dropped session")
+				super().publish_state(sensor,value,attributes)
+				self.recovered.set()
+
+		transport=RuntimeTransport("modbus_rtu",{100:7})
+		polling=make_polling()
+		manager=TransportManager([TransportSlot(transport,polling,10)])
+		sensor=SensorDefinition("value","Value",[100],"uint16",read_every=0.05,transport="modbus_rtu")
+		mqtt=FlakyMqtt()
+		runtime=SensorRuntime(manager,mqtt,[sensor],{"value":SensorState()})
+
+		runtime.start()
+		try:
+			self.assertTrue(mqtt.recovered.wait(2))
+		finally:
+			runtime.stop()
+
+		self.assertGreaterEqual(mqtt.attempts,2)
+
+	def test_sensor_runtime_persists_an_isolated_state_snapshot(self) -> None:
+		transport=RuntimeTransport("modbus_rtu",{100:7})
+		manager=TransportManager([TransportSlot(transport,make_polling(),10)])
+		sensor=SensorDefinition("value","Value",[100],"uint16",transport="modbus_rtu")
+		state={"value":SensorState()}
+		runtime=SensorRuntime(manager,FakeMqtt(),[sensor],state,state_file="ignored.json")
+		captured=[]
+
+		with patch("deye_inverter_core.main.save_state",side_effect=lambda path,payload:captured.append(payload)):
+			runtime.run_once("modbus_rtu")
+
+		self.assertIsNot(captured[0],state)
+		self.assertIsNot(captured[0]["value"],state["value"])
+
+	def test_iteration_stop_signal_prevents_starting_later_read_groups(self) -> None:
+		stop=threading.Event()
+		class StopAfterFirst(RuntimeTransport):
+			def read_holding_registers(self,start: int,count: int) -> list[int]:
+				result=super().read_holding_registers(start,count)
+				stop.set()
+				return result
+		transport=StopAfterFirst("modbus_rtu",{10:1,20:2})
+		sensors=[
+			SensorDefinition("first","First",[10],"uint16",transport="modbus_rtu"),
+			SensorDefinition("second","Second",[20],"uint16",transport="modbus_rtu"),
+		]
+
+		run_iteration(
+			sensors,
+			{sensor.key:SensorState() for sensor in sensors},
+			transport,
+			FakeMqtt(),
+			make_polling(),
+			False,
+			force=True,
+			should_stop=stop.is_set,
+		)
+
+		self.assertEqual(transport.reads,[(10,1)])
+
+	def test_sensor_runtime_stop_waits_for_every_worker_without_timeout(self) -> None:
+		transport=RuntimeTransport("modbus_rtu")
+		manager=TransportManager([TransportSlot(transport,make_polling(),10)])
+		runtime=SensorRuntime(manager,FakeMqtt(),[],{})
+		joins=[]
+		class ThreadProbe:
+			def join(self,timeout=None):
+				joins.append(timeout)
+		runtime._threads=[ThreadProbe()]
+
+		runtime.stop()
+
+		self.assertEqual(joins,[None])
+
+	def test_sensor_worker_consumes_wake_before_each_runtime_cycle(self) -> None:
+		transport=RuntimeTransport("modbus_rtu")
+		manager=TransportManager([TransportSlot(transport,make_polling(),10)])
+		runtime=SensorRuntime(manager,FakeMqtt(),[],{})
+		events=[]
+		class WakeProbe:
+			def clear(self):
+				events.append("clear")
+
+			def wait(self,timeout=None):
+				events.append("wait")
+				return True
+
+			def set(self):
+				events.append("set")
+		runtime._wake["modbus_rtu"]=WakeProbe()
+		def run_once(transport_id):
+			events.append("run")
+			if events.count("run") == 2:
+				runtime._stop.set()
+		runtime.run_once=run_once
+
+		runtime._worker_loop("modbus_rtu")
+
+		self.assertEqual(events,["clear","run","wait","clear","run"])
 
 	def test_custom_sensor_test_reads_only_its_selected_transport(self) -> None:
 		solarman=RuntimeTransport("solarman_tcp",{10040:11})
@@ -1156,6 +1363,29 @@ class RuntimeTests(unittest.TestCase):
 		publisher._client.disconnect.assert_called_once()
 		publisher._client.loop_stop.assert_called_once()
 
+	def test_mqtt_reconnects_once_before_next_publication_after_session_failure(self) -> None:
+		publisher=MqttPublisher(
+			MqttConfig("host",1883,"","","test","base","homeassistant",True),
+			InverterConfig("123","Deye","Deye","SG05LP3"),
+		)
+		client=Mock()
+		failed=Mock()
+		failed.is_published.return_value=False
+		online=Mock()
+		succeeded=Mock()
+		succeeded.is_published.return_value=True
+		client.publish.side_effect=[failed,online,online,succeeded]
+		publisher._client=client
+		client.reconnect.side_effect=lambda:publisher._on_connect(client,None,None,0,None)
+		sensor=SensorDefinition("voltage","Voltage",[10040],"uint16")
+
+		with self.assertRaises(ConnectionError):
+			publisher.sensor_availability(sensor,True)
+		publisher.sensor_availability(sensor,True)
+
+		client.reconnect.assert_called_once_with()
+		succeeded.wait_for_publish.assert_called_once_with(timeout=10)
+
 	def test_temperature_discovery_uses_home_assistant_celsius_unit(self) -> None:
 		publisher=MqttPublisher(
 			MqttConfig("host",1883,"","","test","base","homeassistant",True),
@@ -1174,6 +1404,7 @@ class RuntimeTests(unittest.TestCase):
 		with patch("deye_inverter_core.mqtt.mqtt.Client") as client_factory:
 			publisher=MqttPublisher(config,InverterConfig("123","Deye","Deye","SG05LP3"))
 		self.assertEqual(client_factory.call_args.kwargs["client_id"],"deye-runtime")
+		client_factory.return_value.will_set.assert_called_once_with("base/123/availability","offline",retain=True)
 		publisher._client=Mock()
 		publisher._publish_confirmed=Mock()
 		sensor=SensorDefinition("voltage","Voltage",[10040],"uint16",transport="modbus_rtu")
@@ -1181,7 +1412,11 @@ class RuntimeTests(unittest.TestCase):
 		publisher.publish_discovery(sensor)
 		discovery=json.loads(publisher._publish_confirmed.call_args.args[1])
 		self.assertEqual(discovery["state_topic"],"base/123/voltage")
-		self.assertEqual(discovery["availability_topic"],"base/123/voltage/availability")
+		self.assertEqual(discovery["availability"],[
+			{"topic":"base/123/availability"},
+			{"topic":"base/123/voltage/availability"},
+		])
+		self.assertEqual(discovery["availability_mode"],"all")
 		self.assertEqual(discovery["origin"]["name"],"SolarMan Diagnostics")
 		self.assertEqual(discovery["origin"]["sw_version"],"2.0.0")
 
@@ -1213,6 +1448,7 @@ class RuntimeTests(unittest.TestCase):
 			self.assertNotIn("/source/",topic+payload)
 			self.assertEqual(discovery["command_topic"],f"base/123/controls/{key}/set")
 			self.assertEqual(discovery["availability"],[
+				{"topic":"base/123/availability"},
 				{"topic":"base/123/controls/availability"},
 				{"topic":f"base/123/controls/{key}/availability"},
 			])
@@ -1236,6 +1472,76 @@ class RuntimeTests(unittest.TestCase):
 		self.assertEqual(topic,"homeassistant/sensor/deye_solarman_2507092018_battery_voltage/config")
 		self.assertEqual(payload,"")
 		self.assertTrue(retain)
+
+	def test_control_discovery_can_be_republished_after_confirmed_removal(self) -> None:
+		from deye_inverter_core.controls import ControlService
+
+		with tempfile.TemporaryDirectory() as directory:
+			service=ControlService(str(Path(directory)/"controls.json"),None,threading.Lock(),0)
+			entry=service.entry("control_grid_charge_battery_current")
+			publisher=MqttPublisher(
+				MqttConfig("host",1883,"","","test","base","homeassistant",True),
+				InverterConfig("123","Deye","Deye","SG05LP3"),
+			)
+			publisher._publish_confirmed=Mock()
+			result={"min":0,"max":210,"write_allowed":True}
+
+			publisher.publish_control_discovery(entry,result)
+			publisher.remove_control_discovery(entry["definition"])
+			publisher.publish_control_discovery(entry,result)
+
+			self.assertEqual(publisher._publish_confirmed.call_count,3)
+
+	def test_sensor_and_control_discovery_share_one_serial_queue(self) -> None:
+		from deye_inverter_core.controls import ControlService
+
+		with tempfile.TemporaryDirectory() as directory:
+			service=ControlService(str(Path(directory)/"controls.json"),None,threading.Lock(),0)
+			entry=service.entry("control_grid_charge_battery_current")
+			publisher=MqttPublisher(
+				MqttConfig("host",1883,"","","test","base","homeassistant",True),
+				InverterConfig("123","Deye","Deye","SG05LP3"),
+			)
+			first_started=threading.Event()
+			release=threading.Event()
+			second_started=threading.Event()
+			calls=[]
+			def publish(*args):
+				calls.append(args[0])
+				if len(calls) == 1:
+					first_started.set()
+					self.assertTrue(release.wait(5))
+				else:
+					second_started.set()
+			publisher._publish_confirmed=publish
+			sensor=SensorDefinition("voltage","Voltage",[10040],"uint16")
+			first=threading.Thread(target=lambda:publisher.publish_discovery(sensor))
+			second=threading.Thread(target=lambda:publisher.publish_control_discovery(entry,{"min":0,"max":210,"write_allowed":True}))
+
+			first.start()
+			self.assertTrue(first_started.wait(5))
+			second.start()
+			serialized=not second_started.wait(0.1)
+			release.set()
+			first.join(5)
+			second.join(5)
+
+			self.assertTrue(serialized)
+			self.assertTrue(second_started.is_set())
+
+	def test_graceful_disconnect_publishes_shared_process_availability_offline(self) -> None:
+		publisher=MqttPublisher(
+			MqttConfig("host",1883,"","","test","base","homeassistant",True),
+			InverterConfig("123","Deye","Deye","SG05LP3"),
+		)
+		publisher._client=Mock()
+		publisher._publish_confirmed=Mock()
+
+		publisher.disconnect()
+
+		calls=[call.args[:2] for call in publisher._publish_confirmed.call_args_list]
+		self.assertIn(("base/123/availability","offline"),calls)
+		self.assertIn(("base/123/controls/availability","offline"),calls)
 
 	def test_log_formatter_has_readable_colored_status_markers(self) -> None:
 		formatter=AddonLogFormatter(color=True)

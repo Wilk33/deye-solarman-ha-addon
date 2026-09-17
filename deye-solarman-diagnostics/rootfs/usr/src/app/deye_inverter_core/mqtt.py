@@ -4,6 +4,7 @@ import json
 import logging
 import ssl
 import threading
+from contextlib import contextmanager
 from typing import Any
 
 import paho.mqtt.client as mqtt
@@ -24,6 +25,10 @@ class MqttPublisher:
 		self.origin={"name":"SolarMan Diagnostics","sw_version":"2.0.0","support_url":"https://github.com/Wilk33/deye-solarman-ha-addon"}
 		self._connected=threading.Event()
 		self._connection_error: str | None=None
+		self._session_lock=threading.RLock()
+		self._discovery_lock=threading.RLock()
+		self._needs_reconnect=False
+		self._closed=False
 		self._client=mqtt.Client(mqtt.CallbackAPIVersion.VERSION2,client_id=config.client_id)
 		self._client.on_connect=self._on_connect
 		self._client.on_disconnect=self._on_disconnect
@@ -31,13 +36,18 @@ class MqttPublisher:
 		self._control_topics={}
 		self._control_discovery={}
 		self._client.on_message=self._on_control_message
-		self._client.will_set(self.control_base()+"/availability","offline",retain=True)
+		self._client.will_set(self.availability_topic(),"offline",retain=True)
 		if config.tls:
 			self._client.tls_set(cert_reqs=ssl.CERT_REQUIRED)
 		if config.username:
 			self._client.username_pw_set(config.username, config.password)
 
 	def connect(self) -> None:
+		with self._session_lock:
+			self._closed=False
+			self._open_session_locked(reconnect=False)
+
+	def _open_session_locked(self, *, reconnect: bool) -> None:
 		self._connected.clear()
 		self._connection_error=None
 		LOGGER.info(
@@ -48,55 +58,82 @@ class MqttPublisher:
 			self._config.source,
 			self._config.tls,
 		)
-		self._client.connect(self._config.host, self._config.port, 60)
+		if reconnect:
+			self._client.reconnect()
+		else:
+			self._client.connect(self._config.host, self._config.port, 60)
 		self._client.loop_start()
 		if not self._connected.wait(timeout=10):
+			self._needs_reconnect=True
 			raise ConnectionError("MQTT broker did not confirm the connection within 10 seconds")
 		if self._connection_error:
+			self._needs_reconnect=True
 			raise ConnectionError(self._connection_error)
+		self._needs_reconnect=False
 
 	def disconnect(self) -> None:
-		try:
-			self._publish_confirmed(self.control_base()+"/availability","offline",True,"control availability")
-			self._client.loop_stop()
-			self._client.disconnect()
-		except Exception:
-			pass
+		with self._session_lock:
+			for topic,kind in (
+				(self.control_base()+"/availability","control availability"),
+				(self.availability_topic(),"process availability"),
+			):
+				try:
+					self._publish_confirmed(topic,"offline",True,kind)
+				except Exception:
+					pass
+			try:
+				self._client.loop_stop()
+				self._client.disconnect()
+			except Exception:
+				pass
+			self._closed=True
+			self._needs_reconnect=False
+
+	@contextmanager
+	def discovery_transaction(self):
+		with self._discovery_lock:
+			yield
 
 	def publish_discovery(self, sensor: SensorDefinition) -> None:
-		topic=self.discovery_topic(sensor.key)
-		state_topic=self.state_topic(sensor)
-		attributes_topic=f"{state_topic}/attributes"
-		payload: dict[str, Any]={
-			"origin":self.origin,
-			"name": sensor.name,
-			"state_topic": state_topic,
-			"unique_id": f"deye_solarman_{self._inverter.serial_number}_{sensor.key}",
-			"object_id": f"deye_solarman_{self._inverter.serial_number}_{sensor.key}",
-			"json_attributes_topic": attributes_topic,
-			"availability_topic": self.sensor_availability_topic(sensor),
-			"device": {
-				"identifiers": [f"deye_solarman_{self._inverter.serial_number}"],
-				"name": self._inverter.name,
-				"manufacturer": self._inverter.manufacturer,
-				"model": self._inverter.model,
-				"serial_number": self._inverter.serial_number,
-			},
-		}
-		if sensor.category:
-			payload["entity_category"]=sensor.category
-		if sensor.unit:
-			payload["unit_of_measurement"]=sensor.unit
-		if sensor.device_class:
-			payload["device_class"]=sensor.device_class
-		if sensor.state_class:
-			payload["state_class"]=sensor.state_class
-		if sensor.icon:
-			payload["icon"]=sensor.icon
-		self._publish_confirmed(topic,json.dumps(payload),self._config.retain,"discovery")
+		with self._discovery_lock:
+			topic=self.discovery_topic(sensor.key)
+			state_topic=self.state_topic(sensor)
+			attributes_topic=f"{state_topic}/attributes"
+			payload: dict[str, Any]={
+				"origin":self.origin,
+				"name": sensor.name,
+				"state_topic": state_topic,
+				"unique_id": f"deye_solarman_{self._inverter.serial_number}_{sensor.key}",
+				"object_id": f"deye_solarman_{self._inverter.serial_number}_{sensor.key}",
+				"json_attributes_topic": attributes_topic,
+				"availability":[
+					{"topic":self.availability_topic()},
+					{"topic":self.sensor_availability_topic(sensor)},
+				],
+				"availability_mode":"all",
+				"device": {
+					"identifiers": [f"deye_solarman_{self._inverter.serial_number}"],
+					"name": self._inverter.name,
+					"manufacturer": self._inverter.manufacturer,
+					"model": self._inverter.model,
+					"serial_number": self._inverter.serial_number,
+				},
+			}
+			if sensor.category:
+				payload["entity_category"]=sensor.category
+			if sensor.unit:
+				payload["unit_of_measurement"]=sensor.unit
+			if sensor.device_class:
+				payload["device_class"]=sensor.device_class
+			if sensor.state_class:
+				payload["state_class"]=sensor.state_class
+			if sensor.icon:
+				payload["icon"]=sensor.icon
+			self._publish_confirmed(topic,json.dumps(payload),self._config.retain,"discovery")
 
 	def remove_discovery(self, sensor_key: str) -> None:
-		self._publish_confirmed(self.discovery_topic(sensor_key),"",True,"discovery removal")
+		with self._discovery_lock:
+			self._publish_confirmed(self.discovery_topic(sensor_key),"",True,"discovery removal")
 
 	def discovery_topic(self, sensor_key: str) -> str:
 		return (
@@ -121,6 +158,9 @@ class MqttPublisher:
 		suffix=sensor.topic_suffix or sensor.key
 		return f"{self._config.base_topic}/{self._inverter.serial_number}/{suffix}"
 
+	def availability_topic(self) -> str:
+		return f"{self._config.base_topic}/{self._inverter.serial_number}/availability"
+
 	def sensor_availability_topic(self,sensor: SensorDefinition) -> str:
 		return f"{self.state_topic(sensor)}/availability"
 
@@ -144,7 +184,8 @@ class MqttPublisher:
 			success(LOGGER,"MQTT connection confirmed")
 			for topic in self._control_topics:
 				_client.subscribe(topic,qos=0)
-			_client.publish(self.control_base()+"/availability","online",retain=True)
+			_client.publish(self.availability_topic(),"online",retain=True,qos=1)
+			_client.publish(self.control_base()+"/availability","online",retain=True,qos=1)
 		else:
 			self._connection_error=f"MQTT broker rejected the connection reason={reason_code}"
 			LOGGER.error(self._connection_error)
@@ -179,7 +220,9 @@ class MqttPublisher:
 		return f"{self._config.discovery_prefix}/{component(definition)}/deye_solarman_{self._inverter.serial_number}_{definition['key']}/config"
 
 	def remove_control_discovery(self, definition: dict) -> None:
-		self._publish_confirmed(self.control_discovery_topic(definition),"",True,"control removal")
+		with self._discovery_lock:
+			self._publish_confirmed(self.control_discovery_topic(definition),"",True,"control removal")
+			self._control_discovery.pop(definition["key"],None)
 
 	def publish_control_discovery(self, entry: dict, result: dict) -> None:
 		from .controls import CONTROLS, component
@@ -192,7 +235,7 @@ class MqttPublisher:
 			"name":settings["name"],"unique_id":f"deye_solarman_{self._inverter.serial_number}_{key}",
 			"state_topic":base+"/state","command_topic":self.control_command_topic(key),"json_attributes_topic":base+"/attributes",
 			"retain":False,"optimistic":False,"entity_category":"config","icon":settings["icon"],
-			"availability":[{"topic":self.control_base()+"/availability"},{"topic":f"{self.control_base()}/{key}/availability"}],"availability_mode":"all",
+			"availability":[{"topic":self.availability_topic()},{"topic":self.control_base()+"/availability"},{"topic":f"{self.control_base()}/{key}/availability"}],"availability_mode":"all",
 			"device":{"identifiers":[f"deye_solarman_{self._inverter.serial_number}"],"name":self._inverter.name,"manufacturer":self._inverter.manufacturer,"model":self._inverter.model},
 		}
 		kind=component(definition)
@@ -207,9 +250,10 @@ class MqttPublisher:
 		else:
 			payload.update(min=19,max=19,pattern=r"[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}")
 		encoded=json.dumps(payload)
-		if self._control_discovery.get(key) != encoded:
-			self._publish_confirmed(self.control_discovery_topic(definition),encoded,True,"control discovery")
-			self._control_discovery[key]=encoded
+		with self._discovery_lock:
+			if self._control_discovery.get(key) != encoded:
+				self._publish_confirmed(self.control_discovery_topic(definition),encoded,True,"control discovery")
+				self._control_discovery[key]=encoded
 
 	def publish_control_state(self, entry: dict, result: dict) -> None:
 		base=f"{self.control_base()}/{entry['key']}"
@@ -235,18 +279,24 @@ class MqttPublisher:
 			LOGGER.warning("MQTT disconnected reason=%s",reason_code)
 
 	def _publish_confirmed(self, topic: str, payload: str, retain: bool, kind: str) -> None:
-		try:
-			info=self._client.publish(topic,payload,retain=retain,qos=1)
-			if hasattr(info,"wait_for_publish"):
-				info.wait_for_publish(timeout=10)
-				if not info.is_published():
-					raise ConnectionError(f"MQTT {kind} publish timed out topic={topic}")
-		except Exception:
-			# Stop this client's retry loop. The runtime reconnect path creates a
-			# fresh network session without retaining a failed pending send queue.
-			self._client.disconnect()
-			self._client.loop_stop()
-			raise
+		with self._session_lock:
+			if self._closed:
+				raise ConnectionError("MQTT publisher is closed")
+			if self._needs_reconnect:
+				self._open_session_locked(reconnect=True)
+			try:
+				info=self._client.publish(topic,payload,retain=retain,qos=1)
+				if hasattr(info,"wait_for_publish"):
+					info.wait_for_publish(timeout=10)
+					if not info.is_published():
+						raise ConnectionError(f"MQTT {kind} publish timed out topic={topic}")
+			except Exception:
+				self._needs_reconnect=True
+				try:
+					self._client.disconnect()
+				finally:
+					self._client.loop_stop()
+				raise
 		if self.detailed_logs:
 			success(LOGGER,"MQTT %s published topic=%s retain=%s",kind,topic,retain)
 		else:

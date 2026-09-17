@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from contextlib import nullcontext
+from copy import deepcopy
+from dataclasses import dataclass
 import logging
 import threading
 import time
@@ -96,7 +98,9 @@ class SensorRuntime:
 		self.scan_report_file=scan_report_file
 		self.emit_scan_report=emit_scan_report
 		self.clock=clock
+		self._configuration_lock=threading.RLock()
 		self._state_lock=threading.RLock()
+		self._generation=0
 		self._stop=threading.Event()
 		self._wake={slot.transport_id:threading.Event() for slot in manager.available()}
 		self._threads: list[threading.Thread]=[]
@@ -121,19 +125,26 @@ class SensorRuntime:
 	def worker_ids(self) -> tuple[str,...]:
 		return tuple(slot.transport_id for slot in self.manager.available())
 
-	def reload(self,sensors: list[SensorDefinition]) -> None:
-		for sensor in sensors:
-			self.state.setdefault(sensor.key,SensorState())
-		for slot in self.manager.available():
-			selected=tuple(sensor for sensor in sensors if sensor.enabled and sensor.transport == slot.transport_id)
-			self._sensors[slot.transport_id]=selected
-			self._schedulers[slot.transport_id].sync(selected,now=self.clock())
-			self._wake[slot.transport_id].set()
+	def reload(self,sensors: list[SensorDefinition], *, reset_state: bool=False) -> None:
+		with self._configuration_lock:
+			self._generation+=1
+			with self._state_lock:
+				for sensor in sensors:
+					current=self.state.setdefault(sensor.key,SensorState())
+					if reset_state:
+						current.last_read_at=0
+						current.last_published_value=None
+			for slot in self.manager.available():
+				selected=tuple(sensor for sensor in sensors if sensor.enabled and sensor.transport == slot.transport_id)
+				self._sensors[slot.transport_id]=selected
+				self._schedulers[slot.transport_id].sync(selected,now=self.clock())
+				self._wake[slot.transport_id].set()
 
 	def start(self) -> None:
 		if self._threads:
 			return
 		for transport_id in self.worker_ids:
+			self._wake[transport_id].clear()
 			thread=threading.Thread(
 				target=self._worker_loop,
 				args=(transport_id,),
@@ -148,58 +159,144 @@ class SensorRuntime:
 		for event in self._wake.values():
 			event.set()
 		for thread in self._threads:
-			thread.join(timeout=5)
+			thread.join()
 		self._threads=[]
 
 	def run_once(self,transport_id: str,now: float | None=None) -> list[dict[str,Any]] | None:
 		try:
-			report=self._workers[transport_id].run_due(now)
+			batch=self._workers[transport_id].run_due(now)
 		except Exception as error:
 			for sensor in self._sensors.get(transport_id,()):
-				self._publish_sensor_availability(sensor,False)
+				self._safe_sensor_availability(sensor,False)
 			if self.detailed_logs:
 				LOGGER.exception("Transport worker failed transport=%s",transport_id)
 			else:
 				LOGGER.warning("Transport worker failed transport=%s error=%s",transport_id,error)
 			return None
-		if report is None:
+		if batch is None:
 			return None
-		with self._state_lock:
-			self._reports[transport_id]=report
-			if self.state_file:
-				save_state(self.state_file,self.state)
-			if self.emit_scan_report and self.scan_report_file:
-				combined=[item for slot in self.manager.available() for item in self._reports.get(slot.transport_id,[])]
-				save_scan_report(self.scan_report_file,combined)
-		return report
+		if not self._commit_batch(transport_id,batch):
+			self._schedulers[transport_id].make_due((sensor.key for sensor in batch.sensors),now=self.clock())
+			return None
+		return batch.report
 
 	def _read_callback(self,slot: TransportSlot):
 		def read(client: RegisterTransport,sensors: tuple[SensorDefinition,...],mark_attempted: Any):
-			return run_iteration(
+			with self._configuration_lock:
+				generation=self._generation
+				current={sensor.key:sensor for sensor in self._sensors.get(slot.transport_id,())}
+				definitions_current=all(current.get(sensor.key) == sensor for sensor in sensors)
+			with self._state_lock:
+				local_state={sensor.key:deepcopy(self.state.setdefault(sensor.key,SensorState())) for sensor in sensors}
+			if not definitions_current:
+				return _SensorBatch(generation,sensors,[],local_state)
+			mqtt=_GenerationMqtt(self,generation)
+			report=run_iteration(
 				list(sensors),
-				self.state,
+				local_state,
 				client,
-				self.mqtt,
+				mqtt,
 				slot.polling,
 				self.emit_raw_topics,
 				detailed_logs=self.detailed_logs,
 				force=True,
 				mark_attempted=mark_attempted,
+				should_stop=self._stop.is_set,
 			)
+			return _SensorBatch(generation,sensors,report,local_state)
 		return read
 
 	def _worker_loop(self,transport_id: str) -> None:
 		wake=self._wake[transport_id]
 		while not self._stop.is_set():
 			wake.clear()
-			self.run_once(transport_id)
+			try:
+				self.run_once(transport_id)
+			except Exception:
+				LOGGER.exception("Unexpected sensor worker failure transport=%s",transport_id)
+			if self._stop.is_set():
+				break
 			wait=self._workers[transport_id].wait_time()
 			wake.wait(wait)
 
-	def _publish_sensor_availability(self,sensor: SensorDefinition,available: bool) -> None:
+	def _safe_sensor_availability(self,sensor: SensorDefinition,available: bool) -> None:
 		callback=getattr(self.mqtt,"sensor_availability",None)
 		if callback is not None:
-			callback(sensor,available)
+			try:
+				callback(sensor,available)
+			except Exception as error:
+				LOGGER.warning("MQTT sensor availability failed sensor=%s error=%s",sensor.key,error)
+
+	def _publish_if_current(self,generation: int,sensor: SensorDefinition,action: Any) -> bool:
+		with self._configuration_lock:
+			if generation != self._generation:
+				return False
+			current=next((item for item in self._sensors.get(sensor.transport,()) if item.key == sensor.key),None)
+			if current != sensor:
+				return False
+			action()
+			return True
+
+	def _commit_batch(self,transport_id: str,batch: "_SensorBatch") -> bool:
+		with self._configuration_lock:
+			current={sensor.key:sensor for sensor in self._sensors.get(transport_id,())}
+			if batch.generation != self._generation or any(current.get(sensor.key) != sensor for sensor in batch.sensors):
+				return False
+			with self._state_lock:
+				self.state.update(batch.state)
+				self._reports[transport_id]=deepcopy(batch.report)
+				state_snapshot=deepcopy(self.state)
+				report_snapshot=[
+					deepcopy(item)
+					for slot in self.manager.available()
+					for item in self._reports.get(slot.transport_id,[])
+				]
+			if self.state_file:
+				try:
+					save_state(self.state_file,state_snapshot)
+				except Exception as error:
+					LOGGER.warning("Runtime state save failed file=%s error=%s",self.state_file,error)
+			if self.emit_scan_report and self.scan_report_file:
+				try:
+					save_scan_report(self.scan_report_file,report_snapshot)
+				except Exception as error:
+					LOGGER.warning("Runtime scan report save failed file=%s error=%s",self.scan_report_file,error)
+			return True
+
+
+@dataclass(slots=True)
+class _SensorBatch:
+	generation: int
+	sensors: tuple[SensorDefinition,...]
+	report: list[dict[str,Any]]
+	state: dict[str,SensorState]
+
+
+class _GenerationMqtt:
+	def __init__(self,runtime: SensorRuntime,generation: int) -> None:
+		self.runtime=runtime
+		self.generation=generation
+
+	def publish_state(self,sensor: SensorDefinition,value: Any,attributes: dict[str,Any]) -> None:
+		self.runtime._publish_if_current(
+			self.generation,
+			sensor,
+			lambda:self.runtime.mqtt.publish_state(sensor,value,attributes),
+		)
+
+	def publish_raw(self,sensor: SensorDefinition,raw_registers: list[int]) -> None:
+		self.runtime._publish_if_current(
+			self.generation,
+			sensor,
+			lambda:self.runtime.mqtt.publish_raw(sensor,raw_registers),
+		)
+
+	def sensor_availability(self,sensor: SensorDefinition,available: bool) -> None:
+		self.runtime._publish_if_current(
+			self.generation,
+			sensor,
+			lambda:self.runtime.mqtt.sensor_availability(sensor,available),
+		)
 
 
 def main(solarman_factory: TransportFactory,rs485_factory: TransportFactory) -> None:
@@ -294,15 +391,24 @@ def _run_addon(
 		while True:
 			if change_event.wait(0.25):
 				change_event.clear()
-				sensors=_load_runtime_sensors(config,state)
-				_publish_sensor_configuration(config,mqtt,sensors,state)
-				sensor_runtime.reload(sensors)
+				sensors=_load_runtime_sensors(config)
+				sensor_runtime.reload(sensors,reset_state=True)
+				try:
+					_publish_sensor_configuration(config,mqtt,sensors,state,reset_state=False)
+				except Exception as error:
+					LOGGER.warning("MQTT sensor configuration refresh failed: %s",error)
 				control_runtime=ControlRuntime(control_service,mqtt,manager) if control_service is not None else None
 				if control_runtime is not None:
-					control_runtime.start()
+					try:
+						control_runtime.start()
+					except Exception as error:
+						LOGGER.warning("MQTT control configuration refresh failed: %s",error)
 				success(LOGGER,"Applied updated panel configuration without reconnecting transports or MQTT")
 			if control_runtime is not None:
-				control_runtime.tick()
+				try:
+					control_runtime.tick()
+				except Exception as error:
+					LOGGER.warning("Control runtime tick failed: %s",error)
 	except KeyboardInterrupt:
 		LOGGER.info("Stopping add-on")
 	finally:
@@ -326,15 +432,16 @@ def _probe_transports(manager: TransportManager) -> None:
 			LOGGER.warning("Startup probe failed transport=%s error=%s",slot.transport_id,error)
 
 
-def _load_runtime_sensors(config: Any,state: dict[str,SensorState]) -> list[SensorDefinition]:
+def _load_runtime_sensors(config: Any,state: dict[str,SensorState] | None=None) -> list[SensorDefinition]:
 	sensors=load_sensor_definitions(
 		config.profiles.default_profile,
 		config.profiles.overrides_file,
 		config.scan.detected_sensors_file,
 		config.profiles.custom_sensors_file,
 	)
-	for sensor in sensors:
-		state.setdefault(sensor.key,SensorState())
+	if state is not None:
+		for sensor in sensors:
+			state.setdefault(sensor.key,SensorState())
 	success(
 		LOGGER,
 		"Sensor configuration loaded total=%s enabled=%s selected_file=%s",
@@ -345,20 +452,29 @@ def _load_runtime_sensors(config: Any,state: dict[str,SensorState]) -> list[Sens
 	return sensors
 
 
-def _publish_sensor_configuration(config: Any,mqtt: MqttPublisher,sensors: list[SensorDefinition],state: dict[str,SensorState]) -> None:
-	removal_paths={config.scan.detected_sensors_file,config.profiles.custom_sensors_file}
-	pending=sorted({key for path in removal_paths for key in load_pending_discovery_removals(path)})
-	for sensor_key in pending:
-		mqtt.remove_discovery(sensor_key)
-	if pending:
-		for path in removal_paths:
-			clear_pending_discovery_removals(path)
-		success(LOGGER,"Removed MQTT Discovery entities=%s",len(pending))
-	for sensor in (item for item in sensors if item.enabled):
-		mqtt.publish_discovery(sensor)
-		mqtt.sensor_availability(sensor,False)
-		state[sensor.key].last_read_at=0
-		state[sensor.key].last_published_value=None
+def _publish_sensor_configuration(
+	config: Any,
+	mqtt: MqttPublisher,
+	sensors: list[SensorDefinition],
+	state: dict[str,SensorState],
+	*,
+	reset_state: bool=True,
+) -> None:
+	with mqtt.discovery_transaction():
+		removal_paths={config.scan.detected_sensors_file,config.profiles.custom_sensors_file}
+		pending=sorted({key for path in removal_paths for key in load_pending_discovery_removals(path)})
+		for sensor_key in pending:
+			mqtt.remove_discovery(sensor_key)
+		if pending:
+			for path in removal_paths:
+				clear_pending_discovery_removals(path)
+			success(LOGGER,"Removed MQTT Discovery entities=%s",len(pending))
+		for sensor in (item for item in sensors if item.enabled):
+			mqtt.publish_discovery(sensor)
+			mqtt.sensor_availability(sensor,False)
+			if reset_state:
+				state[sensor.key].last_read_at=0
+				state[sensor.key].last_published_value=None
 
 
 def _run_scan(config: Any,remote_catalog: RemoteCatalog,manager: TransportManager) -> list[dict[str,Any]]:
@@ -478,6 +594,7 @@ def run_iteration(
 	*,
 	force: bool=False,
 	mark_attempted: Any | None=None,
+	should_stop: Any | None=None,
 ) -> list[dict[str, Any]]:
 	report: list[dict[str, Any]]=[]
 	failed_groups=0
@@ -487,6 +604,8 @@ def run_iteration(
 	groups=group_sensors_for_read(direct_sensors, polling)
 
 	for index, group in enumerate(groups):
+		if should_stop is not None and should_stop():
+			break
 		group_start=min(register for sensor in group for register in sensor.registers)
 		group_end=max(register for sensor in group for register in sensor.registers)
 		count=group_end-group_start+1
@@ -545,6 +664,8 @@ def run_iteration(
 		raise ConnectionError("All due Solarman register groups failed; reconnecting")
 
 	for sensor in formula_sensors:
+		if should_stop is not None and should_stop():
+			break
 		try:
 			start=time.perf_counter()
 			with read_lock if read_lock is not None else nullcontext():
