@@ -504,7 +504,8 @@ def _apply_runtime_configuration_until_success(
 					control_runtime.activate()
 				sensor_runtime.reload(sensors,reset_state=reset_state)
 				return control_runtime
-			return configuration.apply(apply)
+			with configuration.locked():
+				return apply()
 		except Exception as error:
 			if disable is not None:
 				disable(mqtt)

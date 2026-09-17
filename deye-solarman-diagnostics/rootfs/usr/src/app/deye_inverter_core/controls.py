@@ -269,12 +269,81 @@ class ControlService:
 			if not self.path.exists():
 				return {}
 			data=json.loads(self.path.read_text(encoding="utf-8"))
-			published=set(data.get("published",[]))
-			return {
+			tracked=set(data.get("published",[]))|set(data.get("pending_published",[]))
+			stored=data.get("published_definitions",{})
+			definitions={
+				key:definition
+				for key,definition in stored.items()
+				if key in tracked and isinstance(definition,dict)
+			} if isinstance(stored,dict) else {}
+			definitions.update({
 				entry["key"]:entry["definition"]
 				for entry in data.get("available_sensors",[])
-				if entry.get("key") in published and isinstance(entry.get("definition"),dict)
-			}
+				if entry.get("key") in tracked and isinstance(entry.get("definition"),dict)
+			})
+			return definitions
+
+	def tracked_discovery_keys(self) -> list[str]:
+		with self.lock:
+			data=self.load()
+			return list(dict.fromkeys(data.get("published",[])+data.get("pending_published",[])))
+
+	def remember_published_definitions(self,definitions: dict[str,dict]) -> None:
+		with self.lock:
+			data=self.load()
+			tracked=set(data.get("published",[]))|set(data.get("pending_published",[]))
+			stored=data.get("published_definitions",{})
+			stored=dict(stored) if isinstance(stored,dict) else {}
+			before=deepcopy(stored)
+			for key in tracked:
+				if key in definitions and isinstance(definitions[key],dict):
+					stored.setdefault(key,deepcopy(definitions[key]))
+			if stored != before:
+				data["published_definitions"]=stored
+				self.store(data)
+
+	def begin_discovery_publish(self,key: str,definition: dict) -> None:
+		with self.lock:
+			data=self.load()
+			published=list(dict.fromkeys(data.get("published",[])))
+			pending=list(dict.fromkeys(data.get("pending_published",[])))
+			if key not in published and key not in pending:
+				pending.append(key)
+			stored=data.get("published_definitions",{})
+			stored=dict(stored) if isinstance(stored,dict) else {}
+			stored[key]=deepcopy(definition)
+			data["published"]=published
+			data["pending_published"]=pending
+			data["published_definitions"]=stored
+			self.store(data)
+
+	def confirm_discovery_publish(self,key: str,definition: dict) -> None:
+		with self.lock:
+			data=self.load()
+			published=list(dict.fromkeys(data.get("published",[])))
+			if key not in published:
+				published.append(key)
+			data["published"]=published
+			data["pending_published"]=[item for item in data.get("pending_published",[]) if item != key]
+			stored=data.get("published_definitions",{})
+			stored=dict(stored) if isinstance(stored,dict) else {}
+			stored[key]=deepcopy(definition)
+			data["published_definitions"]=stored
+			self.store(data)
+
+	def confirm_discovery_removal(self,key: str) -> None:
+		with self.lock:
+			data=self.load()
+			data["published"]=[item for item in data.get("published",[]) if item != key]
+			data["pending_published"]=[item for item in data.get("pending_published",[]) if item != key]
+			stored=data.get("published_definitions",{})
+			stored=dict(stored) if isinstance(stored,dict) else {}
+			stored.pop(key,None)
+			if stored:
+				data["published_definitions"]=stored
+			else:
+				data.pop("published_definitions",None)
+			self.store(data)
 
 	def store(self, data: dict) -> None:
 		with self.lock:
@@ -590,18 +659,17 @@ class ControlRuntime:
 			context=transaction(self.mqtt) if transaction is not None else nullcontext()
 			with context:
 				previous_definitions=self.service.published_definitions()
-				data=self.service.load()
-				for key in data.get("published",[]):
+				self.service.remember_published_definitions(previous_definitions)
+				for key in self.service.tracked_discovery_keys():
 					definition=CONTROLS.get(key) or RETIRED_CONTROLS.get(key) or previous_definitions.get(key)
 					if key not in self.enabled and definition:
 						self.mqtt.remove_control_discovery(definition)
-				# Persist before publication so interrupted starts can remove retained entries later.
-				with self.service.lock:
-					data=self.service.load()
-					data["published"]=list(self.enabled)
-					self.service.store(data)
+						self.service.confirm_discovery_removal(key)
 				self._initialize_controls()
-		self.service.configuration_action(prepare)
+		coordinator=self.service.configuration_coordinator
+		configuration_context=coordinator.locked() if coordinator is not None else nullcontext()
+		with configuration_context:
+			prepare()
 		if activate:
 			self.activate()
 
@@ -630,7 +698,9 @@ class ControlRuntime:
 				continue
 			result={**result,"transport":transport_id}
 			if result["write_allowed"]:
+				self.service.begin_discovery_publish(key,entry["definition"])
 				self.mqtt.publish_control_discovery(entry,result)
+				self.service.confirm_discovery_publish(key,entry["definition"])
 			self.mqtt.publish_control_state(entry,result)
 			self.last_value[key]=result["value"]
 			self.last_publish[key]=now

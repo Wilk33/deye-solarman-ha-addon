@@ -461,6 +461,117 @@ class RuntimeTests(unittest.TestCase):
 			self.assertLess(last_offline,last_activate)
 			self.assertLess(last_activate,last_reload)
 
+	def test_confirmed_control_discovery_survives_failed_next_publish_and_can_be_removed(self) -> None:
+		from deye_inverter_core import main as runtime_main
+		from deye_inverter_core.controls import ControlService
+
+		class StopRetry(BaseException):
+			pass
+
+		with tempfile.TemporaryDirectory() as directory:
+			root=Path(directory)
+			detected=root/"detected.yaml"
+			custom=root/"custom.yaml"
+			controls=ControlService(str(root/"controls.json"),None,threading.Lock(),0)
+			first=controls.entry("control_inverter_enabled")
+			second=controls.entry("control_off_grid_mode")
+			for entry in (first,second):
+				entry["monitor"]=True
+				entry["last_scan"]={"status":"supported"}
+			controls.store({"available_sensors":[first,second],"published":[]})
+			coordinator=ConfigurationCoordinator([detected,custom,controls.path])
+			controls.configuration_coordinator=coordinator
+			controls.configuration_action=coordinator.apply
+			manager=TransportManager([TransportSlot(
+				RuntimeTransport("solarman_tcp",{80:1,179:0}),
+				make_polling(),
+				10,
+			)])
+			config=SimpleNamespace(
+				scan=SimpleNamespace(detected_sensors_file=str(detected)),
+				profiles=SimpleNamespace(custom_sensors_file=str(custom)),
+			)
+			class PartialMqtt:
+				def __init__(self):
+					self.publish_calls=0
+					self.removed=[]
+
+				def disable_control_commands(self):
+					pass
+
+				@contextmanager
+				def discovery_transaction(self):
+					yield
+
+				def publish_control_discovery(self,entry,result):
+					self.publish_calls+=1
+					if self.publish_calls == 2:
+						raise ConnectionError("second retained publish failed")
+					if self.publish_calls == 3:
+						raise StopRetry()
+
+				def remove_control_discovery(self,definition):
+					self.removed.append(definition["key"])
+
+				def publish_control_state(self,entry,result):
+					pass
+
+				def control_availability(self,key,available):
+					pass
+
+				def configure_controls(self,handler,keys):
+					pass
+
+				def publish_discovery(self,sensor):
+					pass
+
+				def sensor_availability(self,sensor,available):
+					pass
+
+			class SensorRuntimeProbe:
+				def reload(self,sensors, *, reset_state=False):
+					pass
+			mqtt=PartialMqtt()
+
+			with patch.object(runtime_main,"_load_runtime_sensors",return_value=[]),patch.object(
+				runtime_main.time,
+				"sleep",
+			):
+				with self.assertRaises(StopRetry):
+					runtime_main._apply_runtime_configuration_until_success(
+						config,
+						mqtt,
+						SensorRuntimeProbe(),
+						{},
+						coordinator,
+						manager,
+						controls,
+						reset_state=True,
+					)
+
+			self.assertEqual(controls.load()["published"],[first["key"]])
+			self.assertEqual(controls.load()["pending_published"],[second["key"]])
+			data=controls.load()
+			for entry in data["available_sensors"]:
+				entry["monitor"]=False
+			controls.store(data)
+			mqtt.publish_calls=3
+			with patch.object(runtime_main,"_load_runtime_sensors",return_value=[]):
+				runtime_main._apply_runtime_configuration_until_success(
+					config,
+					mqtt,
+					SensorRuntimeProbe(),
+					{},
+					coordinator,
+					manager,
+					controls,
+					reset_state=True,
+				)
+
+			self.assertEqual(mqtt.removed,[first["key"],second["key"]])
+			self.assertEqual(controls.load()["published"],[])
+			self.assertEqual(controls.load()["pending_published"],[])
+
 	def test_worker_iteration_marks_each_group_and_formula_before_physical_read(self) -> None:
 		events=[]
 		class OrderedTransport(RuntimeTransport):
