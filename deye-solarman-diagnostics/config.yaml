@@ -6,6 +6,7 @@ url: "https://github.com/Wilk33/deye-solarman-ha-addon"
 services:
   - mqtt:need
 init: false
+uart: true
 ingress: true
 ingress_port: 8099
 ingress_entry: /

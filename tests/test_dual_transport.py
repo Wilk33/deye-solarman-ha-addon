@@ -9,11 +9,15 @@ import yaml
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/"packages"))
+sys.path.insert(0,str(ROOT/"apps/deye-solarman/src"))
 
 from deye_inverter_core.config import load_config
 from deye_inverter_core.models import Rs485Config
 from deye_inverter_core.models import SolarmanConfig
 from deye_inverter_core.models import TransportPollingConfig
+from deye_solarman_diagnostics.rs485 import ModbusRtuTransport
+from deye_inverter_core.transport import TransportConnectionClosedError
+from deye_inverter_core.transport import TransportProtocolError
 
 
 def make_common_options() -> dict[str,object]:
@@ -67,6 +71,67 @@ def load_options(options: dict[str,object]):
 		path=Path(directory)/"options.json"
 		path.write_text(json.dumps(options),encoding="utf-8")
 		return load_config(path)
+
+
+def make_rs485_config() -> Rs485Config:
+	return Rs485Config(
+		enabled=True,
+		device="/dev/ttyUSB1",
+		baudrate=19200,
+		bytesize=8,
+		parity="N",
+		stopbits=1,
+		modbus_id=17,
+		timeout=1.5,
+		reconnect_delay=7,
+		polling=TransportPollingConfig(**make_polling()),
+	)
+
+
+class FakeModbusResponse:
+	def __init__(self, *, registers: list[int] | None=None, error: bool=False) -> None:
+		self.registers=registers
+		self._error=error
+
+	def isError(self) -> bool:
+		return self._error
+
+
+class FakeModbusSerialClient:
+	def __init__(self, *, connect_result: bool=True) -> None:
+		self.connected=False
+		self.connect_result=connect_result
+		self.close_calls=0
+		self.read_calls: list[dict[str,object]]=[]
+		self.write_calls: list[dict[str,object]]=[]
+		self.read_response=FakeModbusResponse(registers=[101,202])
+		self.write_response=FakeModbusResponse()
+
+	def connect(self) -> bool:
+		self.connected=self.connect_result
+		return self.connect_result
+
+	def close(self) -> None:
+		self.close_calls+=1
+		self.connected=False
+
+	def read_holding_registers(self, **kwargs: object) -> FakeModbusResponse:
+		self.read_calls.append(kwargs)
+		return self.read_response
+
+	def write_registers(self, **kwargs: object) -> FakeModbusResponse:
+		self.write_calls.append(kwargs)
+		return self.write_response
+
+
+class RecordingModbusClientFactory:
+	def __init__(self, clients: list[FakeModbusSerialClient]) -> None:
+		self.clients=clients
+		self.calls: list[dict[str,object]]=[]
+
+	def __call__(self, **kwargs: object) -> FakeModbusSerialClient:
+		self.calls.append(kwargs)
+		return self.clients[len(self.calls)-1]
 
 
 class DualTransportConfigTests(unittest.TestCase):
@@ -224,6 +289,125 @@ class DualTransportConfigTests(unittest.TestCase):
 		self.assertEqual(addon["schema"]["rs485"]["device"],"device(subsystem=tty)")
 		self.assertIn("polling",addon["schema"]["solarman"])
 		self.assertIn("polling",addon["schema"]["rs485"])
+
+
+class ModbusRtuTransportTests(unittest.TestCase):
+	def test_connect_uses_serial_configuration_without_library_retries(self) -> None:
+		client=FakeModbusSerialClient()
+		factory=RecordingModbusClientFactory([client])
+		transport=ModbusRtuTransport(make_rs485_config(),client_factory=factory)
+
+		transport.connect()
+
+		self.assertEqual(
+			factory.calls,
+			[{
+				"port": "/dev/ttyUSB1",
+				"baudrate": 19200,
+				"bytesize": 8,
+				"parity": "N",
+				"stopbits": 1,
+				"timeout": 1.5,
+				"retries": 0,
+			}],
+		)
+		self.assertEqual(transport.transport_id,"modbus_rtu")
+
+	def test_read_returns_register_list_and_passes_device_id(self) -> None:
+		client=FakeModbusSerialClient()
+		transport=ModbusRtuTransport(
+			make_rs485_config(),
+			client_factory=RecordingModbusClientFactory([client]),
+		)
+		transport.connect()
+
+		values=transport.read_holding_registers(10040,2)
+
+		self.assertEqual(values,[101,202])
+		self.assertEqual(
+			client.read_calls,
+			[{"address": 10040,"count": 2,"device_id": 17}],
+		)
+
+	def test_write_uses_one_write_registers_operation_with_device_id(self) -> None:
+		client=FakeModbusSerialClient()
+		transport=ModbusRtuTransport(
+			make_rs485_config(),
+			client_factory=RecordingModbusClientFactory([client]),
+		)
+		transport.connect()
+
+		result=transport.write_holding_registers(128,[25,30])
+
+		self.assertIs(result,client.write_response)
+		self.assertEqual(
+			client.write_calls,
+			[{"address": 128,"values": [25,30],"device_id": 17}],
+		)
+
+	def test_protocol_error_responses_raise_transport_error(self) -> None:
+		client=FakeModbusSerialClient()
+		transport=ModbusRtuTransport(
+			make_rs485_config(),
+			client_factory=RecordingModbusClientFactory([client]),
+		)
+		transport.connect()
+		client.read_response=FakeModbusResponse(error=True)
+
+		with self.assertRaisesRegex(TransportProtocolError,"read holding registers"):
+			transport.read_holding_registers(10040,1)
+
+		client.write_response=FakeModbusResponse(error=True)
+		with self.assertRaisesRegex(TransportProtocolError,"write holding registers"):
+			transport.write_holding_registers(128,[25])
+
+	def test_operations_require_an_active_connection(self) -> None:
+		client=FakeModbusSerialClient()
+		transport=ModbusRtuTransport(
+			make_rs485_config(),
+			client_factory=RecordingModbusClientFactory([client]),
+		)
+
+		with self.assertRaisesRegex(TransportConnectionClosedError,"not connected"):
+			transport.read_holding_registers(10040,1)
+
+		transport.connect()
+		client.connected=False
+		with self.assertRaisesRegex(TransportConnectionClosedError,"connection is closed"):
+			transport.write_holding_registers(128,[25])
+
+	def test_failed_connect_raises_transport_connection_error(self) -> None:
+		client=FakeModbusSerialClient(connect_result=False)
+		transport=ModbusRtuTransport(
+			make_rs485_config(),
+			client_factory=RecordingModbusClientFactory([client]),
+		)
+
+		with self.assertRaisesRegex(TransportConnectionClosedError,"Could not connect"):
+			transport.connect()
+
+		self.assertEqual(client.close_calls,1)
+
+	def test_reconnect_closes_old_client_and_creates_a_new_one(self) -> None:
+		first=FakeModbusSerialClient()
+		second=FakeModbusSerialClient()
+		factory=RecordingModbusClientFactory([first,second])
+		transport=ModbusRtuTransport(make_rs485_config(),client_factory=factory)
+		transport.connect()
+
+		transport.reconnect()
+		transport.read_holding_registers(10040,1)
+
+		self.assertEqual(first.close_calls,1)
+		self.assertEqual(len(factory.calls),2)
+		self.assertEqual(second.read_calls,[{"address": 10040,"count": 1,"device_id": 17}])
+
+	def test_addon_grants_uart_and_pins_pymodbus(self) -> None:
+		addon=yaml.safe_load((ROOT/"deye-solarman-diagnostics/config.yaml").read_text(encoding="utf-8"))
+		requirements=(ROOT/"deye-solarman-diagnostics/rootfs/requirements.txt").read_text(encoding="utf-8").splitlines()
+
+		self.assertIs(addon["uart"],True)
+		self.assertIn("pymodbus==3.14.0",requirements)
 
 
 if __name__ == "__main__":

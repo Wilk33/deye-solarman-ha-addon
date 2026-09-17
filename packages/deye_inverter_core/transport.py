@@ -9,6 +9,10 @@ class TransportConnectionClosedError(ConnectionError):
 	"""The active transport requires a new connection."""
 
 
+class TransportProtocolError(RuntimeError):
+	"""The active transport returned an explicit protocol error."""
+
+
 class RegisterTransport(Protocol):
 	transport_id: str
 
