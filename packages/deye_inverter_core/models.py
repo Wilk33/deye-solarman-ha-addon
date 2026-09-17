@@ -46,7 +46,7 @@ class ProfilesConfig:
 
 
 @dataclass(slots=True)
-class PollingConfig:
+class TransportPollingConfig:
 	default_interval: int
 	slow_interval: int
 	read_message_spacing: float
@@ -56,6 +56,35 @@ class PollingConfig:
 	startup_probe_register: int
 	startup_probe_count: int
 	allow_reconnect: bool
+
+
+PollingConfig=TransportPollingConfig
+
+
+@dataclass(slots=True)
+class SolarmanConfig:
+	enabled: bool
+	host: str
+	port: int
+	serial_number: int
+	modbus_id: int
+	timeout: int
+	reconnect_delay: int
+	polling: TransportPollingConfig
+
+
+@dataclass(slots=True)
+class Rs485Config:
+	enabled: bool
+	device: str
+	baudrate: int
+	bytesize: int
+	parity: str
+	stopbits: float
+	modbus_id: int
+	timeout: float
+	reconnect_delay: int
+	polling: TransportPollingConfig
 
 
 @dataclass(slots=True)
@@ -123,11 +152,19 @@ class SensorState:
 
 @dataclass(slots=True)
 class AppConfig:
-	logger: LoggerConfig
+	solarman: SolarmanConfig
+	rs485: Rs485Config
 	mqtt: MqttConfig
 	inverter: InverterConfig
 	profiles: ProfilesConfig
-	polling: PollingConfig
 	advanced: AdvancedConfig
 	scan: ScanConfig
 	catalog: CatalogConfig
+
+	@property
+	def logger(self) -> SolarmanConfig:
+		return self.solarman
+
+	@property
+	def polling(self) -> TransportPollingConfig:
+		return self.solarman.polling

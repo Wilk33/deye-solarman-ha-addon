@@ -8,11 +8,12 @@ from .models import AdvancedConfig
 from .models import AppConfig
 from .models import CatalogConfig
 from .models import InverterConfig
-from .models import LoggerConfig
 from .models import MqttConfig
-from .models import PollingConfig
 from .models import ProfilesConfig
+from .models import Rs485Config
 from .models import ScanConfig
+from .models import SolarmanConfig
+from .models import TransportPollingConfig
 from .supervisor import discover_mqtt_service
 
 
@@ -24,16 +25,63 @@ def _read_options(path: Path=OPTIONS_PATH) -> dict[str, Any]:
 		return json.load(handle)
 
 
+def _default_polling() -> dict[str, Any]:
+	return {
+		"default_interval": 60,
+		"slow_interval": 600,
+		"read_message_spacing": 0.05,
+		"batch_gap": 1,
+		"max_registers_per_request": 20,
+		"publish_unchanged_every": 900,
+		"startup_probe_register": 10040,
+		"startup_probe_count": 1,
+		"allow_reconnect": True,
+	}
+
+
+def _parse_polling(polling: dict[str, Any]) -> TransportPollingConfig:
+	return TransportPollingConfig(
+		default_interval=int(polling["default_interval"]),
+		slow_interval=int(polling["slow_interval"]),
+		read_message_spacing=float(polling["read_message_spacing"]),
+		batch_gap=int(polling["batch_gap"]),
+		max_registers_per_request=int(polling["max_registers_per_request"]),
+		publish_unchanged_every=int(polling["publish_unchanged_every"]),
+		startup_probe_register=int(polling["startup_probe_register"]),
+		startup_probe_count=int(polling["startup_probe_count"]),
+		allow_reconnect=bool(polling["allow_reconnect"]),
+	)
+
+
 def load_config(path: Path=OPTIONS_PATH) -> AppConfig:
 	options=_read_options(path)
 
-	logger=options["logger"]
+	legacy_config="solarman" not in options
+	if legacy_config:
+		logger=options["logger"]
+		solarman={**logger,"enabled": True,"polling": options["polling"]}
+	else:
+		solarman=options["solarman"]
+	rs485=options.get(
+		"rs485",
+		{
+			"enabled": False,
+			"device": "/dev/ttyUSB0",
+			"baudrate": 9600,
+			"bytesize": 8,
+			"parity": "N",
+			"stopbits": 1,
+			"modbus_id": 1,
+			"timeout": 1,
+			"reconnect_delay": 10,
+			"polling": _default_polling(),
+		},
+	)
 	mqtt=options["mqtt"]
 	supervisor_mqtt=discover_mqtt_service() if mqtt.get("use_supervisor",True) else None
 	mqtt_connection=supervisor_mqtt or mqtt
 	inverter=options["inverter"]
 	profiles=options["profiles"]
-	polling=options["polling"]
 	advanced=options["advanced"]
 	scan=options.get(
 		"scan",
@@ -59,9 +107,14 @@ def load_config(path: Path=OPTIONS_PATH) -> AppConfig:
 	default_profile=profiles["default_profile"]
 	if isinstance(default_profile, str):
 		default_profile=[default_profile]
-	logger_serial_number=int(logger["serial_number"])
-	if logger_serial_number <= 0:
-		raise ValueError("logger.serial_number must be the positive serial number of the Solarman logger")
+	solarman_enabled=bool(solarman["enabled"])
+	rs485_enabled=bool(rs485["enabled"])
+	if not solarman_enabled and not rs485_enabled:
+		raise ValueError("at least one transport must be enabled")
+	solarman_serial_number=int(solarman["serial_number"])
+	if solarman_enabled and solarman_serial_number <= 0:
+		field="logger.serial_number" if legacy_config else "solarman.serial_number"
+		raise ValueError(f"{field} must be the positive serial number of the Solarman logger")
 	if scan["mode"] not in {"disabled","scan_only","scan_and_monitor"}:
 		raise ValueError("scan.mode must be disabled, scan_only, or scan_and_monitor")
 	if not 1 <= int(scan["bms_pack_count"]) <= 10:
@@ -70,13 +123,27 @@ def load_config(path: Path=OPTIONS_PATH) -> AppConfig:
 		raise ValueError("catalog.timeout must be between 1 and 30")
 
 	return AppConfig(
-		logger=LoggerConfig(
-			host=logger["host"],
-			port=int(logger["port"]),
-			serial_number=logger_serial_number,
-			modbus_id=int(logger["modbus_id"]),
-			timeout=int(logger["timeout"]),
-			reconnect_delay=int(logger["reconnect_delay"]),
+		solarman=SolarmanConfig(
+			enabled=solarman_enabled,
+			host=str(solarman["host"]),
+			port=int(solarman["port"]),
+			serial_number=solarman_serial_number,
+			modbus_id=int(solarman["modbus_id"]),
+			timeout=int(solarman["timeout"]),
+			reconnect_delay=int(solarman["reconnect_delay"]),
+			polling=_parse_polling(solarman["polling"]),
+		),
+		rs485=Rs485Config(
+			enabled=rs485_enabled,
+			device=str(rs485["device"]),
+			baudrate=int(rs485["baudrate"]),
+			bytesize=int(rs485["bytesize"]),
+			parity=str(rs485["parity"]).upper(),
+			stopbits=float(rs485["stopbits"]),
+			modbus_id=int(rs485["modbus_id"]),
+			timeout=float(rs485["timeout"]),
+			reconnect_delay=int(rs485["reconnect_delay"]),
+			polling=_parse_polling(rs485["polling"]),
 		),
 		mqtt=MqttConfig(
 			host=mqtt_connection["host"],
@@ -102,17 +169,6 @@ def load_config(path: Path=OPTIONS_PATH) -> AppConfig:
 			custom_sensors_file=profiles.get("custom_sensors_file","/config/custom_sensors.yaml"),
 			state_file=profiles["state_file"],
 			scan_report_file=profiles["scan_report_file"],
-		),
-		polling=PollingConfig(
-			default_interval=int(polling["default_interval"]),
-			slow_interval=int(polling["slow_interval"]),
-			read_message_spacing=float(polling["read_message_spacing"]),
-			batch_gap=int(polling["batch_gap"]),
-			max_registers_per_request=int(polling["max_registers_per_request"]),
-			publish_unchanged_every=int(polling["publish_unchanged_every"]),
-			startup_probe_register=int(polling["startup_probe_register"]),
-			startup_probe_count=int(polling["startup_probe_count"]),
-			allow_reconnect=bool(polling["allow_reconnect"]),
 		),
 		advanced=AdvancedConfig(
 			emit_raw_topics=bool(advanced["emit_raw_topics"]),
