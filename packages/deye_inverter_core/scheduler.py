@@ -10,6 +10,7 @@ from .models import SensorDefinition
 
 
 MonotonicClock=Callable[[],float]
+SensorPredicate=Callable[[SensorDefinition],bool]
 _MODEL_DEFAULT_READ_EVERY=SensorDefinition.__dataclass_fields__["read_every"].default
 
 
@@ -40,15 +41,35 @@ class PerEntityScheduler:
 
 	@property
 	def next_due(self) -> float | None:
-		with self._lock:
-			return min(self._next_due.values(),default=None)
+		return self.next_due_for()
 
-	def due(self, now: float | None=None) -> tuple[SensorDefinition,...]:
+	def next_due_for(self, predicate: SensorPredicate | None=None) -> float | None:
+		with self._lock:
+			return min(
+				(
+					deadline
+					for key,deadline in self._next_due.items()
+					if predicate is None or predicate(self._sensors[key])
+				),
+				default=None,
+			)
+
+	def due(
+		self,
+		now: float | None=None,
+		*,
+		predicate: SensorPredicate | None=None,
+	) -> tuple[SensorDefinition,...]:
 		current=self._clock() if now is None else now
 		cutoff=current+self._coalescing_window
 		with self._lock:
 			keys=sorted(
-				(key for key,deadline in self._next_due.items() if deadline <= cutoff),
+				(
+					key
+					for key,deadline in self._next_due.items()
+					if deadline <= cutoff
+					and (predicate is None or predicate(self._sensors[key]))
+				),
 				key=lambda key:(self._next_due[key],key),
 			)
 			return tuple(self._sensors[key] for key in keys)
@@ -73,9 +94,14 @@ class PerEntityScheduler:
 			self._sensors=active
 			self._next_due={key:preserved.get(key,current) for key in active}
 
-	def wait_time(self, now: float | None=None) -> float | None:
+	def wait_time(
+		self,
+		now: float | None=None,
+		*,
+		predicate: SensorPredicate | None=None,
+	) -> float | None:
 		current=self._clock() if now is None else now
-		deadline=self.next_due
+		deadline=self.next_due_for(predicate)
 		if deadline is None:
 			return None
 		return max(0.0,deadline-current)

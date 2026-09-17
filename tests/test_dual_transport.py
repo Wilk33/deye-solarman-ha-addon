@@ -28,6 +28,7 @@ from deye_inverter_core.models import SolarmanConfig
 from deye_inverter_core.models import TransportPollingConfig
 from deye_inverter_core.scan_catalog import ScanCandidate
 from deye_inverter_core.scheduler import PerEntityScheduler
+from deye_inverter_core.scheduler import group_sensors_for_read
 from deye_inverter_core.scanner import save_detected_sensors
 from deye_inverter_core.scanner import _read_error_status
 from deye_inverter_core.scanner import load_detected_sensors
@@ -1079,6 +1080,47 @@ class PerEntitySchedulerTests(unittest.TestCase):
 
 
 class TransportWorkerTests(unittest.TestCase):
+	def test_worker_marks_only_groups_reported_as_attempted_before_connection_error(self) -> None:
+		clock=ManualClock(30.0)
+		slot=make_transport_slot("solarman_tcp",reconnect_delay=7)
+		manager=RecordingTransportManager([slot],clock=clock)
+		first=make_runtime_sensor("first",read_every=5)
+		first.registers=[10040]
+		second=make_runtime_sensor("second",read_every=5)
+		second.registers=[10050]
+		scheduler=PerEntityScheduler([first,second],slot.polling,clock=clock)
+		def read_first_group_then_fail(client, sensors, mark_attempted):
+			groups=group_sensors_for_read(list(sensors),slot.polling)
+			self.assertEqual([[sensor.key for sensor in group] for group in groups],[["first"],["second"]])
+			mark_attempted(sensor.key for sensor in groups[0])
+			raise TransportConnectionClosedError("connection lost after first group")
+		worker=TransportWorker(manager,slot,scheduler,read_first_group_then_fail,clock=clock)
+
+		with self.assertRaisesRegex(TransportConnectionClosedError,"connection lost after first group"):
+			worker.run_due(clock())
+
+		self.assertEqual([sensor.key for sensor in scheduler.due(30.0)],["second"])
+		self.assertEqual([sensor.key for sensor in scheduler.due(34.9)],["second"])
+		self.assertEqual([sensor.key for sensor in scheduler.due(35.0)],["second","first"])
+
+	def test_worker_wait_time_ignores_due_sensor_from_another_transport(self) -> None:
+		clock=ManualClock()
+		slot=make_transport_slot("solarman_tcp")
+		manager=RecordingTransportManager([slot],clock=clock)
+		own=make_runtime_sensor("own",transport="solarman_tcp",read_every=5)
+		foreign=make_runtime_sensor("foreign",transport="modbus_rtu",read_every=1)
+		scheduler=PerEntityScheduler([own,foreign],slot.polling,clock=clock)
+		scheduler.mark_read("own",clock())
+		worker=TransportWorker(
+			manager,
+			slot,
+			scheduler,
+			lambda client,sensors,mark_attempted: None,
+			clock=clock,
+		)
+
+		self.assertEqual(worker.wait_time(clock()),5.0)
+
 	def test_workers_keep_independent_transport_deadlines(self) -> None:
 		clock=ManualClock()
 		solarman_slot=make_transport_slot("solarman_tcp",default_interval=5)
@@ -1095,7 +1137,8 @@ class TransportWorkerTests(unittest.TestCase):
 			clock=clock,
 		)
 		reads: list[tuple[str,tuple[str,...]]]=[]
-		def read(client, sensors):
+		def read(client, sensors, mark_attempted):
+			mark_attempted(sensor.key for sensor in sensors)
 			reads.append((client.transport_id,tuple(sensor.key for sensor in sensors)))
 		solarman_worker=TransportWorker(manager,solarman_slot,solarman_scheduler,read,clock=clock)
 		rs485_worker=TransportWorker(manager,rs485_slot,rs485_scheduler,read,clock=clock)
@@ -1123,7 +1166,8 @@ class TransportWorkerTests(unittest.TestCase):
 		rs485=make_runtime_sensor("rs485",transport="modbus_rtu",read_every=5)
 		scheduler=PerEntityScheduler([solarman,rs485],solarman_slot.polling,clock=clock)
 		read_calls=[]
-		def fail(client, sensors):
+		def fail(client, sensors, mark_attempted):
+			mark_attempted(sensor.key for sensor in sensors)
 			read_calls.append((client.transport_id,tuple(sensor.key for sensor in sensors)))
 			raise TimeoutError("read timeout")
 		worker=TransportWorker(manager,solarman_slot,scheduler,fail,clock=clock)
@@ -1145,7 +1189,8 @@ class TransportWorkerTests(unittest.TestCase):
 				manager=RecordingTransportManager([slot],clock=clock)
 				sensor=make_runtime_sensor("sensor",read_every=2)
 				scheduler=PerEntityScheduler([sensor],slot.polling,clock=clock)
-				def read(client, sensors):
+				def read(client, sensors, mark_attempted):
+					mark_attempted(sensor.key for sensor in sensors)
 					clock.advance(0.5)
 					if error is not None:
 						raise error
@@ -1175,7 +1220,7 @@ class TransportWorkerTests(unittest.TestCase):
 			manager,
 			slot,
 			scheduler,
-			lambda client,sensors: reads.append(tuple(item.key for item in sensors)),
+			lambda client,sensors,mark_attempted: reads.append(tuple(item.key for item in sensors)),
 			clock=clock,
 		)
 
