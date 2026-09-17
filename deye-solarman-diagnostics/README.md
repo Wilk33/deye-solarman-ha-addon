@@ -2,7 +2,7 @@
 
 Dodatek Home Assistant OS do diagnostycznego, lokalnego odczytu falownika Deye przez logger Solarman TCP. Publikuje wybrane odczyty przez MQTT Discovery.
 
-Wersja `1.3.0` dodaje wspólny rejestr właścicieli encji w `/share/entity_owners.json`. Sensory i sterowanie zachowują wspólne tematy stanu oraz identyfikatory Home Assistant. Zajęte encje pokazują właściciela w Ingress i nie można ich jednocześnie włączyć w drugim adapterze korzystającym z rejestru. Mapa 119 encji sterowania pochodzi z profilu Sunsynk `three_phase_lv`. Szczegóły: [Encje sterowania](CONTROL_ENTITIES.md).
+Wersja `1.3.1` dodaje przełącznik szczegółowych logów oraz usuwa cztery nieużywane definicje sterowania. Sensory i sterowanie zachowują wspólne tematy stanu oraz identyfikatory Home Assistant. Mapa 115 encji sterowania pochodzi z profilu Sunsynk `three_phase_lv`. Szczegóły: [Encje sterowania](CONTROL_ENTITIES.md).
 
 Dodatek jest przeznaczony jako wolniejsza sciezka diagnostyczna i uzupelnienie bezposredniej integracji RS485, na przyklad `Sunsynk or Deye Inverter add-on (multi)`. Nie zastepuje kanalu RS485.
 

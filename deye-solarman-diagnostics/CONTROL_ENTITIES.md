@@ -1,6 +1,6 @@
 # Sterowanie
 
-Wersja 1.3.0 udostępnia zakładkę Ingress: **Sterowanie**. Ma osobny wynik skanu i wybór MQTT. Używa wyglądu, filtrów i układu kart znanych z zakładki Sensory.
+Wersja 1.3.1 udostępnia zakładkę Ingress: **Sterowanie**. Ma osobny wynik skanu i wybór MQTT. Używa wyglądu, filtrów i układu kart znanych z zakładki Sensory.
 
 ## Obsługa
 
@@ -15,7 +15,7 @@ Można zmienić nazwę, ikonę, interwał odczytu, interwał ponownej publikacji
 
 ## Mapa i pochodzenie
 
-Katalog zawiera **119 encji** profilu `three_phase_lv`, bez powielania aliasów. Kanoniczna mapa jest w `catalogs/models/deye_sg04_sg05_3ph_lv/control.yaml`; używa składni JSON zgodnej z YAML. Pakowanie kopiuje ją wraz z indeksem i sumą SHA-256 do danych wspólnego rdzenia. Źródło zostało przypięte do commita `e2466b6505c1990aced1f18c12a42ded638aee9b` projektu kellerza/sunsynk:
+Katalog zawiera **115 encji** profilu `three_phase_lv`, bez powielania aliasów. Nie zawiera `US version grounding fault`, `Grid Standard`, `Configured Grid Phases` ani `Allow Remote`. Kanoniczna mapa jest w `catalogs/models/deye_sg04_sg05_3ph_lv/control.yaml`; używa składni JSON zgodnej z YAML. Pakowanie kopiuje ją wraz z indeksem i sumą SHA-256 do danych wspólnego rdzenia. Źródło zostało przypięte do commita `e2466b6505c1990aced1f18c12a42ded638aee9b` projektu kellerza/sunsynk:
 
 - [Profil trójfazowy wspólny](https://github.com/kellerza/sunsynk/blob/e2466b6505c1990aced1f18c12a42ded638aee9b/src/sunsynk/definitions/three_phase_common.py).
 - [Profil trójfazowy LV](https://github.com/kellerza/sunsynk/blob/e2466b6505c1990aced1f18c12a42ded638aee9b/src/sunsynk/definitions/three_phase_lv.py).

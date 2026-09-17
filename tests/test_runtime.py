@@ -4,7 +4,9 @@ import json
 import logging
 import sys
 import tempfile
+import threading
 import unittest
+from types import SimpleNamespace
 from urllib.request import Request
 from urllib.request import urlopen
 from pathlib import Path
@@ -26,6 +28,7 @@ from deye_inverter_core.formula import FormulaError
 from deye_inverter_core.formula import FormulaExecutor
 from deye_inverter_core.main import _handle_sensor
 from deye_inverter_core.main import _is_due
+from deye_inverter_core.main import _run_addon
 from deye_inverter_core.main import run_iteration
 from deye_inverter_core.logging_utils import AddonLogFormatter
 from deye_inverter_core.logging_utils import SUCCESS
@@ -375,6 +378,17 @@ class RuntimeTests(unittest.TestCase):
 
 		self.assertEqual(config.profiles.default_profile, ["deye_battery_packs"])
 		self.assertEqual(config.scan.mode, "disabled")
+		self.assertFalse(config.advanced.detailed_logs)
+
+	def test_config_enables_detailed_logs_explicitly(self) -> None:
+		options=make_options()
+		options["advanced"]["detailed_logs"]=True
+		with tempfile.TemporaryDirectory() as directory:
+			options_path=Path(directory) / "options.json"
+			options_path.write_text(json.dumps(options), encoding="utf-8")
+			config=load_config(options_path)
+
+		self.assertTrue(config.advanced.detailed_logs)
 
 	def test_config_accepts_manual_scan_options(self) -> None:
 		options=make_options()
@@ -985,6 +999,56 @@ class RuntimeTests(unittest.TestCase):
 		self.assertIn("[ OK  ] main",formatter.format(record))
 		self.assertIn("\033[33m",formatter.format(warning))
 		self.assertIn("[WARN ] main",formatter.format(warning))
+
+	def test_closed_tcp_session_omits_register_range_in_normal_logs(self) -> None:
+		sensor=SensorDefinition("voltage","Voltage",[10040],"uint16")
+		with self.assertLogs("deye_inverter_core.main",logging.WARNING) as logs:
+			with self.assertRaises(SolarmanConnectionClosedError):
+				run_iteration([sensor],{"voltage":SensorState()},ClosedSolarman(),FakeMqtt(),make_polling(),False)
+
+		self.assertEqual(logs.output,["WARNING:deye_inverter_core.main:Solarman TCP session closed; reconnecting"])
+
+	def test_closed_tcp_session_includes_register_range_in_detailed_logs(self) -> None:
+		sensor=SensorDefinition("voltage","Voltage",[10040],"uint16")
+		with self.assertLogs("deye_inverter_core.main",logging.WARNING) as logs:
+			with self.assertRaises(SolarmanConnectionClosedError):
+				run_iteration([sensor],{"voltage":SensorState()},ClosedSolarman(),FakeMqtt(),make_polling(),False,detailed_logs=True)
+
+		self.assertEqual(logs.output,["WARNING:deye_inverter_core.main:Solarman TCP session closed start=10040 count=1; reconnecting"])
+
+	def test_closed_tcp_session_omits_cycle_traceback_in_normal_logs(self) -> None:
+		class ProbeThenClosed:
+			def __init__(self) -> None:
+				self.reads=0
+
+			def connect(self) -> None:
+				pass
+
+			def close(self) -> None:
+				pass
+
+			def read_holding_registers(self, _register: int, _count: int) -> list[int]:
+				self.reads+=1
+				if self.reads == 1:
+					return [528]
+				raise SolarmanConnectionClosedError("Connection closed on read")
+
+		config=SimpleNamespace(
+			profiles=SimpleNamespace(default_profile="ignored",overrides_file="ignored",detected_sensors_file="ignored",custom_sensors_file="ignored",state_file="ignored",scan_report_file="ignored"),
+			polling=SimpleNamespace(default_interval=60,allow_reconnect=False,startup_probe_register=10040,startup_probe_count=1),
+			advanced=SimpleNamespace(emit_raw_topics=False,emit_scan_report=False,detailed_logs=False),
+			logger=SimpleNamespace(reconnect_delay=10),
+			scan=SimpleNamespace(mode="disabled",detected_sensors_file="ignored"),
+			mqtt=SimpleNamespace(discovery_prefix="homeassistant"),
+			inverter=SimpleNamespace(serial_number="2507092018"),
+		)
+		sensor=SensorDefinition("voltage","Voltage",[10040],"uint16")
+		transport=ProbeThenClosed()
+		with patch("deye_inverter_core.main.load_sensor_definitions",return_value=[sensor]),patch("deye_inverter_core.main.MqttPublisher"),self.assertLogs("deye_inverter_core.main",logging.WARNING) as logs:
+			with self.assertRaises(SolarmanConnectionClosedError):
+				_run_addon(config,threading.Lock(),None,lambda _config:transport)
+
+		self.assertEqual(logs.output,["WARNING:deye_inverter_core.main:Solarman TCP session closed; reconnecting"])
 
 	def test_invalid_state_file_is_ignored_and_replaced_safely(self) -> None:
 		with tempfile.TemporaryDirectory() as directory:

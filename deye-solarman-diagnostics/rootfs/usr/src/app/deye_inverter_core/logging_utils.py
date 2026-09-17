@@ -45,8 +45,8 @@ def success(logger: logging.Logger, message: str, *args: object) -> None:
 	logger.log(SUCCESS,message,*args)
 
 
-def configure_logging() -> None:
+def configure_logging(detailed: bool=False) -> None:
 	color=os.environ.get("DEYE_LOG_COLOR","true").lower() not in {"0","false","no"}
 	handler=logging.StreamHandler()
 	handler.setFormatter(AddonLogFormatter(color))
-	logging.basicConfig(level=logging.INFO,handlers=[handler],force=True)
+	logging.basicConfig(level=logging.DEBUG if detailed else logging.INFO,handlers=[handler],force=True)

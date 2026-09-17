@@ -1,8 +1,8 @@
 # Deye Solarman HA Add-on
 
-Wersja `1.3.0` dodatku Home Assistant OS do lokalnej komunikacji z falownikiem Deye przez logger Solarman TCP. Dodatek odczytuje telemetrię oraz aktualne ustawienia, pozwala zweryfikować ich dostępność w panelu Ingress i publikuje wybrane sensory oraz encje sterowania przez MQTT Discovery.
+Wersja `1.3.1` dodatku Home Assistant OS do lokalnej komunikacji z falownikiem Deye przez logger Solarman TCP. Dodatek odczytuje telemetrię oraz aktualne ustawienia, pozwala zweryfikować ich dostępność w panelu Ingress i publikuje wybrane sensory oraz encje sterowania przez MQTT Discovery.
 
-Zakładka **Sterowanie** korzysta ze 119 definicji profilu Sunsynk `three_phase_lv`. Skan wyłącznie odczytuje stan. Pola nieznane i definicje bez potwierdzonego zakresu mają blokadę zapisu. Dopiero komenda wysłana przez wybraną encję MQTT zmienia ustawienie. Szczegóły, źródła mapy i zasady walidacji opisuje [instrukcja encji sterowania](deye-solarman-diagnostics/CONTROL_ENTITIES.md).
+Zakładka **Sterowanie** korzysta ze 115 definicji profilu Sunsynk `three_phase_lv`. Skan wyłącznie odczytuje stan. Pola nieznane i definicje bez potwierdzonego zakresu mają blokadę zapisu. Dopiero komenda wysłana przez wybraną encję MQTT zmienia ustawienie. Szczegóły, źródła mapy i zasady walidacji opisuje [instrukcja encji sterowania](deye-solarman-diagnostics/CONTROL_ENTITIES.md).
 
 ## Wspólna własność encji od 1.3.0
 
@@ -152,6 +152,7 @@ polling:
 advanced:
   emit_raw_topics: true
   emit_scan_report: true
+  detailed_logs: false
 
 scan:
   mode: disabled
@@ -171,6 +172,14 @@ catalog:
 `mqtt.use_supervisor: true` jest zalecanym ustawieniem HAOS. Dodatek pobiera host, port, TLS, uzytkownika i haslo z uslugi `mqtt` Supervisora, dlatego pola `host`, `port`, `username`, `password` i `tls` w formularzu stanowia tylko zapasowa konfiguracje reczna.
 
 Ustaw `mqtt.use_supervisor: false` wylacznie dla brokera zewnetrznego. Wtedy uzupelnij pola recznie. Haslo nie jest wypisywane w logach.
+
+### Szczegółowe logi
+
+`advanced.detailed_logs` ma domyślnie wartość `false`. W tym trybie dodatek zapisuje komunikaty potrzebne do normalnej eksploatacji, ale pomija debugowanie i pojedyncze potwierdzenia każdej publikacji MQTT.
+
+Przy zamknięciu sesji TCP normalny log zawiera tylko `Solarman TCP session closed; reconnecting` i informację o czasie oczekiwania. Nie zawiera zakresu rejestrów ani tracebacku, ponieważ jest to oczekiwany przypadek obsługiwany przez mechanizm ponownego połączenia.
+
+Ustaw `advanced.detailed_logs: true`, gdy diagnozujesz problem. Wtedy log zawiera komunikaty DEBUG, potwierdzenia każdej publikacji MQTT, zakresy odczytywanych rejestrów oraz pełne tracebacki błędów. Zmiana wymaga ponownego uruchomienia dodatku.
 
 ### Harmonogram i publikacja
 

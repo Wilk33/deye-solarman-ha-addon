@@ -63,6 +63,7 @@ polling:
 advanced:
   emit_raw_topics: true
   emit_scan_report: true
+  detailed_logs: false
 
 scan:
   mode: disabled
@@ -114,6 +115,12 @@ Domyslnie `use_supervisor: true` pobiera host, port, TLS oraz dane logowania MQT
 
 Ustaw `use_supervisor: false` tylko wtedy, gdy broker MQTT znajduje sie poza Home Assistant lub swiadomie chcesz uzyc innych danych. W takim przypadku uzupelnij `host`, `port`, `username`, `password` oraz opcjonalnie `tls`. Hasla nie sa wyswietlane w logach.
 
+### Szczegółowe logi
+
+`advanced.detailed_logs` jest domyślnie `false`. W tym trybie dodatek pomija debugowanie i pojedyncze potwierdzenia publikacji MQTT. Zamknięcie sesji Solarman TCP zapisuje zwięzły warning `Solarman TCP session closed; reconnecting`, bez zakresu rejestrów i tracebacku.
+
+Ustaw `advanced.detailed_logs: true` wyłącznie podczas diagnozy. Wtedy log zawiera DEBUG, potwierdzenia każdej publikacji MQTT, zakresy rejestrów oraz pełne tracebacki. Po zmianie uruchom dodatek ponownie.
+
 ## Panel konfiguracji Ingress
 
 Po aktualizacji do wersji `0.3.4` Home Assistant pokazuje w panelu bocznym pozycje `Deye Solarman`. Jest to lokalny panel Ingress dodatku, dostepny bez mapowania portu na siec domowa.
@@ -133,7 +140,7 @@ Panel umozliwia:
 
 Wersja `0.3.4` zapisuje kazde zadanie panelu w logu dodatku, na przyklad `Ingress request method=GET path=/api/sensors` albo `Ingress request method=POST path=/api/scan`. Dodatkowo konsola przegladarki zapisuje wpisy zaczynajace sie od `[Deye Solarman]` z adresem Ingress, metoda zadania i kodem odpowiedzi.
 
-Przy starcie MQTT log powinien zawierac `Using MQTT service credentials supplied by Home Assistant Supervisor`, `Sensor configuration loaded`, `MQTT connection confirmed`, `Publishing MQTT Discovery` i po jednym wpisie `MQTT discovery published` dla kazdej wybranej encji. Brak tych wpisow jednoznacznie wskazuje etap, na ktorym konfiguracja nie przechodzi do Home Assistant.
+Przy starcie MQTT log powinien zawierac `Using MQTT service credentials supplied by Home Assistant Supervisor`, `Sensor configuration loaded`, `MQTT connection confirmed` i `Publishing MQTT Discovery`. Przy `advanced.detailed_logs: true` pojawia sie dodatkowo po jednym wpisie `MQTT discovery published` dla kazdej wybranej encji.
 
 Wersja `0.4.0` rozpoznaje `Connection closed on read` i `Connection already closed` jako utrate sesji Solarman. Zamiast kontynuowac nieskuteczne odczyty, zamyka klienta i po `logger.reconnect_delay` nawiazuje nowe polaczenie. Temperatura w Discovery jest publikowana z jednostka `°C`, wymagana dla `device_class: temperature`. Wersja `0.6.0` formatuje log jako krotkie wiersze ze znacznikami `[OK]`, `[WARN]`, `[ERROR]` i `[INFO]`; odpowiednio zielonym, ciemno-zoltym, czerwonym i domyslnym kolorem terminala. Aby calkowicie wylaczyc ANSI, ustaw zmienna srodowiskowa `DEYE_LOG_COLOR=false`.
 

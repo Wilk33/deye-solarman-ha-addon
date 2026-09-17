@@ -37,12 +37,13 @@ def owned_operation(kind: str | None=None, removal: bool=False):
 
 
 class MqttPublisher:
-	def __init__(self, config: MqttConfig, inverter: InverterConfig, ownership: EntityOwnership | None=None) -> None:
+	def __init__(self, config: MqttConfig, inverter: InverterConfig, ownership: EntityOwnership | None=None, detailed_logs: bool=False) -> None:
 		self._config=config
 		self._inverter=inverter
 		self.ownership=ownership
+		self.detailed_logs=detailed_logs
 		self.source=ownership.source if ownership else "solarman_tcp"
-		self.origin={"name":ownership.name if ownership else "Deye Solarman Local","sw_version":"1.3.0","support_url":"https://github.com/Wilk33/deye-solarman-ha-addon"}
+		self.origin={"name":ownership.name if ownership else "Deye Solarman Local","sw_version":"1.3.1","support_url":"https://github.com/Wilk33/deye-solarman-ha-addon"}
 		self._connected=threading.Event()
 		self._connection_error: str | None=None
 		self._client=mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=config.client_id+"-"+self.source)
@@ -266,4 +267,7 @@ class MqttPublisher:
 			self._client.disconnect()
 			self._client.loop_stop()
 			raise
-		success(LOGGER,"MQTT %s published topic=%s retain=%s",kind,topic,retain)
+		if self.detailed_logs:
+			success(LOGGER,"MQTT %s published topic=%s retain=%s",kind,topic,retain)
+		else:
+			LOGGER.debug("MQTT %s published topic=%s retain=%s",kind,topic,retain)

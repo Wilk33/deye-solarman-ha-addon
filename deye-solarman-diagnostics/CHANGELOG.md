@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.1
+
+- Remove `US version grounding fault`, `Grid Standard`, `Configured Grid Phases` and `Allow Remote` from the control catalog. Previously published MQTT Discovery entries for these keys are removed during the next runtime start.
+- Add `advanced.detailed_logs`, disabled by default. When disabled, per-message MQTT publication logs and debug rows are suppressed; an expected Solarman TCP close is a compact warning without a traceback. When enabled, the add-on logs debug details, every MQTT publication, register ranges and full tracebacks.
+
 ## 1.3.0
 
 - Add a shared `/share/entity_owners.json` registry with an OS file lock and ownership by inverter serial, MQTT component and canonical key.

@@ -35,7 +35,12 @@ class ArchitectureTests(unittest.TestCase):
 		self.assertEqual(result.returncode,0,result.stdout+result.stderr)
 
 	def test_bundle_checks_transport_and_checksum(self):
-		self.assertEqual(len(load_map("control","solarman_tcp")["commands"]),119)
+		controls=load_map("control","solarman_tcp")["commands"]
+		self.assertEqual(len(controls),115)
+		self.assertFalse(
+			{"control_us_version_grounding_fault","control_grid_standard","control_configured_grid_phases","control_allow_remote"}
+			& {entry["key"] for entry in controls}
+		)
 		with self.assertRaises(ValueError):
 			load_map("telemetry_plus","modbus_rtu")
 		with tempfile.TemporaryDirectory() as directory:
@@ -48,7 +53,7 @@ class ArchitectureTests(unittest.TestCase):
 
 	def test_packaged_runtime_imports_without_repository_sources(self):
 		app=str(ROOT/"deye-solarman-diagnostics/rootfs/usr/src/app")
-		code="import sys; sys.path.insert(0,sys.argv[1]); from deye_solarman_diagnostics.solarman import SolarmanClient; from deye_inverter_core.main import main; from deye_inverter_core.controls import CONTROLS; from deye_inverter_core.catalog import build_live_telemetry; assert len(CONTROLS)==119; assert len(build_live_telemetry())==94"
+		code="import sys; sys.path.insert(0,sys.argv[1]); from deye_solarman_diagnostics.solarman import SolarmanClient; from deye_inverter_core.main import main; from deye_inverter_core.controls import CONTROLS; from deye_inverter_core.catalog import build_live_telemetry; assert len(CONTROLS)==115; assert len(build_live_telemetry())==94"
 		with tempfile.TemporaryDirectory() as directory:
 			result=subprocess.run([sys.executable,"-I","-c",code,app],cwd=directory,capture_output=True,text=True)
 		self.assertEqual(result.returncode,0,result.stdout+result.stderr)

@@ -62,7 +62,11 @@ class ControlTests(unittest.TestCase):
 		return entry
 
 	def test_catalog_profile_counts_and_unique_addresses(self):
-		self.assertEqual(len(CONTROLS),119)
+		self.assertEqual(len(CONTROLS),115)
+		self.assertFalse(
+			{"control_us_version_grounding_fault","control_grid_standard","control_configured_grid_phases","control_allow_remote"}
+			& set(CONTROLS)
+		)
 		self.assertEqual(CONTROLS["control_grid_charge_battery_current"]["registers"],[128])
 		self.assertEqual(CONTROLS["control_battery_1_manufacturer"]["registers"],[229])
 		self.assertEqual(CONTROLS["control_prog1_charge"]["bitmask"],3)
@@ -85,7 +89,7 @@ class ControlTests(unittest.TestCase):
 		with patch.object(self.service,"transport_factory",return_value=client):
 			self.service._scan(lambda:None)
 		self.assertEqual(self.service.job["status"],"completed")
-		self.assertEqual(len(self.service.load()["available_sensors"]),119)
+		self.assertEqual(len(self.service.load()["available_sensors"]),115)
 		self.assertTrue(next(e for e in self.service.load()["available_sensors"] if e["key"] == key)["monitor"])
 		self.assertEqual(client.writes,[])
 
@@ -170,7 +174,7 @@ class ControlTests(unittest.TestCase):
 			self.assertEqual(client.writes,[])
 
 	def test_unverified_definitions_are_read_only_with_raw_preserved(self):
-		for key,register,raw in (("control_min_pv_power_for_gen_start",139,500),("control_grid_standard",182,25),("control_configured_grid_phases",184,1)):
+		for key,register,raw in (("control_min_pv_power_for_gen_start",139,500),):
 			with self.subTest(key=key):
 				client=Registers({register:raw})
 				result=self.service.read(client,key)
@@ -222,13 +226,12 @@ class ControlTests(unittest.TestCase):
 
 	def test_saved_unsafe_discovery_is_removed_and_cannot_receive_commands(self):
 		key="control_configured_grid_phases"
-		entry=self.select(key)
-		self.service.store({"available_sensors":[entry],"published":[key]})
+		self.service.store({"available_sensors":[],"published":[key]})
 		mqtt=Mock()
 		client=Registers({184:1})
 		runtime=ControlRuntime(self.service,mqtt,client)
 		runtime.start()
-		mqtt.remove_control_discovery.assert_called_once_with(CONTROLS[key])
+		self.assertEqual(mqtt.remove_control_discovery.call_args.args[0]["key"],key)
 		runtime.receive(key,"Three Phase",False)
 		runtime.tick()
 		self.assertEqual(client.writes,[])

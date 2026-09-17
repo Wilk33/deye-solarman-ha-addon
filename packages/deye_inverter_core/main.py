@@ -48,6 +48,7 @@ LOGGER=logging.getLogger(__name__)
 def main(transport_factory: TransportFactory, source: str="solarman_tcp", source_name: str="Deye Solarman Local") -> None:
 	configure_logging()
 	config=load_config()
+	configure_logging(config.advanced.detailed_logs)
 	access_lock=threading.Lock()
 	configuration_changed=threading.Event()
 	catalog_lock=threading.Lock()
@@ -127,7 +128,7 @@ def _run_addon(
 			config.scan.detected_sensors_file,
 		)
 		solarman=transport_factory(config.logger)
-		mqtt=MqttPublisher(config.mqtt,config.inverter,ownership=ownership)
+		mqtt=MqttPublisher(config.mqtt,config.inverter,ownership=ownership,detailed_logs=config.advanced.detailed_logs)
 		try:
 			with access_lock:
 				solarman.connect()
@@ -211,6 +212,7 @@ def _run_addon(
 					config.polling,
 					config.advanced.emit_raw_topics,
 					access_lock,
+					config.advanced.detailed_logs,
 				)
 				save_state(config.profiles.state_file, state)
 				if config.advanced.emit_scan_report:
@@ -229,8 +231,13 @@ def _run_addon(
 		except KeyboardInterrupt:
 			LOGGER.info("Stopping add-on")
 			return
-		except Exception:
-			LOGGER.exception("Add-on cycle failed")
+		except Exception as error:
+			if isinstance(error,TransportConnectionClosedError) and not config.advanced.detailed_logs:
+				pass
+			elif config.advanced.detailed_logs:
+				LOGGER.exception("Add-on cycle failed")
+			else:
+				LOGGER.error("Add-on cycle failed: %s",error)
 			if not config.polling.allow_reconnect:
 				raise
 			LOGGER.info("Retrying connection in %s seconds", config.logger.reconnect_delay)
@@ -366,6 +373,7 @@ def run_iteration(
 	polling: PollingConfig,
 	emit_raw_topics: bool,
 	read_lock: Any | None=None,
+	detailed_logs: bool=False,
 ) -> list[dict[str, Any]]:
 	report: list[dict[str, Any]]=[]
 	failed_groups=0
@@ -389,7 +397,10 @@ def run_iteration(
 				values=solarman.read_holding_registers(group_start, count)
 			latency_ms=(time.perf_counter()-start)*1000
 		except TransportConnectionClosedError as error:
-			LOGGER.warning("Solarman TCP session closed start=%s count=%s; reconnecting",group_start,count)
+			if detailed_logs:
+				LOGGER.warning("Solarman TCP session closed start=%s count=%s; reconnecting",group_start,count)
+			else:
+				LOGGER.warning("Solarman TCP session closed; reconnecting")
 			raise error
 		except Exception as exc:
 			LOGGER.warning("Read failed start=%s count=%s error=%s", group_start, count, exc)
@@ -447,7 +458,10 @@ def run_iteration(
 				)
 			)
 		except TransportConnectionClosedError as error:
-			LOGGER.warning("Solarman TCP session closed for formula sensor=%s; reconnecting",sensor.key)
+			if detailed_logs:
+				LOGGER.warning("Solarman TCP session closed for formula sensor=%s; reconnecting",sensor.key)
+			else:
+				LOGGER.warning("Solarman TCP session closed; reconnecting")
 			raise error
 		except Exception as error:
 			LOGGER.warning("Formula read failed sensor=%s error=%s",sensor.key,error)

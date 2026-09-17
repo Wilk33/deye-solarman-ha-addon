@@ -115,6 +115,7 @@ def load_config(path: Path=OPTIONS_PATH) -> AppConfig:
 		advanced=AdvancedConfig(
 			emit_raw_topics=bool(advanced["emit_raw_topics"]),
 			emit_scan_report=bool(advanced["emit_scan_report"]),
+			detailed_logs=bool(advanced.get("detailed_logs",False)),
 		),
 		scan=ScanConfig(
 			mode=scan["mode"],

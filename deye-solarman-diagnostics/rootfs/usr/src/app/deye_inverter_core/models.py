@@ -62,6 +62,7 @@ class PollingConfig:
 class AdvancedConfig:
 	emit_raw_topics: bool
 	emit_scan_report: bool
+	detailed_logs: bool=False
 
 
 @dataclass(slots=True)

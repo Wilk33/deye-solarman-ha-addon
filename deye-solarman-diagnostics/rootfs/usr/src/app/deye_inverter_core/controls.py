@@ -19,6 +19,12 @@ from .catalog_bundle import load_map
 LOGGER=logging.getLogger(__name__)
 CATALOG=load_map("control","solarman_tcp")
 CONTROLS={entry["key"]: entry for entry in CATALOG["commands"]}
+RETIRED_CONTROLS={
+	"control_us_version_grounding_fault":{"key":"control_us_version_grounding_fault","method":"SelectRWSensor"},
+	"control_grid_standard":{"key":"control_grid_standard","method":"SelectRWSensor"},
+	"control_configured_grid_phases":{"key":"control_configured_grid_phases","method":"SelectRWSensor"},
+	"control_allow_remote":{"key":"control_allow_remote","method":"SelectRWSensor"},
+}
 
 
 def component(entry: dict) -> str:
@@ -366,8 +372,9 @@ class ControlRuntime:
 	def start(self) -> None:
 		data=self.service.load()
 		for key in data.get("published",[]):
-			if key not in self.enabled and key in CONTROLS:
-				self.mqtt.remove_control_discovery(CONTROLS[key])
+			definition=CONTROLS.get(key) or RETIRED_CONTROLS.get(key)
+			if key not in self.enabled and definition:
+				self.mqtt.remove_control_discovery(definition)
 		self.mqtt.configure_controls(self.receive,list(self.enabled))
 		# Persist before publication so interrupted starts can remove retained entries later.
 		with self.ownership.registry.locked() if self.ownership else nullcontext():

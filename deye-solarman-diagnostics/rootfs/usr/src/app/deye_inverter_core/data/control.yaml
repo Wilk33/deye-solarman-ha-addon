@@ -1596,21 +1596,6 @@
       }
     },
     {
-      "key": "control_us_version_grounding_fault",
-      "name": "US version grounding fault",
-      "registers": [
-        178
-      ],
-      "method": "SelectRWSensor",
-      "factor": 1,
-      "unit": "",
-      "bitmask": 49152,
-      "options": {
-        "32768": "Disable",
-        "49152": "Enable"
-      }
-    },
-    {
       "key": "control_generator_ac_couple_frz_high",
       "name": "Generator AC Couple Frz High",
       "registers": [
@@ -1802,35 +1787,6 @@
       "shift": 10
     },
     {
-      "key": "control_grid_standard",
-      "name": "Grid Standard",
-      "registers": [
-        182
-      ],
-      "method": "SelectRWSensor",
-      "factor": 1,
-      "unit": "",
-      "bitmask": 0,
-      "options": {
-        "0": "Generic",
-        "1": "IEEE1547",
-        "2": "RULE21",
-        "3": "SRD_UL1741",
-        "4": "CEI_0_21",
-        "5": "EN50549_CZ",
-        "6": "AS4777_A",
-        "7": "AS4777_B",
-        "8": "AS4777_C",
-        "9": "AS4777_NewZealand",
-        "10": "VDE4105",
-        "11": "OVE_Directive_R25",
-        "12": "EN50549_CZ_PPDS_L16A"
-      },
-      "raw_only": true,
-      "read_only": true,
-      "read_only_reason": "Mapa standardów sieci niepotwierdzona dla tego firmware. RAW/UNKNOWN, bez zapisu."
-    },
-    {
       "key": "control_configured_grid_frequency",
       "name": "Configured Grid Frequency",
       "registers": [
@@ -1844,25 +1800,6 @@
         "0": "50Hz",
         "1": "60Hz"
       }
-    },
-    {
-      "key": "control_configured_grid_phases",
-      "name": "Configured Grid Phases",
-      "registers": [
-        184
-      ],
-      "method": "SelectRWSensor",
-      "factor": 1,
-      "unit": "",
-      "bitmask": 0,
-      "options": {
-        "0": "Three Phase",
-        "1": "Single Phase",
-        "2": "Split Phase"
-      },
-      "raw_only": true,
-      "read_only": true,
-      "read_only_reason": "Kody konfiguracji faz niepotwierdzone dla tego firmware. RAW/UNKNOWN, bez zapisu."
     },
     {
       "key": "control_time_synchronization",
@@ -1926,22 +1863,6 @@
         "64": "No work",
         "128": "Disable",
         "192": "Enable"
-      }
-    },
-    {
-      "key": "control_allow_remote",
-      "name": "Allow Remote",
-      "registers": [
-        228
-      ],
-      "method": "SelectRWSensor",
-      "factor": 1,
-      "unit": "",
-      "bitmask": 49152,
-      "options": {
-        "16384": "No work",
-        "32768": "Disable",
-        "49152": "Enable"
       }
     },
     {
