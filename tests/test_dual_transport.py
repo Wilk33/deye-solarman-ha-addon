@@ -27,6 +27,7 @@ from deye_inverter_core.models import Rs485Config
 from deye_inverter_core.models import SolarmanConfig
 from deye_inverter_core.models import TransportPollingConfig
 from deye_inverter_core.scan_catalog import ScanCandidate
+from deye_inverter_core.scheduler import PerEntityScheduler
 from deye_inverter_core.scanner import save_detected_sensors
 from deye_inverter_core.scanner import _read_error_status
 from deye_inverter_core.scanner import load_detected_sensors
@@ -41,6 +42,7 @@ from deye_inverter_core.transport import TransportProtocolError
 from deye_inverter_core.transport_manager import TransportManager
 from deye_inverter_core.transport_manager import TransportSlot
 from deye_inverter_core.transport_manager import TransportStatus
+from deye_inverter_core.transport_runtime import TransportWorker
 
 
 def make_common_options() -> dict[str,object]:
@@ -256,6 +258,34 @@ def make_transport_slot(
 		polling=TransportPollingConfig(**make_polling(default_interval)),
 		reconnect_delay=reconnect_delay,
 	)
+
+
+def make_runtime_sensor(
+	key: str,
+	*,
+	transport: str="solarman_tcp",
+	read_every: int=60,
+	schedule: str="default",
+) -> SensorDefinition:
+	return SensorDefinition(
+		key=key,
+		name=key,
+		registers=[10040],
+		register_type="uint16",
+		transport=transport,
+		read_every=read_every,
+		schedule=schedule,
+	)
+
+
+class RecordingTransportManager(TransportManager):
+	def __init__(self, slots: list[TransportSlot], *, clock: ManualClock) -> None:
+		super().__init__(slots,clock=clock)
+		self.run_transport_ids: list[str]=[]
+
+	def run(self, transport_id: str, operation):
+		self.run_transport_ids.append(transport_id)
+		return super().run(transport_id,operation)
 
 
 class DualTransportConfigTests(unittest.TestCase):
@@ -930,6 +960,231 @@ class TransportManagerTests(unittest.TestCase):
 			manager.get("unknown_transport")
 		with self.assertRaisesRegex(KeyError,"unknown_transport"):
 			manager.run("unknown_transport",lambda client: None)
+
+
+class PerEntitySchedulerTests(unittest.TestCase):
+	def test_read_every_shorter_than_transport_default_runs_at_each_sensor_deadline(self) -> None:
+		clock=ManualClock()
+		sensor=make_runtime_sensor("fast",read_every=1)
+		scheduler=PerEntityScheduler(
+			[sensor],
+			TransportPollingConfig(**make_polling(5)),
+			clock=clock,
+		)
+
+		self.assertEqual(scheduler.next_due,0.0)
+		self.assertEqual([item.key for item in scheduler.due(clock())],["fast"])
+		scheduler.mark_read("fast",clock())
+		self.assertEqual(scheduler.next_due,1.0)
+
+		clock.advance(1)
+		self.assertEqual([item.key for item in scheduler.due(clock())],["fast"])
+		scheduler.mark_read("fast",clock())
+		self.assertEqual(scheduler.next_due,2.0)
+
+		clock.advance(1)
+		self.assertEqual([item.key for item in scheduler.due(clock())],["fast"])
+
+	def test_read_every_longer_than_transport_default_is_not_shortened(self) -> None:
+		clock=ManualClock(10.0)
+		sensor=make_runtime_sensor("slow_explicit",read_every=60)
+		scheduler=PerEntityScheduler(
+			[sensor],
+			TransportPollingConfig(**make_polling(5)),
+			clock=clock,
+		)
+
+		scheduler.mark_read(sensor.key,clock())
+		clock.advance(59.9)
+
+		self.assertEqual(scheduler.due(clock()),())
+		self.assertAlmostEqual(scheduler.wait_time(clock()),0.1)
+		clock.advance(0.1)
+		self.assertEqual([item.key for item in scheduler.due(clock())],[sensor.key])
+
+	def test_legacy_slow_sensor_uses_slow_interval_but_distinct_value_is_explicit(self) -> None:
+		clock=ManualClock()
+		legacy=make_runtime_sensor("legacy_slow",schedule="slow")
+		explicit=make_runtime_sensor("explicit_slow",schedule="slow",read_every=300)
+		polling=TransportPollingConfig(**make_polling(5))
+		scheduler=PerEntityScheduler([legacy,explicit],polling,clock=clock)
+
+		scheduler.mark_read(legacy.key,clock())
+		scheduler.mark_read(explicit.key,clock())
+
+		self.assertEqual(scheduler.next_due,300.0)
+		clock.advance(300)
+		self.assertEqual([item.key for item in scheduler.due(clock())],[explicit.key])
+		scheduler.mark_read(explicit.key,clock())
+		clock.advance(299.9)
+		self.assertEqual(scheduler.due(clock()),())
+		clock.advance(0.1)
+		self.assertEqual([item.key for item in scheduler.due(clock())],[explicit.key,legacy.key])
+
+	def test_sync_preserves_existing_deadline_adds_new_sensor_and_removes_missing_sensor(self) -> None:
+		clock=ManualClock(100.0)
+		kept=make_runtime_sensor("kept",read_every=30)
+		removed=make_runtime_sensor("removed",read_every=10)
+		scheduler=PerEntityScheduler(
+			[kept,removed],
+			TransportPollingConfig(**make_polling()),
+			clock=clock,
+		)
+		scheduler.mark_read(kept.key,clock())
+		scheduler.mark_read(removed.key,clock())
+		clock.advance(5)
+		updated_kept=make_runtime_sensor("kept",read_every=5)
+		added=make_runtime_sensor("added",read_every=20)
+
+		scheduler.sync([updated_kept,added],now=clock())
+
+		self.assertEqual(scheduler.next_due,105.0)
+		self.assertEqual([item.key for item in scheduler.due(clock())],["added"])
+		with self.assertRaises(KeyError):
+			scheduler.mark_read("removed",clock())
+		scheduler.mark_read("added",clock())
+		self.assertEqual(scheduler.next_due,125.0)
+		clock.advance(25)
+		self.assertEqual([item.key for item in scheduler.due(clock())],["added","kept"])
+
+	def test_close_deadlines_are_coalesced_within_controlled_window(self) -> None:
+		clock=ManualClock(10.0)
+		first=make_runtime_sensor("first",read_every=5)
+		second=make_runtime_sensor("second",read_every=5)
+		scheduler=PerEntityScheduler(
+			[first,second],
+			TransportPollingConfig(**make_polling()),
+			clock=clock,
+			coalescing_window=0.05,
+		)
+		scheduler.mark_read(first.key,clock())
+		clock.advance(0.04)
+		scheduler.mark_read(second.key,clock())
+
+		clock.advance(4.96)
+
+		self.assertEqual([item.key for item in scheduler.due(clock())],["first","second"])
+
+	def test_empty_scheduler_has_no_deadline_or_wait(self) -> None:
+		clock=ManualClock(12.0)
+		scheduler=PerEntityScheduler(
+			[],
+			TransportPollingConfig(**make_polling()),
+			clock=clock,
+		)
+
+		self.assertIsNone(scheduler.next_due)
+		self.assertIsNone(scheduler.wait_time(clock()))
+		self.assertEqual(scheduler.due(clock()),())
+
+
+class TransportWorkerTests(unittest.TestCase):
+	def test_workers_keep_independent_transport_deadlines(self) -> None:
+		clock=ManualClock()
+		solarman_slot=make_transport_slot("solarman_tcp",default_interval=5)
+		rs485_slot=make_transport_slot("modbus_rtu",default_interval=30)
+		manager=RecordingTransportManager([solarman_slot,rs485_slot],clock=clock)
+		solarman_scheduler=PerEntityScheduler(
+			[make_runtime_sensor("fast",transport="solarman_tcp",read_every=1)],
+			solarman_slot.polling,
+			clock=clock,
+		)
+		rs485_scheduler=PerEntityScheduler(
+			[make_runtime_sensor("slow",transport="modbus_rtu",read_every=10)],
+			rs485_slot.polling,
+			clock=clock,
+		)
+		reads: list[tuple[str,tuple[str,...]]]=[]
+		def read(client, sensors):
+			reads.append((client.transport_id,tuple(sensor.key for sensor in sensors)))
+		solarman_worker=TransportWorker(manager,solarman_slot,solarman_scheduler,read,clock=clock)
+		rs485_worker=TransportWorker(manager,rs485_slot,rs485_scheduler,read,clock=clock)
+
+		solarman_worker.run_due(clock())
+		rs485_worker.run_due(clock())
+		clock.advance(1)
+		solarman_worker.run_due(clock())
+		rs485_worker.run_due(clock())
+
+		self.assertEqual(
+			reads,
+			[("solarman_tcp",("fast",)),("modbus_rtu",("slow",)),("solarman_tcp",("fast",))],
+		)
+		self.assertEqual(manager.run_transport_ids,["solarman_tcp","modbus_rtu","solarman_tcp"])
+		self.assertEqual(solarman_worker.wait_time(clock()),1.0)
+		self.assertEqual(rs485_worker.wait_time(clock()),9.0)
+
+	def test_worker_runs_one_operation_for_only_its_transport_without_fallback(self) -> None:
+		clock=ManualClock()
+		solarman_slot=make_transport_slot("solarman_tcp")
+		rs485_slot=make_transport_slot("modbus_rtu")
+		manager=RecordingTransportManager([solarman_slot,rs485_slot],clock=clock)
+		solarman=make_runtime_sensor("solarman",transport="solarman_tcp",read_every=5)
+		rs485=make_runtime_sensor("rs485",transport="modbus_rtu",read_every=5)
+		scheduler=PerEntityScheduler([solarman,rs485],solarman_slot.polling,clock=clock)
+		read_calls=[]
+		def fail(client, sensors):
+			read_calls.append((client.transport_id,tuple(sensor.key for sensor in sensors)))
+			raise TimeoutError("read timeout")
+		worker=TransportWorker(manager,solarman_slot,scheduler,fail,clock=clock)
+
+		with self.assertRaisesRegex(TimeoutError,"read timeout"):
+			worker.run_due(clock())
+
+		self.assertEqual(read_calls,[("solarman_tcp",("solarman",))])
+		self.assertEqual(manager.run_transport_ids,["solarman_tcp"])
+		self.assertEqual(solarman_slot.client.connect_calls,1)
+		self.assertEqual(rs485_slot.client.connect_calls,0)
+		self.assertEqual([item.key for item in scheduler.due(clock())],["rs485"])
+
+	def test_worker_marks_attempt_after_success_and_timeout_to_prevent_tight_loop(self) -> None:
+		for error in (None,TimeoutError("read timeout")):
+			with self.subTest(error=error):
+				clock=ManualClock(20.0)
+				slot=make_transport_slot("solarman_tcp")
+				manager=RecordingTransportManager([slot],clock=clock)
+				sensor=make_runtime_sensor("sensor",read_every=2)
+				scheduler=PerEntityScheduler([sensor],slot.polling,clock=clock)
+				def read(client, sensors):
+					clock.advance(0.5)
+					if error is not None:
+						raise error
+					return tuple(item.key for item in sensors)
+				worker=TransportWorker(manager,slot,scheduler,read,clock=clock)
+
+				if error is None:
+					self.assertEqual(worker.run_due(20.0),("sensor",))
+				else:
+					with self.assertRaisesRegex(TimeoutError,"read timeout"):
+						worker.run_due(20.0)
+
+				self.assertEqual(worker.run_due(clock()),None)
+				self.assertEqual(manager.run_transport_ids,["solarman_tcp"])
+				self.assertEqual(scheduler.next_due,22.5)
+				self.assertEqual(worker.wait_time(clock()),2.0)
+
+	def test_connect_failure_preserves_sensor_deadline_and_waits_for_reconnect(self) -> None:
+		clock=ManualClock(50.0)
+		slot=make_transport_slot("solarman_tcp",reconnect_delay=7)
+		slot.client.connect=lambda: (_ for _ in ()).throw(TransportConnectionClosedError("offline"))
+		manager=RecordingTransportManager([slot],clock=clock)
+		sensor=make_runtime_sensor("sensor",read_every=2)
+		scheduler=PerEntityScheduler([sensor],slot.polling,clock=clock)
+		reads=[]
+		worker=TransportWorker(
+			manager,
+			slot,
+			scheduler,
+			lambda client,sensors: reads.append(tuple(item.key for item in sensors)),
+			clock=clock,
+		)
+
+		with self.assertRaisesRegex(TransportConnectionClosedError,"offline"):
+			worker.run_due(clock())
+
+		self.assertEqual(reads,[])
+		self.assertEqual(scheduler.next_due,50.0)
+		self.assertEqual(worker.wait_time(clock()),7.0)
 
 
 class EntityTransportSelectionTests(unittest.TestCase):
