@@ -1,4 +1,5 @@
 import json
+import subprocess
 import sys
 import tempfile
 import threading
@@ -1392,7 +1393,60 @@ class EntityTransportSelectionTests(unittest.TestCase):
 
 		custom_script=(ROOT/"packages/deye_inverter_core/custom_panel.js").read_text(encoding="utf-8")
 		self.assertIn('[transport]:{...previousScan,status:"timeout",error:error.message}',custom_script)
-		self.assertIn('definition_snapshot:customReadSnapshot(entry.definition,transport)',custom_script)
+		self.assertIn('const testedDefinition=customFrozenCopy(entry.definition)',custom_script)
+		self.assertIn('definition_snapshot:definitionSnapshot',custom_script)
+
+	def test_custom_sensor_pending_test_keeps_snapshot_of_submitted_definition(self) -> None:
+		custom_script=(ROOT/"packages/deye_inverter_core/custom_panel.js").read_text(encoding="utf-8")
+		bootstrap=r'''
+const elements=new Map();
+const element=id=>{
+	if (!elements.has(id)) elements.set(id,{addEventListener(){},style:{},textContent:"",hidden:false,innerHTML:"",value:"",focus(){}});
+	return elements.get(id);
+};
+let resolveFetch;
+globalThis.document={
+	baseURI:"http://example.test/",
+	getElementById:element,
+	querySelector(){ return null; },
+	querySelectorAll(){ return []; },
+	addEventListener(){},
+};
+globalThis.CSS={escape:value=>value};
+globalThis.window={confirm:()=>true};
+globalThis.ownershipToggle=()=>"";
+globalThis.ownershipBadge=()=>"";
+globalThis.fetch=()=>new Promise(resolve=>{ resolveFetch=resolve; });
+'''
+		harness=r'''
+
+customSensors=[{
+	key:"custom_voltage",
+	monitor:true,
+	definition:{
+		...customDefaultDefinition("custom_voltage"),
+		registers:[10],
+		transport:"solarman_tcp",
+	},
+	last_scan:{},
+}];
+
+const pending=testCustomSensor("custom_voltage");
+customSensors[0].definition.registers=[11];
+resolveFetch({ok:true,json:async()=>({value:500,raw_registers:[500],raw_hex:["0x01F4"]})});
+pending.then(()=>process.stdout.write(JSON.stringify(customSensors[0]))).catch(error=>{console.error(error);process.exitCode=1;});
+'''
+		with tempfile.TemporaryDirectory() as directory:
+			script_path=Path(directory)/"custom-race.cjs"
+			script_path.write_text(bootstrap+"\n"+custom_script+"\n"+harness,encoding="utf-8")
+			result=subprocess.run(["node",str(script_path)],capture_output=True,text=True,check=False)
+			self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+			entry=json.loads(result.stdout)
+
+		self.assertEqual(entry["definition"]["registers"],[11])
+		self.assertEqual(entry["last_scan"]["solarman_tcp"]["definition_snapshot"]["registers"],[10])
+		with tempfile.TemporaryDirectory() as directory,self.assertRaisesRegex(ValueError,"current read definition"):
+			save_custom_sensors(str(Path(directory)/"custom.yaml"),[entry])
 
 	def test_legacy_custom_sensor_without_scan_survives_unchanged_but_transport_change_requires_scan(self) -> None:
 		with tempfile.TemporaryDirectory() as directory:
@@ -1482,7 +1536,7 @@ class EntityTransportSelectionTests(unittest.TestCase):
 		control_script=(ROOT/"packages/deye_inverter_core/control_panel.js").read_text(encoding="utf-8")
 
 		self.assertGreaterEqual(custom_script.count('data-custom-test="${customEsc(entry.key)}"'),2)
-		self.assertIn('[transport]:{...result,status:"supported",definition_snapshot:customReadSnapshot(entry.definition,transport)}',custom_script)
+		self.assertIn('[transport]:{...result,status:"supported",definition_snapshot:definitionSnapshot}',custom_script)
 		self.assertNotIn("data-control-test",control_script)
 
 	def test_exact_modbus_exception_codes_classify_only_illegal_requests_as_unsupported(self) -> None:

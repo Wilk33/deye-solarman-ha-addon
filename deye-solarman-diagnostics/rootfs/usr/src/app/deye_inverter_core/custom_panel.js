@@ -63,6 +63,17 @@ function customReadSnapshot(definition,transport)
 	};
 }
 
+function customFrozenCopy(value)
+{
+	if (Array.isArray(value)) return Object.freeze(value.map(customFrozenCopy));
+	if (value && typeof value === "object") {
+		const copy={};
+		for (const [key,item] of Object.entries(value)) copy[key]=customFrozenCopy(item);
+		return Object.freeze(copy);
+	}
+	return value;
+}
+
 function customInput(key,field,label,value,type="text",wide=false)
 {
 	return `<label class="field ${wide ? "wide" : ""}">${label}<input data-custom-field="${customEsc(field)}" data-custom-key="${customEsc(key)}" type="${type}" value="${customEsc(value)}"></label>`;
@@ -246,8 +257,10 @@ async function testCustomSensor(key,formulaText=null)
 		if (formulaText !== null) entry.definition.formula=formulaText;
 		const transport=entry.definition.transport || "solarman_tcp";
 		if (transport !== "solarman_tcp") throw new Error("Test w tej wersji obsluguje tylko transport solarman_tcp");
-		const result=await customRequest("api/custom-sensors/test",{method:"POST",body:JSON.stringify({definition:entry.definition})});
-		entry.last_scan={...(entry.last_scan || {}),[transport]:{...result,status:"supported",definition_snapshot:customReadSnapshot(entry.definition,transport)}};
+		const testedDefinition=customFrozenCopy(entry.definition);
+		const definitionSnapshot=customFrozenCopy(customReadSnapshot(testedDefinition,transport));
+		const result=await customRequest("api/custom-sensors/test",{method:"POST",body:JSON.stringify({definition:testedDefinition})});
+		entry.last_scan={...(entry.last_scan || {}),[transport]:{...result,status:"supported",definition_snapshot:definitionSnapshot}};
 		entry._test={result};
 		if (formulaModalKey === currentKey) {
 			customById("formula-modal-result").textContent=customResult(entry).replace(/<[^>]+>/g,"");
