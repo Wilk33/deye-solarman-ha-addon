@@ -1,6 +1,6 @@
-# Model Catalog Sets
+# Model catalog sets in SolarMan Diagnostics 2.0.0
 
-Each supported inverter family will eventually receive one directory here, for example:
+Each supported inverter family has its own directory, for example:
 
 ```text
 deye_sg04_sg05_3ph_lv/
@@ -10,4 +10,4 @@ deye_sg04_sg05_3ph_lv/
   control.yaml
 ```
 
-Map files are model-family specific. A transport may reject a map whose compatibility metadata does not include it.
+Map files are model-family specific. The runtime rejects a map whose compatibility metadata does not include the selected transport.

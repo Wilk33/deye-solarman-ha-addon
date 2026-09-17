@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.0.0
+
+- Combine SolarMan TCP and direct Modbus RTU (RS485) in one installable `SolarMan Diagnostics` add-on, one process, and one MQTT session.
+- Add independent transport workers and polling settings, sequential SolarMan then RS485 scans, per-entity transport selection, status, and latency in the Ingress panel.
+- Preserve the existing MQTT device identity, `unique_id` values, state topics, and common control command topics while removing the temporary source-ownership architecture introduced in 1.3.0.
+- Add full Polish and English translations for add-on configuration and the `Sensory`, `Sterowanie`, and `Własne sensory` workspaces.
+- Add direct serial configuration with `uart: true`, a default `/dev/ttyUSB0` device, and example 9600 8N1 settings with Modbus ID 1.
+- Keep scans and custom-sensor tests read-only. Real writes remain available only through selected MQTT control entities and their selected transport.
+- Harden control writes with read-before-write validation, FC16, read-back, no automatic retry after an uncertain result, and a global write block after an uncertain FC16 outcome.
+- Migrate the 1.x `logger` and shared `polling` layout to `solarman`, leave RS485 disabled by default, and preserve saved sensor and control selections.
+- Bundle both transport adapters, the shared core, PL/EN i18n, and checksummed catalogs in the self-contained HAOS build context. Pin `pymodbus==3.14.0`.
+- Document that automated validation does not prove a physical USB adapter, RS485 timing, firmware-specific register maps, or a real inverter FC16 write.
+
+Entries below describe historical releases and do not define the current 2.0.0 architecture.
+
 ## 1.4.0
 
 - Rename the add-on and default MQTT device name to `SolarMan Diagnostics`; the planned direct adapter will use `RS485 Diagnostics`.

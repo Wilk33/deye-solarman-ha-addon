@@ -1,13 +1,11 @@
-# Register Catalogs
+# Register catalogs in SolarMan Diagnostics 2.0.0
 
-This directory is reserved for the future versioned catalog bundle format. The released Solarman application continues to use its compatible single-file catalog at:
+This directory is the canonical source for the checksummed catalog bundle used by the add-on runtime.
 
-`deye-solarman-diagnostics/deye_sg04_sg05_3ph_lv_catalog.yaml`
+Maps are separated by purpose:
 
-The future format separates maps by purpose:
+- `telemetry` - standard read-only registers for the transports declared by the map;
+- `telemetry_plus` - extended read-only diagnostics;
+- `control` - validated control definitions with read-back metadata.
 
-- `telemetry` - standard read-only registers available through Solarman TCP and RS485.
-- `telemetry_plus` - read-only registers exposed only through a Solarman logger.
-- `control` - explicitly declared Modbus write operations with read-back and safety metadata.
-
-No map is active from this directory yet. The migration is intentionally deferred until the new bundle loader is implemented and tested.
+`tools/package_addon.py` copies the selected model set and its `catalog-index.yaml` into the self-contained add-on rootfs. The compatible single-file telemetry URL at `deye-solarman-diagnostics/deye_sg04_sg05_3ph_lv_catalog.yaml` is generated from the same canonical maps for existing installations.

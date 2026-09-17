@@ -1,5 +1,5 @@
-# Catalog Schemas
+# Catalog schemas in SolarMan Diagnostics 2.0.0
 
-Future JSON Schema or YAML schema definitions for catalog manifests and map files belong here.
+The runtime validates catalog manifests and map payloads while loading them. This directory documents the schema area for source-controlled validation assets.
 
-The normative draft is currently in `docs/architecture/MULTI_ADDON_AND_CATALOGS.md`. No generated schema is committed yet because no runtime loader consumes it.
+The current format and runtime invariants are described in `docs/architecture/MULTI_ADDON_AND_CATALOGS.md`. Catalog checks are also covered by the architecture and catalog test suites.

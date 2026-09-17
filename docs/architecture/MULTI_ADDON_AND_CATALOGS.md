@@ -1,286 +1,170 @@
-# Multi-Add-on Architecture and Register Catalog Proposal
+# SolarMan Diagnostics 2.0.0 - architektura jednego dodatku
 
-## Status and scope
+## Stan bieżący
 
-Version 1.2.0 implements the shared-core extraction, injected Solarman adapter, separate model maps and reproducible packaging. `packages/deye_inverter_core` is the source of shared runtime code; `apps/deye-solarman/src` owns the transport adapter. CI rejects generated build artifacts that differ from these sources.
+Wersja 2.0.0 ma jeden instalowalny katalog `deye-solarman-diagnostics`, jeden proces runtime i jeden klient MQTT. Ten proces może obsługiwać SolarMan TCP, Modbus RTU przez USB-RS485 albo oba transporty równocześnie.
 
-The existing HAOS installation folder and slug remain the compatibility update path. RS485 is still reserved, not installable. The complete multi-map configuration UI and GHCR publishing described below remain future work. The current telemetry remote URL stays compatible with 1.1.x clients; its version-2 YAML is generated from the canonical telemetry maps.
+Obsługiwane tryby to:
 
-Control support in 1.2.0 follows the user's explicit requirement: selecting a control for MQTT enables its Home Assistant command entity, while scan and Test only read. The earlier proposal below for per-write confirmation and temporary arming is not the implemented policy. Commands validate bounds, preserve bitmasks, perform read-back and never retry uncertain writes. Current maps declare only verified transport scope `solarman_tcp`; no RS485 support is inferred.
+- `solarman-only`;
+- `rs485-only`;
+- `dual`.
 
-The repository will ultimately provide two Home Assistant add-ons:
+Repozytorium nie buduje drugiego instalowalnego dodatku RS485. Folder `apps/deye-solarman` zawiera kod aplikacji i oba adaptery, ale nie ma własnego `config.yaml` dla Home Assistant Supervisor.
 
-- `Deye Solarman Local` - local access through a Solarman TCP logger while the logger may remain connected to the Deye/Solarman cloud.
-- `Deye RS485 Local` - direct local Modbus RTU access through a USB-RS485 adapter.
-
-They share one Python core and one catalog format. They differ only in the transport adapter, transport-specific configuration, permissions, and supported map selection. The current `deye-solarman-diagnostics/` add-on remains the released compatibility path until a migration release is prepared.
-
-## Target repository structure
+## Źródła i artefakt
 
 ```text
-repository.yaml
-apps/
-  deye-solarman/                 # Future installable add-on, unique slug
-  deye-rs485/                    # Future installable add-on, unique slug
-packages/
-  deye_inverter_core/             # One transport-independent Python source package
-catalogs/
-  schemas/                        # Schema definitions and validation fixtures
-  models/
-    deye_sg04_sg05_3ph_lv/
-      catalog-index.yaml
-      telemetry.yaml
-      telemetry-plus.yaml
-      control.yaml
-docs/
-  architecture/
-tests/
-  core/
-  transports/
-  catalogs/
+packages/deye_inverter_core/
+  wspólny runtime, MQTT, katalogi, skanowanie, UI i sterowanie
+
+apps/deye-solarman/src/deye_solarman_diagnostics/
+  punkt startowy, adapter SolarMan TCP i adapter Modbus RTU
+
+catalogs/models/deye_sg04_sg05_3ph_lv/
+  catalog-index.yaml, telemetry.yaml, telemetry-plus.yaml, control.yaml
+
+deye-solarman-diagnostics/
+  jedyny instalowalny build context Home Assistant OS
 ```
 
-Only completed application directories receive a `config.yaml`. This prevents Home Assistant Supervisor from exposing unfinished work in the add-on store.
+`tools/package_addon.py` kopiuje pliki Python, JavaScript, i18n PL/EN, katalogi i manifest do `deye-solarman-diagnostics/rootfs/usr/src/app`. Tryb `--check` wykrywa każdą różnicę między źródłem a artefaktem.
 
-## Shared core and transport boundary
+Indeks katalogu ma revision `2.0.0`. Obraz przypina `pymodbus==3.14.0` dla adaptera RTU.
 
-The common core owns catalog loading, map selection, decoding, scan orchestration, scheduling, MQTT Discovery, persistent selections, custom formulas, ingress UI, audit reports, and logging. It must not import a Solarman TCP or Modbus RTU client directly.
+## Granica transportu
 
-The core receives a read-only transport with this contract:
+Rdzeń zależy od wspólnego kontraktu rejestrów:
 
 ```python
 class RegisterTransport(Protocol):
-    def connect(self) -> None: ...
-    def close(self) -> None: ...
-    def read_holding_registers(self,start: int,count: int) -> list[int]: ...
-    def reconnect(self) -> None: ...
-    @property
-    def transport_id(self) -> str: ...
+	@property
+	def transport_id(self) -> str: ...
+
+	def connect(self) -> None: ...
+	def close(self) -> None: ...
+	def read_holding_registers(self,start: int,count: int) -> list[int]: ...
+	def write_holding_registers(self,start: int,values: list[int]) -> object: ...
 ```
 
-`SolarmanTcpTransport` wraps `pysolarmanv5`. `ModbusRtuTransport` wraps the selected RTU library. Neither adapter decides how a register is decoded or how MQTT is published.
+Adapter SolarMan opakowuje `pysolarmanv5`, a adapter RTU klienta `pymodbus`. Rdzeń nie importuje konkretnej biblioteki transportowej.
 
-Write support is deliberately separate:
+## TransportManager
 
-```python
-class WritableRegisterTransport(RegisterTransport,Protocol):
-    def write_holding_registers(self,start: int,values: list[int]) -> None: ...
+`TransportManager` tworzy slot tylko dla włączonego transportu. Każdy slot ma:
+
+- własnego klienta;
+- własną blokadę operacji;
+- własne ustawienia odpytywania;
+- własny limit czasu i opóźnienie ponownego łączenia;
+- status oraz ostatnie opóźnienie.
+
+Równoległe workery monitorowania korzystają z osobnych slotów. Awaria jednego slotu nie zatrzymuje zdrowego transportu. Zamknięcie procesu najpierw zatrzymuje i łączy workery, skany i aktywne testy HTTP, a następnie zamyka klientów pod właściwymi blokadami.
+
+## Skanowanie
+
+Skan panelu jest deterministycznie sekwencyjny:
+
+1. SolarMan TCP;
+2. Modbus RTU.
+
+Wynik encji zawiera osobną gałąź dla każdego transportu, w tym `status`, `latency_ms`, wartości RAW i ewentualny błąd. Nieaktywny transport ma status `unavailable`, a transport niedozwolony przez mapę `unsupported`.
+
+Po skanie każda encja ma pole `transport`. Selektor jest pokazywany tylko dla definicji wspieranych przez oba transporty. Zapis wyboru wymaga `supported` dla wskazanego transportu. Runtime nie wykonuje fallbacku po błędzie.
+
+Skan telemetrii, skan sterowania i Test własnego sensora są read-only. Test obu transportów również wykonuje je kolejno SolarMan TCP -> RS485.
+
+## Monitoring
+
+Każdy aktywny transport uruchamia niezależny worker z własnym harmonogramem. Definicje są dzielone według zapisanego pola `transport`. Worker otrzymuje tylko swoje encje.
+
+Snapshot runtime jest generacyjny. Przeładowanie konfiguracji tworzy nową generację definicji, zatrzymuje poprzednie workery i nie publikuje spóźnionego wyniku starej generacji. Częściowy odczyt zachowuje poprawne wartości, status i liczniki timeoutów już przetworzonych encji.
+
+## Jeden MQTT
+
+Proces ma jeden `MqttPublisher` i domyślny `client_id: solarman`. Oba transporty publikują do wspólnego `base_topic: solarman_diagnostics`.
+
+Tożsamość sensora nie zawiera transportu:
+
+```text
+unique_id: deye_solarman_<serial_falownika>_<klucz>
+state: solarman_diagnostics/<serial_falownika>/<topic_suffix>
 ```
 
-Selecting a control map does not make the transport writable. The add-on must explicitly arm control and the selected command must list the active transport as supported.
+Sterowanie używa:
 
-## Build and packaging rule
-
-Docker cannot copy files outside its build context. An add-on Dockerfile therefore must not rely on `COPY ../packages/deye_inverter_core` when Supervisor builds only one add-on directory.
-
-The preferred release design is GitHub Actions building two self-contained multi-architecture images from repository root and publishing them to GHCR. Each completed add-on references its own image, while both images receive the core from `packages/deye_inverter_core`.
-
-Before GHCR publishing exists, a release tool may copy the core into each add-on build context. The source of truth remains `packages/deye_inverter_core`; CI must fail if either packaged copy differs from it. Manual edits to copied release artifacts are forbidden.
-
-## Catalog bundle model
-
-Each inverter family owns one `catalog-index.yaml`. The index lists maps, transport compatibility, immutable revision, and checksums. It does not contain register definitions.
-
-```yaml
-format: 1
-catalog_set: deye_sg04_sg05_3ph_lv
-display_name: Deye SG04LP3 and SG05LP3 three-phase LV
-revision: 2026.09.0
-maps:
-  telemetry:
-    file: telemetry.yaml
-    sha256: <release-specific SHA-256>
-    purpose: telemetry
-    transports: [solarman_tcp, modbus_rtu]
-    writable: false
-  telemetry_plus:
-    file: telemetry-plus.yaml
-    sha256: <release-specific SHA-256>
-    purpose: telemetry_plus
-    transports: [solarman_tcp]
-    writable: false
-  control:
-    file: control.yaml
-    sha256: <release-specific SHA-256>
-    purpose: control
-    transports: [solarman_tcp, modbus_rtu]
-    writable: true
+```text
+solarman_diagnostics/<serial_falownika>/controls/<klucz>/set
 ```
 
-Every map is downloaded into a temporary file, checked against its declared checksum and schema, then atomically moved to cache. A failed refresh never replaces a valid cache. The index and every selected map must come from the same immutable Git commit, release tag, or release asset. The runtime must not mix an index from one mutable `main` revision with maps from another revision.
+Atrybut stanu zawiera wybrany transport. Discovery sensora odwołuje się do wspólnej dostępności procesu i dostępności per-entity w trybie `all`. Last Will oraz kontrolowane wyłączenie ustawiają wspólną dostępność na `offline`.
 
-## Required map selection
+## Transakcje konfiguracji i Discovery
 
-The configuration requires at least one map ID. No map is forced as a hidden primary map.
+Jeden `ConfigurationCoordinator` wyznacza granicę dla:
 
-```yaml
-catalog:
-  catalog_set: deye_sg04_sg05_3ph_lv
-  source:
-    kind: github_release
-    url: https://github.com/Wilk33/deye-solarman-ha-addon/releases/download/catalog-2026.09.0/catalog-index.yaml
-  selected_maps:
-    - telemetry
-  cache_directory: /config/deye_catalogs
-  refresh_on_start: true
-  timeout: 5
-```
+- zapisu wyborów panelu;
+- zmiany snapshotu runtime;
+- publikowania i usuwania MQTT Discovery;
+- potwierdzania przetworzonych wpisów kolejki usunięć.
 
-All of the following are valid minimum selections:
+Operacje Discovery są idempotentne i potwierdzane przyrostowo po potwierdzonym QoS 1. Błąd w połowie serii nie usuwa lokalnej informacji o wcześniej opublikowanym retained wpisie. Ponowienie kontynuuje pracę, a późniejsze wyłączenie nadal zna wszystkie wpisy wymagające usunięcia.
 
-```yaml
-selected_maps: [telemetry]
-selected_maps: [telemetry_plus]
-selected_maps: [control]
-```
+Rollback plików konfiguracji nie cofa równoległej, już zatwierdzonej generacji runtime.
 
-The loader enforces these rules:
+## Model katalogu
 
-- `selected_maps` is non-empty, has unique IDs, and every ID exists in the selected index.
-- Every selected map supports the active transport.
-- `telemetry_plus` is rejected for `modbus_rtu` before a connection or scan begins.
-- Selecting `control` alone is valid, but does not permit a write.
-- Duplicate sensor keys across selected read-only maps are a validation error.
-- Register overlap is allowed only with an explicit `overlap_reason` and a distinct sensor key.
-- An invalid, incompatible, or checksum-failed selected map fails the full bundle. It never silently loads a partial set.
+`catalog-index.yaml` wskazuje trzy mapy i ich sumy SHA-256:
 
-This satisfies the requirement that one arbitrary map is enough, including `control`, without silently adding telemetry or activating writing.
+- `telemetry` - podstawowa telemetria dla zadeklarowanych transportów;
+- `telemetry_plus` - rozszerzona diagnostyka według deklaracji mapy;
+- `control` - odczyt ustawień i jawnie walidowane komendy.
 
-## Telemetry map
+Każda mapa deklaruje `transports`. Loader sprawdza sumę pliku i zgodność transportu przed użyciem definicji. Źródła zewnętrzne `catalog.url` oraz `catalog.control_url` są walidowane jako dane YAML i zapisywane atomowo do osobnych cache.
 
-`telemetry.yaml` contains standard read-only telemetry expected to be available through Solarman TCP and Modbus RTU for the declared model family. It contains only entries with explicit compatibility evidence for both transports.
+Pusty `profiles.default_profile` oznacza, że nowa instalacja nie włącza ukrytego zestawu encji.
 
-```yaml
-format: 1
-map_id: telemetry
-catalog_set: deye_sg04_sg05_3ph_lv
-purpose: telemetry
-writable: false
-transports: [solarman_tcp, modbus_rtu]
-sensors:
-  - key: battery_voltage
-    name: Battery Voltage
-    registers: [587]
-    type: uint16
-    multiplier: 0.01
-    unit: V
-    device_class: voltage
-    state_class: measurement
-    verification: documented
-    sources: []
-```
+## Sterowanie
 
-The existing 94-entry catalog is the candidate starting point. An entry must not move into this map simply because it works through the current Solarman logger.
+Każda komenda sterowania pozostaje związana z jednym transportem. Przebieg obejmuje:
 
-## Telemetry+ map
+1. walidację komendy oraz jej aktualności;
+2. read-before-write;
+3. zachowanie bitów współdzielonego rejestru;
+4. jeden FC16;
+5. read-back;
+6. publikację potwierdzonego stanu.
 
-`telemetry-plus.yaml` is read-only but Solarman-specific. It stores data available, reliable, or verified only through the logger transport.
+Błąd przed rozpoczęciem FC16 jest rozróżniany od niepewnego wyniku po rozpoczęciu zapisu. Po niepewnym wyniku nie ma ponowienia, a wspólny serwis sterowania globalnie blokuje wszystkie kolejne zapisy na obu transportach. Odczyty nadal działają.
 
-```yaml
-format: 1
-map_id: telemetry_plus
-catalog_set: deye_sg04_sg05_3ph_lv
-purpose: telemetry_plus
-writable: false
-transports: [solarman_tcp]
-sensors:
-  - key: battery_{pack}_bms_serial
-    name: Battery {pack} BMS Serial
-    registers: [10032,10033,10034,10035,10036,10037,10038,10039]
-    type: ascii
-    byte_order: low_high
-    verification: verified_local
-    transport_note: Solarman BMS per-pack block
-```
+## Konfiguracja i migracja
 
-The BMS per-pack block at `10032+` belongs in this map until it is separately proven over direct RS485 for the exact model and firmware. A successful Solarman scan is not proof of RS485 availability.
+`config.yaml` ma `version: "2.0.0"`, `uart: true`, sekcje `solarman` i `rs485` oraz kompletne tłumaczenia PL/EN.
 
-## Control map
+Parser zachowuje zgodność z konfiguracją 1.x. `logger` wraz ze wspólną sekcją `polling` jest interpretowany jako włączony `solarman`, a RS485 pozostaje wyłączone. Istniejące pliki wyboru są ładowane z domyślnym transportem SolarMan TCP, jeśli starszy wpis nie zawiera pola `transport`.
 
-`control.yaml` is structurally different from telemetry. It contains no MQTT sensor definitions and no arbitrary writable register list. Each command is an auditable operation with encoding, validation, confirmation, and read-back.
+## Inwarianty wydania
 
-```yaml
-format: 1
-map_id: control
-catalog_set: deye_sg04_sg05_3ph_lv
-purpose: control
-writable: true
-transports: [solarman_tcp, modbus_rtu]
-commands:
-  - id: example_command_only
-    name: Example command only
-    status: planned
-    writable_registers: []
-    readback_registers: []
-    allowed_values: []
-    confirmation: required
-    cooldown_seconds: 0
-    audit_level: blocked
-```
+- jeden instalowalny dodatek i jeden proces;
+- jeden klient MQTT;
+- jedna tożsamość encji niezależnie od transportu;
+- dokładnie jeden wybrany transport na encję;
+- brak fallbacku odczytu i zapisu;
+- skan SolarMan TCP -> RS485;
+- niezależne workery monitorowania;
+- read-only dla skanów i Test własnego sensora;
+- realny zapis wyłącznie przez wybraną encję MQTT;
+- brak automatycznego ponowienia niepewnego FC16;
+- globalna blokada zapisu po niepewnym wyniku;
+- pełne i18n PL/EN;
+- domyślnie ograniczone logowanie z `detailed_logs: false`.
 
-No real writable register may be added until all of these are known and reviewed:
+## Granice walidacji
 
-- model family and firmware scope;
-- exact register address, Modbus function, word encoding, and byte order;
-- allowed range, enum mapping, bit semantics, and dangerous values;
-- precondition registers and expected state;
-- read-back registers and expected response;
-- transport support verified separately for Solarman TCP and RS485;
-- confirmation wording, cooldown, rate limit, rollback behavior, source, and local verification state.
+Testy jednostkowe, testy współbieżności, smoke import i kontrola pakietu nie potwierdzają fizycznego portu USB, elektryki ani timingu RS485, map rejestrów konkretnego firmware czy rzeczywistego FC16 falownika. Te elementy wymagają testu na docelowym sprzęcie.
 
-Runtime safety rules:
+## Źródła
 
-- `control.enabled` defaults to `false` and is independent from `selected_maps`.
-- A user arms control in the panel only for a short session.
-- Every write requires a second confirmation showing old and requested values.
-- The add-on performs read-before-write, write, wait, read-back, then logs one structured audit record.
-- Timeout or mismatched read-back disables further writes for the session.
-- No bulk write, raw write console, formula write, or automatic write retry exists.
-- MQTT control entities are published only after each command is separately validated and enabled.
-
-Thus `control` can be the only selected map without creating an unsafe write path.
-
-## MQTT identity and concurrent transports
-
-The same inverter must not create colliding MQTT Discovery entities when both add-ons are installed. The default policy is exclusive MQTT publisher ownership per inverter serial number:
-
-```yaml
-mqtt:
-  device_identity: deye_<inverter_serial>
-  publisher_owner: solarman_tcp
-```
-
-The second add-on may scan and test locally, but MQTT publishing remains disabled until ownership is transferred. A future advanced mode may publish both only with distinct device identities and topic prefixes. It must never overwrite the first add-on's retained Discovery configuration.
-
-## Evidence states
-
-Each sensor and command declares an explicit status shown by the UI:
-
-| Status | Meaning |
-| --- | --- |
-| `documented` | Supported by a cited protocol or manufacturer source. |
-| `candidate` | Plausible entry, not semantically confirmed. |
-| `verified_local` | Value and decoding compared with the local installation. |
-| `transport_verified` | Verified on one named transport. |
-| `unavailable` | Explicitly unavailable for the model or transport. |
-| `blocked` | Not safe to expose or operate. |
-
-A successful scan changes only the transport result for the current device. It does not automatically promote a `candidate` to `documented` or unlock a control command.
-
-## Migration plan
-
-1. Keep the released add-on and current version-2 catalog unchanged.
-2. Extract transport-independent modules into `packages/deye_inverter_core` with behavior-preserving tests.
-3. Add a bundle loader able to load one selected map and adapt it to the present scanner and MQTT code.
-4. Convert entries to `telemetry.yaml` only after each has explicit transport classification.
-5. Add `telemetry-plus.yaml` for logger-only data, beginning with the BMS block at `10032+`.
-6. Add the RS485 add-on only after its transport suite proves the shared read interface.
-7. Create an empty, blocked `control.yaml`; add commands individually with read-back tests and security review.
-8. Add GHCR release builds, checksums, cache migration, and migration documentation for existing Solarman users.
-
-## Sources
-
-- Home Assistant supports one or more apps in one repository, each in its own unique folder: https://developers.home-assistant.io/docs/apps/repository/
-- Home Assistant app configuration and per-app directory structure: https://developers.home-assistant.io/docs/apps/configuration/
-- Home Assistant guidance for pre-built multi-architecture images: https://developers.home-assistant.io/docs/add-ons/publishing/
-- Docker build context restricts `COPY` sources to files inside that context: https://github.com/docker-archive/docker-ce/blob/master/components/cli/docs/reference/builder.md
+- [Home Assistant - app configuration](https://developers.home-assistant.io/docs/apps/configuration/)
+- [Home Assistant - app presentation](https://developers.home-assistant.io/docs/apps/presentation/)
+- [PyModbus - client documentation](https://pymodbus.readthedocs.io/en/latest/source/client.html)

@@ -1,15 +1,53 @@
-# SolarMan Diagnostics
+# SolarMan Diagnostics 2.0.0
 
-Dodatek Home Assistant OS do diagnostycznego, lokalnego odczytu falownika Deye przez logger Solarman TCP. Publikuje wybrane odczyty przez MQTT Discovery.
+Jeden dodatek Home Assistant OS do lokalnego odczytu i sterowania falownikiem Deye przez SolarMan TCP, bezpośredni Modbus RTU (RS485) albo oba transporty jednocześnie.
 
-Wersja `1.4.0` upraszcza pierwsze uruchomienie: domyślny profil i listy runtime są puste, a sensory oraz sterowanie są ładowane z osobnych adresów w sekcji `catalog` konfiguracji. Dodatek nazywa się `SolarMan Diagnostics`, używa domyślnie MQTT `client_id: solarman` i `base_topic: solarman_diagnostics`. Szczegóły: [Encje sterowania](CONTROL_ENTITIES.md).
+## Trzy tryby
 
-Dodatek jest przeznaczony jako wolniejsza sciezka diagnostyczna i uzupelnienie bezposredniej integracji RS485, na przyklad `Sunsynk or Deye Inverter add-on (multi)`. Nie zastepuje kanalu RS485.
+- `solarman-only` - włączone `solarman.enabled`, wyłączone `rs485.enabled`;
+- `rs485-only` - wyłączone `solarman.enabled`, włączone `rs485.enabled`;
+- `dual` - oba transporty są włączone.
 
-Dodatek samoczynnie odtwarza zamknieta sesje Solarman TCP, publikuje temperatury w standardowej jednostce Home Assistant `°C`, synchronizuje panel Ingress z motywem Home Assistant, pokazuje HEX i ASCII oraz pobiera aktualizowalne listy YAML z GitHub z lokalnym cache. Gdy lista i jej cache nie są dostępne, odpowiednia zakładka pozostaje pusta. Zapis wyboru MQTT stosuje zmiany bez restartowania kontenera dodatku. Pulpit `Własne sensory` umozliwia dodanie recznych definicji Modbus oraz bezpiecznych skryptow odczytujacych rejestry przez `sensor(...)` i `RAW(...)`. Numery seryjne BMS sa dekodowane per sensor z `byte_order: low_high`.
+W trybie `dual` transporty mają niezależne workery i interwały. Skan jest sekwencyjny: SolarMan TCP -> RS485. Każda encja wybiera dokładnie jeden obsługiwany transport i nie używa fallbacku na drugi.
 
-Pelna instrukcja konfiguracji i skanowania jest w [DOCS.md](DOCS.md).
+## Panel i MQTT
 
-Wynik przegladu podstawowych typow, skalowania i kolejnosci slow rejestrow znajduje sie w [REGISTER_TYPE_AUDIT.md](REGISTER_TYPE_AUDIT.md).
+Panel Ingress ma pełne tłumaczenia PL/EN oraz zakładki `Sensory`, `Sterowanie` i `Własne sensory`. Pokazuje status oraz opóźnienie obu transportów. Selektor transportu pojawia się tylko dla definicji obsługiwanych przez oba transporty.
 
-Zrodla katalogu rejestrow: [mapa SG04LP3 / SG05LP3](https://github.com/Developer089/deye-modbus-ha/blob/main/custom_components/deye_modbus/maps/sun_3ph_hybrid.yaml) oraz [mapa diagnostyczna pakietow BMS](https://gist.github.com/Lewa-Reka/9796390db54fa5b317f27bc435a2a320). Odczyty BMS oznaczone jako `candidate` wymagaja potwierdzenia wynikiem skanu na konkretnym falowniku.
+Dodatek używa jednego klienta MQTT. Domyślne wartości to `client_id: solarman` i `base_topic: solarman_diagnostics`. Istniejące `unique_id` i tematy stanu pozostają wspólne niezależnie od transportu. Wspólny command topic ma postać:
+
+```text
+solarman_diagnostics/<serial_falownika>/controls/<klucz>/set
+```
+
+## Operacje diagnostyczne i zapis
+
+Skan `Sensory`, skan `Sterowanie` i Test we `Własnych sensorach` są tylko do odczytu. Zakładka `Sterowanie` nie ma osobnego przycisku Test. Prawdziwy zapis wykonuje wyłącznie wybrana encja sterowania MQTT.
+
+Zapis obejmuje read-before-write, walidację, pojedynczy FC16 i read-back. Po niepewnym wyniku rozpoczętego FC16 nie ma ponowienia, a wszystkie dalsze zapisy na obu transportach są globalnie blokowane do przeładowania konfiguracji albo restartu. Odczyty nadal działają.
+
+## RS485
+
+Metadane zawierają `uart: true`. Wartości `/dev/ttyUSB0`, 9600 8N1 i Modbus ID 1 są przykładem, który trzeba sprawdzić na konkretnym adapterze, falowniku i firmware.
+
+## Pierwsze uruchomienie
+
+1. Skonfiguruj co najmniej jeden transport.
+2. Dla SolarMan podaj adres i numer seryjny loggera.
+3. Dla RS485 wybierz rzeczywisty port szeregowy i sprawdź jego parametry.
+4. Pozostaw `mqtt.use_supervisor: true`, jeśli broker udostępnia Home Assistant Supervisor.
+5. Uruchom dodatek, wykonaj skan i wybierz encje MQTT.
+
+Nowa instalacja ma pusty `profiles.default_profile`. Listy sensorów i sterowania są pobierane odpowiednio z `catalog.url` i `catalog.control_url`, walidowane i zapisywane do osobnych cache.
+
+`advanced.detailed_logs` jest domyślnie wyłączone. Normalny log ogranicza szczegóły połączeń i pojedynczych publikacji. Pełny debug należy włączać tylko podczas diagnozy.
+
+## Aktualizacja z 1.x
+
+Konfiguracja `logger` wraz ze wspólną sekcją `polling` jest migrowana do `solarman`. RS485 pozostaje wyłączone, dopóki użytkownik go nie skonfiguruje. Zapisane wybory sensorów, sterowania i własnych sensorów pozostają zachowane, podobnie jak MQTT `unique_id`.
+
+## Granice testów
+
+Testy automatyczne nie potwierdzają fizycznego portu USB, timingu RS485, map rejestrów konkretnego firmware ani rzeczywistego FC16 falownika. Odczyty i zapisy trzeba zweryfikować na własnym urządzeniu.
+
+Pełna instrukcja znajduje się w [DOCS.md](DOCS.md), a zasady zapisu w [CONTROL_ENTITIES.md](CONTROL_ENTITIES.md).

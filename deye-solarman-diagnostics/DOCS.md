@@ -1,28 +1,82 @@
-# SolarMan Diagnostics
+# SolarMan Diagnostics 2.0.0 - instrukcja użytkownika
 
 ## Przeznaczenie
 
-Dodatek odczytuje lokalny logger Solarman TCP i publikuje przez MQTT Discovery tylko encje wybrane przez uzytkownika. Jest to diagnostyczny, wolniejszy kanal odczytu. Do ciaglego sterowania i szybkiej telemetrii nalezy preferowac bezposrednie RS485.
+`SolarMan Diagnostics` jest jednym dodatkiem Home Assistant OS i jednym procesem, który obsługuje SolarMan TCP oraz bezpośredni Modbus RTU przez USB-RS485. Dodatek może pracować w trzech trybach:
 
-Katalog skanowania zawiera bezpieczne rejestry tylko do odczytu:
+- `solarman-only` - aktywny jest tylko logger SolarMan TCP;
+- `rs485-only` - aktywny jest tylko bezpośredni Modbus RTU;
+- `dual` - oba transporty pracują jednocześnie.
 
-- 94 kandydatow telemetrycznych dla rodziny Deye SUN-*-SG04LP3 / SG05LP3: stan falownika, PV1-PV4, bateria, siec, CT, obciazenie, wyjscie, UPS, generator, temperatury i energia.
-- 23 pola diagnostyczne dla kazdego skonfigurowanego pakietu BMS: numer seryjny, temperatury, SOC, SOH, pojemnosci, limity, napiecia cel, cykle oraz rozdzielone dane BMS alarm i fault.
+W trybie `dual` oba transporty mają niezależne workery, połączenia, blokady i ustawienia odpytywania. Każda encja ma dokładnie jeden wybrany transport. Błąd wybranego transportu nie powoduje fallbacku odczytu ani zapisu na drugi.
 
-Zakładka Sensory skanuje telemetrię. Osobna zakładka **Sterowanie** odczytuje aktualne ustawienia według mapy Sunsynk. Skan nie zapisuje rejestrów. W zakładce Sterowanie usunięto indywidualne przyciski Test; nieznane pola są pokazywane jako UNKNOWN z blokadą zapisu. "Powodzenie" skanu oznacza, że logger zwrócił wartość; nie potwierdza znaczenia każdego pola BMS ani zgodności zapisu ustawień z firmware. Zaznaczenie MQTT w zakładce sterowania udostępnia działające encje zmiany nastaw. Szczegóły: [Encje sterowania](CONTROL_ENTITIES.md).
+Dodatek publikuje wybrane sensory i encje sterowania przez jeden klient MQTT i jedno urządzenie Home Assistant.
 
-## Konfiguracja
+## Wymagania
 
-Przykladowa konfiguracja w panelu dodatku:
+- Home Assistant OS na obsługiwanej architekturze;
+- broker MQTT dostępny przez usługę Supervisora albo zewnętrznie;
+- dla SolarMan TCP: lokalny adres loggera, port i numer seryjny loggera;
+- dla RS485: adapter USB-RS485 przekazany do dodatku, prawidłowe parametry portu i Modbus ID falownika;
+- numer seryjny falownika używany w identyfikatorach MQTT.
+
+Metadane dodatku zawierają `uart: true`. Samo ustawienie nie potwierdza jednak, że wybrany adapter jest widoczny w kontenerze ani że jego linie A/B są podłączone prawidłowo.
+
+## Instalacja
+
+1. Otwórz `Ustawienia -> Dodatki -> Sklep z dodatkami` w Home Assistant.
+2. Dodaj repozytorium `https://github.com/Wilk33/deye-solarman-ha-addon`.
+3. Zainstaluj jeden dodatek `SolarMan Diagnostics`.
+4. Włącz panel boczny i pozostaw Ingress aktywny.
+5. Skonfiguruj co najmniej jeden transport.
+6. Uruchom dodatek i sprawdź statusy transportów w panelu.
+
+Nie trzeba instalować osobnej aplikacji dla RS485.
+
+## Pełna konfiguracja
+
+Poniższy przykład włącza oba transporty. Adresy, numery seryjne i port szeregowy trzeba dostosować do instalacji.
 
 ```yaml
-logger:
-  host: 192.168.177.144
+solarman:
+  enabled: true
+  host: 192.168.1.100
   port: 8899
   serial_number: 3556142832
   modbus_id: 1
   timeout: 3
   reconnect_delay: 10
+  polling:
+    default_interval: 60
+    slow_interval: 600
+    read_message_spacing: 0.05
+    batch_gap: 1
+    max_registers_per_request: 20
+    publish_unchanged_every: 900
+    startup_probe_register: 10040
+    startup_probe_count: 1
+    allow_reconnect: true
+
+rs485:
+  enabled: true
+  device: /dev/ttyUSB0
+  baudrate: 9600
+  bytesize: 8
+  parity: N
+  stopbits: 1
+  modbus_id: 1
+  timeout: 1
+  reconnect_delay: 10
+  polling:
+    default_interval: 30
+    slow_interval: 300
+    read_message_spacing: 0.05
+    batch_gap: 1
+    max_registers_per_request: 20
+    publish_unchanged_every: 900
+    startup_probe_register: 10040
+    startup_probe_count: 1
+    allow_reconnect: true
 
 mqtt:
   use_supervisor: true
@@ -45,19 +99,9 @@ inverter:
 profiles:
   default_profile: []
   overrides_file: /config/user_sensors.yaml
+  custom_sensors_file: /config/custom_sensors.yaml
   state_file: /config/runtime_state.json
   scan_report_file: /share/deye_solarman_scan_report.json
-
-polling:
-  default_interval: 60
-  slow_interval: 600
-  read_message_spacing: 0.05
-  batch_gap: 1
-  max_registers_per_request: 20
-  publish_unchanged_every: 900
-  startup_probe_register: 10040
-  startup_probe_count: 1
-  allow_reconnect: true
 
 advanced:
   emit_raw_topics: true
@@ -79,158 +123,208 @@ catalog:
   timeout: 5
 ```
 
-Parametry loggera musza wskazywac logger Solarman, nie adres IP samego falownika. `serial_number` w sekcji `logger` to numer loggera, a `inverter.serial_number` to numer seryjny falownika uzywany w nazwach MQTT.
+### SolarMan TCP
 
-### Katalogi sensorów i sterowania z GitHub
+`solarman.host` wskazuje lokalny adres loggera, a nie interfejs sieciowy falownika. `solarman.serial_number` jest numerem loggera wymaganym przez protokół SolarMan. `inverter.serial_number` jest oddzielnym numerem używanym przez MQTT Discovery.
 
-Przy starcie dodatek pobiera listę sensorów z `catalog.url` oraz listę sterowania z `catalog.control_url`. Pierwsza jest mapą `version: 2`, zawierającą telemetrykę i szablon BMS, a druga mapą `format: 1`, `map_id: control`. Pobierane są wyłącznie dane YAML - dodatek nie wykonuje zdalnego kodu. Po udanej walidacji kopie są atomowo zapisywane odpowiednio w `catalog.cache_file` i `catalog.control_cache_file`. Adresy są widoczne w panelu konfiguracji w sekcji **Zewnętrzne źródła list sensorów i sterowania**.
+Worker SolarMan ma własne ustawienia `polling`, timeout i `reconnect_delay`. Utrata sesji TCP nie zatrzymuje działającego workera RS485.
 
-Gdy GitHub lub Internet jest niedostępny, dodatek wykorzystuje ostatnią poprawną kopię odpowiedniego cache. Gdy cache także nie istnieje albo jest błędny, dana lista jest pusta. Nowa instalacja nie uruchamia wbudowanego profilu ani listy rejestrów. Nie zmienia to pliku `/config/detected_sensors.yaml` ani istniejących wyborów MQTT.
+### Modbus RTU (RS485)
 
-Format katalogu jest wersjonowany. Kompletna mapa `version: 2` ma liste `sensors` i obiekt `bms_pack`. Jest autorytatywna, wiec brak wpisu w YAML usuwa go z listy kandydatow, gdy zdalny katalog albo jego cache jest dostepny. Wpisy `sensors` definiuja telemetrie falownika. `bms_pack.base_register` i `register_stride` okreslaja adres kolejnego pakietu, a kazdy wpis `bms_pack.sensors` zawiera `register_offsets` oraz symbole `{pack}` w `key`, `name` i opcjonalnym `topic_suffix`. Typ `ascii` obsluguje opcjonalne `byte_order: high_low|low_high`; BMS serial uzywa `low_high`, ktore zamienia kolejnosc dwoch bajtow w kazdym slowie bez zmiany kolejnosci rejestrow. Katalog jest walidowany przed użyciem, a gdy sieć i cache zawiodą, lista sensorów pozostaje pusta.
+Konfiguracja domyślna `/dev/ttyUSB0`, 9600 8N1 oraz Modbus ID 1 jest wartością startową. Zweryfikuj na urządzeniu:
 
-```yaml
-version: 2
-sensors:
-  - key: battery_voltage
-    name: Battery Voltage
-    registers: [587]
-    type: uint16
-    multiplier: 0.01
-    unit: V
-bms_pack:
-  base_register: 10032
-  register_stride: 38
-  sensors:
-    - key: "battery_{pack}_voltage"
-      name: "Battery {pack} Voltage"
-      register_offsets: [8]
-      type: uint16
-      multiplier: 0.1
-      unit: V
-```
+- właściwą nazwę portu udostępnionego dodatkowi;
+- prędkość, liczbę bitów danych, parzystość i bity stopu;
+- Modbus ID falownika;
+- polaryzację A/B, ekranowanie i terminację magistrali;
+- odstępy między zapytaniami wymagane przez konkretny falownik.
 
-### MQTT i Supervisor
+Nie włączaj RS485 przed sprawdzeniem, że port należy do właściwego adaptera.
 
-Domyslnie `use_supervisor: true` pobiera host, port, TLS oraz dane logowania MQTT z uslugi `mqtt` Home Assistant Supervisor. Jest to zalecany tryb dla HAOS i nie wymaga wpisywania hasla Mosquitto w konfiguracji tego dodatku. Wymaga wlaczonego i poprawnie skonfigurowanego dodatku Mosquitto. Wersja `0.3.6` obsluguje odpowiedz Supervisora opakowana w obiekt `data`.
+### Interwały
 
-Ustaw `use_supervisor: false` tylko wtedy, gdy broker MQTT znajduje sie poza Home Assistant lub swiadomie chcesz uzyc innych danych. W takim przypadku uzupelnij `host`, `port`, `username`, `password` oraz opcjonalnie `tls`. Hasla nie sa wyswietlane w logach.
+Każdy transport ma osobną sekcję `polling`:
 
-### Szczegółowe logi
+- `default_interval` - zwykły interwał odczytu;
+- `slow_interval` - interwał sensorów oznaczonych jako wolne;
+- `read_message_spacing` - minimalny odstęp między grupami zapytań;
+- `batch_gap` - dozwolona przerwa adresów podczas grupowania;
+- `max_registers_per_request` - maksymalna długość jednego odczytu;
+- `publish_unchanged_every` - maksymalny czas bez ponownej publikacji tego samego stanu;
+- `startup_probe_register` i `startup_probe_count` - próbny odczyt po połączeniu;
+- `allow_reconnect` - zgoda na odtworzenie utraconego połączenia.
 
-`advanced.detailed_logs` jest domyślnie `false`. Jest zapisywaną opcją dodatku, więc po zmianie i zapisaniu konfiguracji pozostaje w wybranym stanie po odświeżeniu panelu. W tym trybie dodatek pomija debugowanie i pojedyncze potwierdzenia publikacji MQTT. Zamknięcie sesji Solarman TCP zapisuje zwięzły warning `Solarman TCP session closed; reconnecting`, bez zakresu rejestrów i tracebacku.
+Zmiana interwału jednego transportu nie zmienia interwału drugiego.
 
-Ustaw `advanced.detailed_logs: true` wyłącznie podczas diagnozy. Wtedy log zawiera DEBUG, potwierdzenia każdej publikacji MQTT, zakresy rejestrów oraz pełne tracebacki. Po zmianie uruchom dodatek ponownie.
+## Migracja z wersji 1.x
 
-## Panel konfiguracji Ingress
+Wersja 2.0.0 zachowuje slug oraz katalog instalacyjny, więc Home Assistant aktualizuje istniejący dodatek.
 
-Po aktualizacji do wersji `0.3.4` Home Assistant pokazuje w panelu bocznym pozycje `Deye Solarman`. Jest to lokalny panel Ingress dodatku, dostepny bez mapowania portu na siec domowa.
-
-Panel umozliwia:
-
-- uruchomienie recznego skanu przyciskiem `Skanuj teraz`;
-- przywrocenie katalogowych ustawien domyslnych znalezionych czujnikow przyciskiem `Reset konfiguracji`;
-- usuniecie lokalnej listy wykryc i jej konfiguracji oraz odswiezenie cache katalogu z GitHub przyciskiem `Usun sensory`;
-- przegladanie wartosci zdekodowanej, RAW i hex dla kazdego rejestru;
-- filtrowanie wedlug statusu i wyszukiwanie po nazwie, kluczu, kategorii lub rejestrze;
-- zaznaczenie encji do MQTT przeznikiem `MQTT`;
-- zmiane nazwy, typu, mnoznika, offsetu, jednostki, kolejnosci slow, kolejnosci bajtow ASCII, interwalow, progu zmiany, retain i metadanych Home Assistant;
-- atomowy zapis konfiguracji przyciskiem `Zapisz wybor MQTT`, z automatycznym przeladowaniem tylko petli MQTT i odczytow.
-
-## Diagnostyka panelu
-
-Wersja `0.3.4` zapisuje kazde zadanie panelu w logu dodatku, na przyklad `Ingress request method=GET path=/api/sensors` albo `Ingress request method=POST path=/api/scan`. Dodatkowo konsola przegladarki zapisuje wpisy zaczynajace sie od `[Deye Solarman]` z adresem Ingress, metoda zadania i kodem odpowiedzi.
-
-Przy starcie MQTT log powinien zawierac `Using MQTT service credentials supplied by Home Assistant Supervisor`, `Sensor configuration loaded`, `MQTT connection confirmed` i `Publishing MQTT Discovery`. Przy `advanced.detailed_logs: true` pojawia sie dodatkowo po jednym wpisie `MQTT discovery published` dla kazdej wybranej encji.
-
-Wersja `0.4.0` rozpoznaje `Connection closed on read` i `Connection already closed` jako utrate sesji Solarman. Zamiast kontynuowac nieskuteczne odczyty, zamyka klienta i po `logger.reconnect_delay` nawiazuje nowe polaczenie. Temperatura w Discovery jest publikowana z jednostka `°C`, wymagana dla `device_class: temperature`. Wersja `0.6.0` formatuje log jako krotkie wiersze ze znacznikami `[OK]`, `[WARN]`, `[ERROR]` i `[INFO]`; odpowiednio zielonym, ciemno-zoltym, czerwonym i domyslnym kolorem terminala. Aby calkowicie wylaczyc ANSI, ustaw zmienna srodowiskowa `DEYE_LOG_COLOR=false`.
-
-Jesli panel nie reaguje, otworz narzedzia programistyczne przegladarki, wybierz `Console`, odswiez panel i skopiuj wszystkie wpisy `[Deye Solarman]` oraz ewentualne czerwone bledy. Rownoczesnie skopiuj log dodatku z chwili otwarcia panelu i klikniecia `Skanuj teraz`.
-
-Adresy rejestrow, klucze encji i ich lista nie sa edytowalne w panelu. Chroni to katalog przed przypadkowa zmiana definicji Modbus. `Reset konfiguracji` zachowuje ostatni wynik odczytu, przywraca domyslne definicje katalogowe i wylacza wszystkie przelaczniki `MQTT`. `Usun sensory` usuwa lokalny plik wykryc `/config/detected_sensors.yaml`; po nim uruchom nowy skan. Reset i usuniecie dopisuja wczesniej wybrane encje do lokalnej kolejki usuniecia Discovery. Dodatek automatycznie zamyka i odtwarza tylko polaczenia Solarman TCP oraz MQTT, a nastepnie publikuje retained, pusty komunikat `.../config` dla tych encji, aby Home Assistant je usunal. Restart calego dodatku nie jest wymagany.
-
-## Skanowanie i wybor encji
-
-Skan uruchamia sie wylacznie recznie. Nie jest wykonywany w normalnym cyklu odczytu.
-
-1. Ustaw `scan.mode: disabled` i uruchom dodatek.
-2. Otworz panel `Deye Solarman` z paska bocznego Home Assistant.
-3. Wybierz `Skanuj teraz`. Dodatek wykona probe polaczenia i odczyta katalog rejestrow sekwencyjnie. Nie tworzy przy tym encji MQTT.
-4. W panelu wlacz `MQTT` tylko przy pozycjach o statusie `supported`, ktore chcesz publikowac. Dostosuj parametry w `Konfiguruj dekodowanie i odpytywanie`, jesli sa potrzebne.
-5. Wybierz `Zapisz wybor MQTT`. Dodatek sam zamknie i odtworzy tylko polaczenia Solarman i MQTT, wczyta nowy wybor oraz opublikuje aktualne MQTT Discovery. Od tej chwili tylko zaznaczone encje sa odpytywane oraz publikowane do MQTT. Restart calego dodatku nie jest wymagany.
-
-Opcja `scan_and_monitor` wykonuje skan podczas startu, aktualizuje oba pliki, a nastepnie przechodzi od razu do normalnego MQTT. Uzywaj jej tylko wtedy, gdy istniejace zaznaczenia sa juz poprawne. `scan_only` wykonuje skan podczas startu, nie laczy sie z MQTT i pozostawia uruchomiony panel Ingress do wyboru encji.
-
-## Wlasne sensory i formuly
-
-Pulpit `Wlasne sensory` przechowuje definicje niezaleznie od wyniku skanu w `/config/custom_sensors.yaml`. Przycisk `+ Dodaj sensor` tworzy standardowy, reczny sensor Modbus. Bez zaznaczenia `Wlasna formula` dziala on jak pozostale definicje: uzywa rejestrow, typu, mnoznika, offsetu oraz kolejnosci slow z formularza.
-
-Po zaznaczeniu `Wlasna formula` formularz pokazuje edytor skryptu. Typ widoczny jako `-` jest zapisywany wewnetrznie jako `auto`: wynik `return` jest publikowany bez drugiego dekodowania rejestrow. Pole `Powieksz` otwiera duzy edytor, a `Test` laczy sie jednorazowo z loggerem, pokazuje RAW/HEX oraz wynik bez publikowania MQTT.
-
-Przyklad mocy pozornej pakietu baterii:
-
-```python
-voltage=sensor(R587,uint16,0.01)
-current=sensor(R591,int16,0.01)
-
-return abs(voltage*current)
-```
-
-`sensor(adres,typ,mnoznik[,offset[,kolejnosc_slow[,kolejnosc_bajtow]]])` odczytuje rejestr bezposrednio przez logger, dekoduje go i zwraca wartosc po przeliczeniu. `kolejnosc_bajtow` jest opcjonalna i dotyczy wylacznie `ascii`; moze miec wartosc `high_low` albo `low_high`. `RAW(adres)` zwraca surowa, liczbowa wartosc pojedynczego rejestru `uint16`. Skrypt moze uzywac lokalnych zmiennych, `def`, `return`, `if` / `elif` / `else`, `match` / `case`, funkcji `abs`, `min`, `max`, `round`, `sqrt`, `clamp` oraz ograniczonego `for ... in range(...)`.
-
-Nie sa dozwolone importy, `eval`, `exec`, dostep do plikow lub sieci, atrybuty obiektow, `while`, rekurencja ani dowolne funkcje Pythona. Interpreter ogranicza formule do 300 wezlow skladni, 64 iteracji petli i 128 bezposrednich odczytow rejestrow w jednym wykonaniu.
-
-Po kolejnym skanie zachowywane sa pola `monitor` oraz wlasne ustawienia `definition` z `detected_sensors.yaml`.
-
-Przyklad zaznaczonej i dostrojonej encji:
+Starsza konfiguracja używała sekcji:
 
 ```yaml
-available_sensors:
-  - key: grid_power_total
-    monitor: true
-    definition:
-      key: grid_power_total
-      name: Grid power total
-      registers:
-        - 619
-      type: int16
-      multiplier: 1.0
-      offset: 0.0
-      unit: W
-      word_order: high_low
-      schedule: default
-      read_every: 60
-      report_every: 300
-      change_by: 1.0
-      enabled: true
-      retain: true
-      device_class: power
-      state_class: measurement
-      icon: mdi:transmission-tower
-      category: grid
-      topic_suffix: grid_power_total
-      attributes: {}
+logger:
+  host: 192.168.1.100
+  # pozostałe pola loggera
+polling:
+  default_interval: 60
+  # pozostałe pola odpytywania
 ```
 
-Mozna zmienic miedzy innymi `type`, `multiplier`, `offset`, `unit`, `word_order`, `byte_order`, `schedule`, `read_every`, `report_every`, `change_by`, `retain` i pola MQTT. Typ `ascii` dekoduje dwa znaki ASCII z kazdego rejestru i zastepuje znaki niedrukowalne kropkami. Domyslne `byte_order: high_low` czyta najpierw starszy bajt, a `low_high` odwraca bajty w pojedynczym rejestrze. BMS serial uzywa `low_high`; ustawienie nie zmienia kolejnosci rejestrow. Dla wartosci BMS nie zmieniaj przelicznika ani typu przed porownaniem z realnym odczytem urzadzenia.
+Runtime interpretuje ją jak:
 
-Domyslny profil zawiera definicje BMS, ale wszystkie sa wylaczone. W normalnym trybie MQTT publikuje wiec wylacznie pozycje z `monitor: true` w `/config/detected_sensors.yaml` albo wpisy jawnie wlaczone w `/config/user_sensors.yaml`.
+```yaml
+solarman:
+  enabled: true
+  host: 192.168.1.100
+  polling:
+    default_interval: 60
+rs485:
+  enabled: false
+```
 
-## Pliki i MQTT
+Po aktualizacji sprawdź nową sekcję `solarman`, zapisz konfigurację i dopiero wtedy opcjonalnie skonfiguruj RS485. Migracja zachowuje pliki z wykrytymi sensorami, własnymi sensorami, wyborem sterowania, stanem runtime i kolejką usuwania Discovery. Zapisany wybór `transport` nie jest wymagany w plikach 1.x - brakujące pole otrzymuje SolarMan TCP, dzięki czemu dotychczasowy wybór nie znika.
 
-- `/share/deye_solarman_candidate_scan.json` - wynik recznego skanu kandydatow.
-- `/config/detected_sensors.yaml` - trwala lista dostepnych encji i wybory uzytkownika.
-- `/config/user_sensors.yaml` - reczne nadpisania, maja pierwszenstwo przed wyborem z `detected_sensors.yaml`.
-- `/share/deye_solarman_scan_report.json` - raport biezacych odczytow podczas normalnej pracy, jesli wlaczono `advanced.emit_scan_report`.
-- Discovery MQTT: `homeassistant`.
-- Stany MQTT: `deye_solarman/<serial_falownika>/...`.
+MQTT zachowuje wcześniejsze `unique_id`, urządzenie i tematy stanu. Aktualizacja nie wymaga usuwania encji ani ponownego budowania automatyzacji Home Assistant.
 
-## Zrodla mapowania
+## MQTT i Home Assistant
 
-- [Developer089 - mapa Deye SUN-3PH Hybrid](https://github.com/Developer089/deye-modbus-ha/blob/main/custom_components/deye_modbus/maps/sun_3ph_hybrid.yaml) - zrodlo katalogu 68 telemetrycznych rejestrow SG04LP3 / SG05LP3.
-- [Lewa-Reka - Deye SUN-12K SG05LP3 BMS](https://gist.github.com/Lewa-Reka/9796390db54fa5b317f27bc435a2a320) - zrodlo kandydatow per-pakiet BMS, wymagajacych walidacji na konkretnym urzadzeniu.
-- [Home Assistant - Add-on configuration](https://developers.home-assistant.io/docs/apps/configuration/) - ograniczenia statycznego schematu opcji dodatku Supervisor.
+Domyślnie `mqtt.use_supervisor: true` pobiera host, port, TLS i dane logowania z usługi MQTT Home Assistant Supervisor. Ustaw `false` tylko dla świadomie skonfigurowanego brokera zewnętrznego.
 
-## Własność encji (1.3.0)
+Domyślne wartości zachowujące zgodność to:
 
-`/share/entity_owners.json` przechowuje właścicieli encji. Panel pokazuje aplikację, która używa danej encji; konflikt zwraca HTTP 409. Własność nie wygasa po zatrzymaniu dodatku. Tematy stanu i identyfikatory HA pozostają wspólne. Komendy używają `<base>/<serial>/source/solarman_tcp/controls/<key>/set`. Więcej: [Sterowanie](CONTROL_ENTITIES.md).
+```yaml
+client_id: solarman
+base_topic: solarman_diagnostics
+```
+
+Dla każdego sensora jest jeden wspólny temat stanu, niezależny od transportu:
+
+```text
+solarman_diagnostics/<serial_falownika>/<topic_suffix>
+```
+
+Dodatkowe tematy to:
+
+```text
+solarman_diagnostics/<serial_falownika>/<topic_suffix>/attributes
+solarman_diagnostics/<serial_falownika>/<topic_suffix>/raw
+solarman_diagnostics/<serial_falownika>/<topic_suffix>/availability
+solarman_diagnostics/<serial_falownika>/availability
+```
+
+`attributes` zawiera pole `transport`. Dostępność sensora jest wyliczana ze wspólnej dostępności sesji/procesu oraz dostępności konkretnej encji. Last Will i kontrolowane zatrzymanie publikują wspólne `offline`.
+
+Tematy sterowania mają postać:
+
+```text
+solarman_diagnostics/<serial_falownika>/controls/<klucz>/state
+solarman_diagnostics/<serial_falownika>/controls/<klucz>/set
+solarman_diagnostics/<serial_falownika>/controls/<klucz>/availability
+```
+
+Zapisana encja wybiera transport w konfiguracji, lecz nazwa jej tematu i `unique_id` nie zależą od transportu.
+
+## Katalogi sensorów i sterowania
+
+Nowa instalacja ma pusty `profiles.default_profile: []`. Lista panelu pochodzi z dwóch zewnętrznych adresów:
+
+- `catalog.url` - sensory telemetryczne i szablony BMS;
+- `catalog.control_url` - definicje sterowania.
+
+Dodatek pobiera YAML, waliduje strukturę, a następnie atomowo zapisuje poprawny cache. Kod z sieci nie jest wykonywany. Gdy pobranie nie powiedzie się, używana jest ostatnia poprawna kopia. Jeśli poprawnego źródła i cache nie ma, odpowiednia lista jest pusta.
+
+Katalog deklaruje obsługiwane transporty. Panel pozwala wybrać transport tylko wtedy, gdy dana definicja obsługuje więcej niż jeden transport. Wybór można zapisać dopiero po wyniku `supported` dla tego transportu.
+
+## Panel Ingress i i18n
+
+Panel oraz formularz opcji dodatku mają kompletne tłumaczenia polskie i angielskie. Język jest wybierany na podstawie ustawień Home Assistant i przeglądarki.
+
+Zakładki panelu:
+
+- `Sensory` - skan telemetrii, wybór transportu i publikacji MQTT;
+- `Sterowanie` - skan aktualnych ustawień i wybór encji sterowania;
+- `Własne sensory` - ręczne sensory Modbus oraz formuły.
+
+Nagłówek pokazuje aktywność SolarMan TCP oraz Modbus RTU. Wyniki skanu przechowują oddzielny status i `latency_ms` dla obu transportów. Typowe statusy to `supported`, `unsupported`, `unavailable`, `timeout` i `invalid_value`.
+
+### Skan sensorów
+
+1. Otwórz `Sensory`.
+2. Wybierz `Skanuj teraz`.
+3. Dodatek odczyta SolarMan TCP, a potem RS485.
+4. Porównaj wartość, RAW, HEX, status i opóźnienie.
+5. Dla obsługiwanych pozycji wybierz transport oraz MQTT.
+6. Zapisz wybór.
+
+Skan jest tylko do odczytu. Nie tworzy komend FC16.
+
+### Skan sterowania
+
+Zakładka `Sterowanie` używa własnej mapy, ale skan nadal tylko odczytuje bieżące ustawienia. Nie ma indywidualnego przycisku Test. Definicje nieznane, read-only albo bez potwierdzonego zakresu nie mogą zostać włączone jako encje zapisujące.
+
+Prawdziwy zapis następuje dopiero po wysłaniu komendy do wybranej encji MQTT. Szczegółowy kontrakt opisuje [CONTROL_ENTITIES.md](CONTROL_ENTITIES.md).
+
+### Własne sensory
+
+`Własne sensory` przechowują definicje w `/config/custom_sensors.yaml`. Standardowy sensor określa rejestry, typ, mnożnik, offset, kolejność słów i transport. Formuła może używać ograniczonego interpretera z funkcjami `sensor(...)` i `RAW(...)`.
+
+Test własnego sensora jest operacją read-only. Dla wyboru `oba` wykonuje kolejno SolarMan TCP, a następnie RS485 i pokazuje oddzielny wynik każdego transportu. Test nie publikuje MQTT i nie zmienia ustawień falownika.
+
+Formuły nie mogą wykonywać importów, operacji plikowych, dostępu do sieci, `eval`, `exec`, rekurencji ani dowolnych funkcji Pythona.
+
+## Bezpieczeństwo sterowania
+
+Encja sterowania działa wyłącznie na zapisanym, obsługiwanym transporcie. Nie ma automatycznego przełączenia zapisu na drugi transport.
+
+Każda komenda przechodzi walidację, read-before-write, pojedynczy FC16 i read-back. Błąd po rozpoczęciu FC16 oznacza niepewny wynik. Runtime nie ponawia takiej komendy i globalnie blokuje wszystkie dalsze zapisy na obu transportach. Odczyty pozostają aktywne. Blokadę usuwa przeładowanie konfiguracji po jej zapisaniu albo restart dodatku.
+
+Błąd połączenia stwierdzony przed rozpoczęciem FC16 nie jest niepewnym zapisem i nie uruchamia globalnej blokady.
+
+## Pliki trwałe
+
+- `/config/detected_sensors.yaml` - wyniki skanu, konfiguracja sensorów, wybór MQTT i transportu;
+- `/config/custom_sensors.yaml` - własne sensory i formuły;
+- `/config/user_sensors.yaml` - lokalne nadpisania;
+- `/config/runtime_state.json` - wartości, czasy publikacji i liczniki timeoutów;
+- `/config/deye_solarman_catalog.yaml` - cache katalogu sensorów;
+- `/config/deye_solarman_control_catalog.yaml` - cache katalogu sterowania;
+- `/config/deye_solarman_discovery_removals.yaml` - kolejka usuwania MQTT Discovery;
+- `/share/deye_solarman_candidate_scan.json` - raport ręcznego skanu;
+- `/share/deye_solarman_scan_report.json` - opcjonalny raport monitorowania.
+
+Zmiana transportu lub wyłączenie encji zachowuje jej tożsamość MQTT. Usunięcie encji publikuje pustą retained konfigurację Discovery, aby Home Assistant usunął nieaktualny wpis.
+
+## Logowanie i diagnostyka
+
+`advanced.detailed_logs` jest domyślnie `false`. W normalnym trybie dodatek rejestruje start, utratę połączenia, ponowne łączenie i błędy, ale ogranicza:
+
+- pojedyncze potwierdzenia każdej publikacji MQTT;
+- zakresy każdego odczytu;
+- pełne tracebacki oczekiwanych rozłączeń;
+- powtarzające się szczegóły połączenia.
+
+Ustaw `detailed_logs: true` tylko na czas diagnozy. Hasło MQTT nie jest wypisywane w logu.
+
+Jeśli jeden transport ma status `unavailable`, sprawdź jego konfigurację i log. Drugi worker powinien nadal publikować swoje encje. Jeśli wspólna dostępność MQTT jest `offline`, sprawdź broker i cały proces dodatku.
+
+## Granice weryfikacji
+
+Testy automatyczne i testy pakietu potwierdzają strukturę konfiguracji, import runtime, zachowanie adapterów z atrapami, kodowanie map oraz symulowany kontrakt zapisu. Nie potwierdzają:
+
+- fizycznego portu USB widocznego w konkretnym HAOS;
+- okablowania, terminacji ani timingu RS485;
+- parametrów portu i Modbus ID konkretnej instalacji;
+- map rejestrów konkretnego firmware;
+- semantyki wszystkich wartości BMS;
+- rzeczywistego FC16 falownika;
+- wpływu zmienionej nastawy na lokalną instalację.
+
+Przed włączeniem sterowania porównaj odczyty obu transportów z interfejsem falownika. Pierwsze zapisy wykonuj tylko po potwierdzeniu mapy dla konkretnego modelu i firmware.
+
+## Źródła
+
+- [Home Assistant - app configuration](https://developers.home-assistant.io/docs/apps/configuration/)
+- [Home Assistant - app presentation](https://developers.home-assistant.io/docs/apps/presentation/)
+- [PyModbus - client documentation](https://pymodbus.readthedocs.io/en/latest/source/client.html)
+- [Katalog modelu i informacje o źródłach](../catalogs/models/deye_sg04_sg05_3ph_lv/README.md)

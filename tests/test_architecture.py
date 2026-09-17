@@ -20,6 +20,112 @@ from deye_inverter_core.models import LoggerConfig
 
 
 class ArchitectureTests(unittest.TestCase):
+	def test_release_metadata_and_bundle_match_version_2_contract(self):
+		config=yaml.safe_load((ROOT/"deye-solarman-diagnostics/config.yaml").read_text(encoding="utf-8"))
+		repository=yaml.safe_load((ROOT/"repository.yaml").read_text(encoding="utf-8"))
+		index=json.loads((ROOT/"catalogs/models/deye_sg04_sg05_3ph_lv/catalog-index.yaml").read_text(encoding="utf-8"))
+		requirements=(ROOT/"deye-solarman-diagnostics/rootfs/requirements.txt").read_text(encoding="utf-8").splitlines()
+
+		self.assertEqual(config["name"],"SolarMan Diagnostics")
+		self.assertEqual(config["version"],"2.0.0")
+		self.assertTrue(config["uart"])
+		self.assertIn("solarman",config["options"])
+		self.assertIn("rs485",config["options"])
+		self.assertIn("solarman",config["schema"])
+		self.assertIn("rs485",config["schema"])
+		self.assertEqual(repository["name"],"SolarMan Diagnostics")
+		self.assertEqual(index["revision"],"2.0.0")
+		self.assertIn("pymodbus==3.14.0",requirements)
+		self.assertEqual([path.parent.name for path in ROOT.glob("*/config.yaml")],["deye-solarman-diagnostics"])
+		for relative in (
+			"deye-solarman-diagnostics/rootfs/usr/src/app/deye_solarman_diagnostics/solarman.py",
+			"deye-solarman-diagnostics/rootfs/usr/src/app/deye_solarman_diagnostics/rs485.py",
+			"deye-solarman-diagnostics/rootfs/usr/src/app/deye_inverter_core/transport_manager.py",
+			"deye-solarman-diagnostics/rootfs/usr/src/app/deye_inverter_core/i18n/pl.json",
+			"deye-solarman-diagnostics/rootfs/usr/src/app/deye_inverter_core/i18n/en.json",
+			"deye-solarman-diagnostics/rootfs/usr/src/app/deye_inverter_core/data/catalog-index.yaml",
+		):
+			self.assertTrue((ROOT/relative).is_file(),relative)
+
+	def test_current_documentation_describes_the_dual_transport_release(self):
+		documents=(
+			"README.md",
+			"deye-solarman-diagnostics/README.md",
+			"deye-solarman-diagnostics/DOCS.md",
+			"deye-solarman-diagnostics/CONTROL_ENTITIES.md",
+			"docs/architecture/MULTI_ADDON_AND_CATALOGS.md",
+		)
+		contents={relative:(ROOT/relative).read_text(encoding="utf-8") for relative in documents}
+		all_current="\n".join(contents.values())
+		all_lower=all_current.lower()
+
+		for relative,content in contents.items():
+			self.assertIn("2.0.0",content,relative)
+			self.assertIn("SolarMan Diagnostics",content,relative)
+		for forbidden in ("entityownership","entity_owners.json","/source/solarman","/source/modbus"):
+			self.assertNotIn(forbidden,all_lower)
+		self.assertFalse((ROOT/"docs/architecture/ENTITY_OWNERSHIP.md").exists())
+		for required in (
+			"solarman-only",
+			"rs485-only",
+			"dual",
+			"read-before-write",
+			"read-back",
+			"fc16",
+			"/dev/ttyusb0",
+			"9600 8n1",
+			"client_id: solarman",
+			"base_topic: solarman_diagnostics",
+			"sensory",
+			"sterowanie",
+			"własne sensory",
+		):
+			self.assertIn(required,all_lower,required)
+
+	def test_supporting_architecture_readmes_describe_current_runtime(self):
+		documents=(
+			"apps/README.md",
+			"catalogs/README.md",
+			"catalogs/schemas/README.md",
+			"catalogs/models/README.md",
+			"catalogs/models/deye_sg04_sg05_3ph_lv/README.md",
+		)
+		for relative in documents:
+			content=(ROOT/relative).read_text(encoding="utf-8").lower()
+			self.assertIn("2.0.0",content,relative)
+			self.assertNotIn("future",content,relative)
+			self.assertNotIn("planned",content,relative)
+			self.assertNotIn("reserved",content,relative)
+		self.assertFalse((ROOT/"apps/deye-rs485/README.md").exists())
+
+	def test_user_documentation_covers_migration_safety_and_validation_limits(self):
+		docs=(ROOT/"deye-solarman-diagnostics/DOCS.md").read_text(encoding="utf-8").lower()
+		controls=(ROOT/"deye-solarman-diagnostics/CONTROL_ENTITIES.md").read_text(encoding="utf-8").lower()
+
+		for required in (
+			"logger",
+			"polling",
+			"solarman",
+			"rs485",
+			"detailed_logs",
+			"catalog.url",
+			"catalog.control_url",
+			"testy automatyczne",
+			"fizycznego portu usb",
+			"timingu rs485",
+			"konkretnego firmware",
+			"rzeczywistego fc16",
+		):
+			self.assertIn(required,docs,required)
+		for required in (
+			"bez fallbacku",
+			"brak ponowienia",
+			"global",
+			"niepewn",
+			"tylko do odczytu",
+		):
+			self.assertIn(required,controls,required)
+
 	def test_ownership_modules_are_removed_from_sources_and_generated_bundle(self):
 		for relative in (
 			"packages/deye_inverter_core/ownership.py",
