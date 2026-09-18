@@ -467,7 +467,7 @@ class DualTransportConfigTests(unittest.TestCase):
 	def test_addon_uses_version_2_sections_and_disables_rs485_by_default(self) -> None:
 		addon=yaml.safe_load((ROOT/"deye-solarman-diagnostics/config.yaml").read_text(encoding="utf-8"))
 
-		self.assertEqual(addon["version"],"2.0.3")
+		self.assertEqual(addon["version"],"2.0.4")
 		self.assertNotIn("logger",addon["options"])
 		self.assertNotIn("polling",addon["options"])
 		self.assertTrue(addon["options"]["solarman"]["enabled"])

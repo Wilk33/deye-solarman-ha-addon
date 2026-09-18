@@ -2026,7 +2026,7 @@ class RuntimeTests(unittest.TestCase):
 		])
 		self.assertEqual(discovery["availability_mode"],"all")
 		self.assertEqual(discovery["origin"]["name"],"SolarMan Diagnostics")
-		self.assertEqual(discovery["origin"]["sw_version"],"2.0.3")
+		self.assertEqual(discovery["origin"]["sw_version"],"2.0.4")
 
 		publisher._publish_confirmed.reset_mock()
 		publisher.publish_state(sensor,52,{"raw_registers":[52]})

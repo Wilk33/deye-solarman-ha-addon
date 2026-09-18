@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.0.4
+
+- Fix add-on startup failure caused by a telemetry checksum generated from Windows CRLF line endings and verified against Linux LF line endings.
+- Normalize catalog text to LF before hashing and packaging so release checksums are reproducible on Windows and Linux.
+
 ## 2.0.3
 
 - Keep telemetry and control catalogs as independent configurable sources so installations can mix providers or disable either remote list.
@@ -35,7 +40,7 @@
 - Bundle both transport adapters, the shared core, PL/EN i18n, and checksummed catalogs in the self-contained HAOS build context. Pin `pymodbus==3.14.0`.
 - Document that automated validation does not prove a physical USB adapter, RS485 timing, firmware-specific register maps, or a real inverter FC16 write.
 
-Entries below describe historical releases and do not define the current 2.0.3 architecture.
+Entries below describe historical releases and do not define the current 2.0.4 architecture.
 
 ## 1.4.0
 

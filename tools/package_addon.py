@@ -13,15 +13,19 @@ MODEL=ROOT/"catalogs/models/deye_sg04_sg05_3ph_lv"
 APP=ROOT/"deye-solarman-diagnostics/rootfs/usr/src/app"
 
 
+def normalized_text_bytes(path: Path) -> bytes:
+	return path.read_text(encoding="utf-8").replace("\r\n","\n").replace("\r","\n").encode("utf-8")
+
+
 def main() -> None:
 	parser=argparse.ArgumentParser()
 	parser.add_argument("--check",action="store_true")
 	args=parser.parse_args()
 	expected={}
-	index={"format":1,"catalog_set":"deye_sg04_sg05_3ph_lv","revision":"2.0.3","maps":{}}
+	index={"format":1,"catalog_set":"deye_sg04_sg05_3ph_lv","revision":"2.0.4","maps":{}}
 	for map_id in ("telemetry","control"):
 		name=map_id.replace("_","-")+".yaml"
-		content=(MODEL/name).read_bytes()
+		content=normalized_text_bytes(MODEL/name)
 		data=yaml.safe_load(content)
 		index["maps"][map_id]={"file":name,"sha256":hashlib.sha256(content).hexdigest(),"transports":data["transports"],"writable":data["writable"]}
 		expected[APP/"deye_inverter_core/data"/name]=content
@@ -35,7 +39,7 @@ def main() -> None:
 			if source.is_file() and "__pycache__" not in source.parts and source.suffix in {".py",".js",".json"}:
 				expected[target_root/source.relative_to(source_root)]=source.read_bytes()
 	# The old URL remains an exact mirror for installed clients.
-	telemetry=(MODEL/"telemetry.yaml").read_bytes()
+	telemetry=normalized_text_bytes(MODEL/"telemetry.yaml")
 	expected[ROOT/"deye-solarman-diagnostics/deye_sg04_sg05_3ph_lv_catalog.yaml"]=telemetry
 	drift=[]
 	for target,content in expected.items():

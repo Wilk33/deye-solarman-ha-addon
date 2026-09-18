@@ -1,4 +1,4 @@
-# SolarMan Diagnostics 2.0.3 - instrukcja użytkownika
+# SolarMan Diagnostics 2.0.4 - instrukcja użytkownika
 
 ## Przeznaczenie
 
@@ -151,7 +151,7 @@ Zmiana interwału jednego transportu nie zmienia interwału drugiego.
 
 ## Migracja z wersji 1.x
 
-Wersja 2.0.3 zachowuje slug oraz katalog instalacyjny, więc Home Assistant aktualizuje istniejący dodatek.
+Wersja 2.0.4 zachowuje slug oraz katalog instalacyjny, więc Home Assistant aktualizuje istniejący dodatek.
 
 Starsza konfiguracja używała sekcji:
 

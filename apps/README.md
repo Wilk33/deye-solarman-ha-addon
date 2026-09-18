@@ -1,4 +1,4 @@
-# Applications in SolarMan Diagnostics 2.0.3
+# Applications in SolarMan Diagnostics 2.0.4
 
 `apps/deye-solarman/src/deye_solarman_diagnostics` contains the application entry point and both transport adapters:
 

@@ -1,4 +1,4 @@
-# SolarMan Diagnostics 2.0.3
+# SolarMan Diagnostics 2.0.4
 
 `SolarMan Diagnostics` jest jednym instalowalnym dodatkiem Home Assistant OS do lokalnej komunikacji z falownikiem Deye. Jeden proces może jednocześnie obsługiwać dwa transporty:
 
@@ -129,7 +129,7 @@ Pełny opis opcji, migracji i diagnostyki znajduje się w [DOCS.md](deye-solarma
 
 ## Migracja z 1.x
 
-Wersja 2.0.3 zachowuje katalog instalacyjny i slug `deye-solarman-diagnostics`, dlatego aktualizacja odbywa się w miejscu.
+Wersja 2.0.4 zachowuje katalog instalacyjny i slug `deye-solarman-diagnostics`, dlatego aktualizacja odbywa się w miejscu.
 
 Starszy układ:
 
@@ -176,7 +176,7 @@ Kopia w `deye-solarman-diagnostics/rootfs/usr/src/app` jest generowana. Po zmian
 .work/venv/Scripts/python.exe -m unittest discover -s tests -v
 ```
 
-Pakiet 2.0.3 zawiera wspólny rdzeń, oba adaptery, i18n PL/EN oraz katalogi z sumami kontrolnymi. Zależność RTU jest przypięta jako `pymodbus==3.14.0`. Repozytorium nie zawiera drugiego instalowalnego folderu RS485.
+Pakiet 2.0.4 zawiera wspólny rdzeń, oba adaptery, i18n PL/EN oraz katalogi z sumami kontrolnymi. Zależność RTU jest przypięta jako `pymodbus==3.14.0`. Repozytorium nie zawiera drugiego instalowalnego folderu RS485.
 
 ## Granice weryfikacji
 
