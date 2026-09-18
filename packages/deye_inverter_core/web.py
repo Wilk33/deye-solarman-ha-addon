@@ -869,7 +869,8 @@ async function loadSensors() {
 }
 
 async function refreshRuntimeStatus() {
-  renderTransportRuntime(await request("api/runtime"));
+  const transportChanged=renderTransportRuntime(await request("api/runtime"));
+  if (!transportChanged) return;
   render();
   if (typeof renderCustomSensors === "function") renderCustomSensors();
 }

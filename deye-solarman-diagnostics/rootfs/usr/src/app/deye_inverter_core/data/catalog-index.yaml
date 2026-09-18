@@ -1,7 +1,7 @@
 {
   "format": 1,
   "catalog_set": "deye_sg04_sg05_3ph_lv",
-  "revision": "2.0.1",
+  "revision": "2.0.2",
   "maps": {
     "telemetry": {
       "file": "telemetry.yaml",

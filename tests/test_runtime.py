@@ -1232,10 +1232,12 @@ class RuntimeTests(unittest.TestCase):
 			finally:
 				panel.stop()
 
-	def test_config_accepts_profile_editor_scalar(self) -> None:
+	def test_config_keeps_builtin_battery_profile_enabled(self) -> None:
+		options=make_options()
+		options["profiles"]["default_profile"]=[]
 		with tempfile.TemporaryDirectory() as directory:
 			options_path=Path(directory) / "options.json"
-			options_path.write_text(json.dumps(make_options()), encoding="utf-8")
+			options_path.write_text(json.dumps(options), encoding="utf-8")
 			config=load_config(options_path)
 
 		self.assertEqual(config.profiles.default_profile, ["deye_battery_packs"])
@@ -2011,7 +2013,7 @@ class RuntimeTests(unittest.TestCase):
 		])
 		self.assertEqual(discovery["availability_mode"],"all")
 		self.assertEqual(discovery["origin"]["name"],"SolarMan Diagnostics")
-		self.assertEqual(discovery["origin"]["sw_version"],"2.0.1")
+		self.assertEqual(discovery["origin"]["sw_version"],"2.0.2")
 
 		publisher._publish_confirmed.reset_mock()
 		publisher.publish_state(sensor,52,{"raw_registers":[52]})

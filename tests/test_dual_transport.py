@@ -467,7 +467,7 @@ class DualTransportConfigTests(unittest.TestCase):
 	def test_addon_uses_version_2_sections_and_disables_rs485_by_default(self) -> None:
 		addon=yaml.safe_load((ROOT/"deye-solarman-diagnostics/config.yaml").read_text(encoding="utf-8"))
 
-		self.assertEqual(addon["version"],"2.0.1")
+		self.assertEqual(addon["version"],"2.0.2")
 		self.assertNotIn("logger",addon["options"])
 		self.assertNotIn("polling",addon["options"])
 		self.assertTrue(addon["options"]["solarman"]["enabled"])
@@ -2053,15 +2053,19 @@ globalThis.fetch=async()=>({ok:true,json:async()=>({language:"en",translations:{
 '''
 		harness=r'''
 window.i18nReady.then(()=>{
-	window.renderTransportRuntime({transports:[
+	const firstChanged=window.renderTransportRuntime({transports:[
 		{id:"solarman_tcp",online:true,latency_ms:10,error_count:0},
 		{id:"modbus_rtu",online:false,latency_ms:0,error_count:1,last_error:"disconnected"},
+	]});
+	const unchanged=window.renderTransportRuntime({transports:[
+		{id:"solarman_tcp",online:true,latency_ms:12,error_count:0},
+		{id:"modbus_rtu",online:false,latency_ms:0,error_count:2,last_error:"still disconnected"},
 	]});
 	const entry={key:"run_state",definition:{transport:"modbus_rtu",transports:["solarman_tcp","modbus_rtu"]},last_scan:{
 		solarman_tcp:{status:"supported",value:"Normal"},
 		modbus_rtu:{status:"supported",value:"Normal"},
 	}};
-	process.stdout.write(JSON.stringify({selector:window.transportSelector(entry),cards:window.transportResultCards(entry),selected:entry.definition.transport,online:window.onlineTransportIds}));
+	process.stdout.write(JSON.stringify({selector:window.transportSelector(entry),cards:window.transportResultCards(entry),selected:entry.definition.transport,online:window.onlineTransportIds,firstChanged,unchanged}));
 }).catch(error=>{ console.error(error); process.exitCode=1; });
 '''
 		with tempfile.TemporaryDirectory() as directory:
@@ -2075,6 +2079,8 @@ window.i18nReady.then(()=>{
 		self.assertNotIn("<select",payload["selector"])
 		self.assertEqual(payload["selected"],"solarman_tcp")
 		self.assertEqual(payload["online"],["solarman_tcp"])
+		self.assertTrue(payload["firstChanged"])
+		self.assertFalse(payload["unchanged"])
 		self.assertIn("supported",payload["cards"])
 		self.assertIn("offline",payload["cards"])
 

@@ -1,8 +1,8 @@
-# SolarMan Diagnostics 2.0.1 - architektura jednego dodatku
+# SolarMan Diagnostics 2.0.2 - architektura jednego dodatku
 
 ## Stan bieżący
 
-Wersja 2.0.1 ma jeden instalowalny katalog `deye-solarman-diagnostics`, jeden proces runtime i jeden klient MQTT. Ten proces może obsługiwać SolarMan TCP, Modbus RTU przez USB-RS485 albo oba transporty równocześnie.
+Wersja 2.0.2 ma jeden instalowalny katalog `deye-solarman-diagnostics`, jeden proces runtime i jeden klient MQTT. Ten proces może obsługiwać SolarMan TCP, Modbus RTU przez USB-RS485 albo oba transporty równocześnie.
 
 Obsługiwane tryby to:
 
@@ -30,7 +30,7 @@ deye-solarman-diagnostics/
 
 `tools/package_addon.py` kopiuje pliki Python, JavaScript, i18n PL/EN, katalogi i manifest do `deye-solarman-diagnostics/rootfs/usr/src/app`. Tryb `--check` wykrywa każdą różnicę między źródłem a artefaktem.
 
-Indeks katalogu ma revision `2.0.1`. Obraz przypina `pymodbus==3.14.0` dla adaptera RTU.
+Indeks katalogu ma revision `2.0.2`. Obraz przypina `pymodbus==3.14.0` dla adaptera RTU.
 
 ## Granica transportu
 
@@ -122,7 +122,7 @@ Rollback plików konfiguracji nie cofa równoległej, już zatwierdzonej generac
 
 Każda mapa deklaruje `transports`. Loader sprawdza sumę pliku i zgodność transportu przed użyciem definicji. Źródła zewnętrzne `catalog.url` oraz `catalog.control_url` są walidowane jako dane YAML i zapisywane atomowo do osobnych cache.
 
-Pusty `default_profile` oznacza, że nowa instalacja nie włącza ukrytego zestawu encji.
+Wbudowany profil `deye_battery_packs` jest zawsze aktywny. Nie jest częścią schematu opcji i użytkownik nie może go przypadkowo wyłączyć.
 
 ## Sterowanie
 
@@ -139,7 +139,7 @@ Błąd przed rozpoczęciem FC16 jest rozróżniany od niepewnego wyniku po rozpo
 
 ## Konfiguracja i migracja
 
-`config.yaml` ma `version: "2.0.1"`, `uart: true`, sekcje `solarman` i `rs485` oraz kompletne tłumaczenia PL/EN. Pola tożsamości falownika, profili, diagnostyki i skanowania są na najwyższym poziomie, dzięki czemu Home Assistant pokazuje je stale i zapisuje przełączniki jako bezpośrednie wartości konfiguracji.
+`config.yaml` ma `version: "2.0.2"`, `uart: true`, sekcje `solarman` i `rs485` oraz kompletne tłumaczenia PL/EN. Pola tożsamości falownika, profili, diagnostyki i skanowania są na najwyższym poziomie, dzięki czemu Home Assistant pokazuje je stale i zapisuje przełączniki jako bezpośrednie wartości konfiguracji.
 
 Parser zachowuje zgodność z konfiguracją 1.x. `logger` wraz ze wspólną sekcją `polling` jest interpretowany jako włączony `solarman`, a RS485 pozostaje wyłączone. Istniejące pliki wyboru są ładowane z domyślnym transportem SolarMan TCP, jeśli starszy wpis nie zawiera pola `transport`.
 

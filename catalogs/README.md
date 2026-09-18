@@ -1,4 +1,4 @@
-# Register catalogs in SolarMan Diagnostics 2.0.1
+# Register catalogs in SolarMan Diagnostics 2.0.2
 
 This directory is the canonical source for the checksummed catalog bundle used by the add-on runtime.
 

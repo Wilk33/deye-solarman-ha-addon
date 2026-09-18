@@ -135,7 +135,6 @@ configuration:
   inverter_name: {name: Tożsamość falownika - nazwa urządzenia, description: Nazwa wspólnego urządzenia widoczna w Home Assistant.}
   inverter_manufacturer: {name: Tożsamość falownika - producent, description: Producent falownika pokazywany w Home Assistant.}
   inverter_model: {name: Tożsamość falownika - model, description: Model falownika pokazywany w Home Assistant.}
-  default_profile: {name: Profile i lokalne dane - profil startowy, description: Minimalna lista profili startowych. Domyślnie pusta, aby nie publikować niepotwierdzonych encji.}
   overrides_file: {name: Profile i lokalne dane - plik nadpisań, description: Lokalny plik /config z trwałymi nadpisaniami definicji.}
   custom_sensors_file: {name: Profile i lokalne dane - własne sensory, description: Lokalny plik /config z definicjami Własnych sensorów.}
   state_file: {name: Profile i lokalne dane - stan runtime, description: Lokalny plik /config z trwałym stanem harmonogramu i publikacji.}

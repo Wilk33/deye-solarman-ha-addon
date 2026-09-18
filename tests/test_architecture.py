@@ -27,14 +27,14 @@ class ArchitectureTests(unittest.TestCase):
 		requirements=(ROOT/"deye-solarman-diagnostics/rootfs/requirements.txt").read_text(encoding="utf-8").splitlines()
 
 		self.assertEqual(config["name"],"SolarMan Diagnostics")
-		self.assertEqual(config["version"],"2.0.1")
+		self.assertEqual(config["version"],"2.0.2")
 		self.assertTrue(config["uart"])
 		self.assertIn("solarman",config["options"])
 		self.assertIn("rs485",config["options"])
 		self.assertIn("solarman",config["schema"])
 		self.assertIn("rs485",config["schema"])
 		self.assertEqual(repository["name"],"SolarMan Diagnostics")
-		self.assertEqual(index["revision"],"2.0.1")
+		self.assertEqual(index["revision"],"2.0.2")
 		self.assertIn("pymodbus==3.14.0",requirements)
 		self.assertEqual([path.parent.name for path in ROOT.glob("*/config.yaml")],["deye-solarman-diagnostics"])
 		for relative in (
@@ -60,7 +60,7 @@ class ArchitectureTests(unittest.TestCase):
 		all_lower=all_current.lower()
 
 		for relative,content in contents.items():
-			self.assertIn("2.0.1",content,relative)
+			self.assertIn("2.0.2",content,relative)
 			self.assertIn("SolarMan Diagnostics",content,relative)
 		for forbidden in ("entityownership","entity_owners.json","/source/solarman","/source/modbus"):
 			self.assertNotIn(forbidden,all_lower)
@@ -92,7 +92,7 @@ class ArchitectureTests(unittest.TestCase):
 		)
 		for relative in documents:
 			content=(ROOT/relative).read_text(encoding="utf-8").lower()
-			self.assertIn("2.0.1",content,relative)
+			self.assertIn("2.0.2",content,relative)
 			self.assertNotIn("future",content,relative)
 			self.assertNotIn("planned",content,relative)
 			self.assertNotIn("reserved",content,relative)
@@ -144,24 +144,33 @@ class ArchitectureTests(unittest.TestCase):
 		self.assertEqual(config["options"]["mqtt"]["client_id"],"solarman")
 		self.assertEqual(config["options"]["mqtt"]["base_topic"],"solarman_diagnostics")
 		self.assertEqual(config["options"]["inverter_name"],"SolarMan Diagnostics")
-		self.assertEqual(config["options"]["default_profile"],[])
+		self.assertNotIn("default_profile",config["options"])
+		self.assertNotIn("default_profile",config["schema"])
 		self.assertIn("control_url",config["options"]["catalog"])
 		self.assertEqual(config["schema"]["detailed_logs"],"bool")
 		for section in ("inverter","profiles","advanced","scan"):
 			self.assertNotIn(section,config["schema"])
 		for field in (
 			"inverter_serial_number","inverter_name","inverter_manufacturer","inverter_model",
-			"default_profile","overrides_file","custom_sensors_file","state_file","scan_report_file",
+			"overrides_file","custom_sensors_file","state_file","scan_report_file",
 			"emit_raw_topics","emit_scan_report","detailed_logs",
 			"scan_mode","scan_candidate_report_file","detected_sensors_file","bms_pack_count",
 		):
 			self.assertIn(field,config["schema"])
+
+	def test_builtin_battery_profile_is_not_exposed_as_a_configuration_choice(self):
+		config=yaml.safe_load((ROOT/"deye-solarman-diagnostics/config.yaml").read_text(encoding="utf-8"))
+
+		self.assertNotIn("default_profile",config["options"])
+		self.assertNotIn("default_profile",config["schema"])
 
 	def test_sensor_list_uses_a_theme_backed_surface(self):
 		web_source=(ROOT/"packages/deye_inverter_core/web.py").read_text(encoding="utf-8")
 
 		self.assertIn(".sensor-list-surface",web_source)
 		self.assertIn('id="sensor-groups" class="sensor-list-surface"',web_source)
+		self.assertIn("const transportChanged=renderTransportRuntime",web_source)
+		self.assertIn("if (!transportChanged) return;",web_source)
 
 	def test_core_does_not_import_concrete_transports(self):
 		for source in (ROOT/"packages/deye_inverter_core").glob("*.py"):

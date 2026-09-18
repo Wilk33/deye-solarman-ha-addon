@@ -91,16 +91,19 @@ function transportSelector(entry,prefix="")
 
 function renderTransportRuntime(payload)
 {
+	const previousOnline=Array.isArray(window.onlineTransportIds) ? [...window.onlineTransportIds] : null;
 	window.transportRuntimeById=Object.fromEntries((payload.transports || []).map(status=>[status.id,status]));
 	window.onlineTransportIds=(payload.transports || []).filter(status=>status.online).map(status=>status.id);
 	window.activeTransportIds=(payload.transports || []).map(status=>status.id);
+	const onlineChanged=previousOnline === null || previousOnline.length !== window.onlineTransportIds.length || previousOnline.some((transport,index)=>transport !== window.onlineTransportIds[index]);
 	const target=document.getElementById("transport-status-list");
-	if (!target) return;
+	if (!target) return onlineChanged;
 	target.innerHTML=(payload.transports || []).map(status=>{
 		const reconnectSeconds=status.reconnect_in_seconds ?? status.next_reconnect_at ?? 0;
 		const reconnect=reconnectSeconds > 0 ? t("runtime.reconnect",{value:`${Number(reconnectSeconds).toFixed(2)} s`}) : "";
 		return `<section class="runtime-transport"><strong>${panelEsc(transportName(status.id))}: ${panelEsc(t(status.online ? "runtime.online" : "runtime.offline"))}</strong><span>${panelEsc(t("runtime.latency",{value:Number(status.latency_ms || 0).toFixed(2)}))}</span><span>${panelEsc(t("runtime.errors",{value:status.error_count || 0}))}</span>${reconnect ? `<span>${panelEsc(reconnect)}</span>` : ""}${status.last_error ? `<span class="transport-error">${panelEsc(status.last_error)}</span>` : ""}</section>`;
 	}).join("");
+	return onlineChanged;
 }
 
 async function loadPanelTranslations()

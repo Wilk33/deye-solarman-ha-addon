@@ -18,6 +18,7 @@ from .supervisor import discover_mqtt_service
 
 
 OPTIONS_PATH=Path("/data/options.json")
+BUILTIN_SENSOR_PROFILES=["deye_battery_packs"]
 
 
 def _read_options(path: Path=OPTIONS_PATH) -> dict[str, Any]:
@@ -87,7 +88,6 @@ def load_config(path: Path=OPTIONS_PATH) -> AppConfig:
 		"model":options.get("inverter_model","SG05LP3"),
 	}
 	profiles=options.get("profiles") or {
-		"default_profile":options.get("default_profile",[]),
 		"overrides_file":options.get("overrides_file","/config/user_sensors.yaml"),
 		"custom_sensors_file":options.get("custom_sensors_file","/config/custom_sensors.yaml"),
 		"state_file":options.get("state_file","/config/runtime_state.json"),
@@ -116,9 +116,6 @@ def load_config(path: Path=OPTIONS_PATH) -> AppConfig:
 		},
 	)
 
-	default_profile=profiles["default_profile"]
-	if isinstance(default_profile, str):
-		default_profile=[default_profile]
 	solarman_enabled=bool(solarman["enabled"])
 	rs485_enabled=bool(rs485["enabled"])
 	if not solarman_enabled and not rs485_enabled:
@@ -176,7 +173,7 @@ def load_config(path: Path=OPTIONS_PATH) -> AppConfig:
 			model=inverter["model"],
 		),
 		profiles=ProfilesConfig(
-			default_profile=list(default_profile),
+			default_profile=list(BUILTIN_SENSOR_PROFILES),
 			overrides_file=profiles["overrides_file"],
 			custom_sensors_file=profiles.get("custom_sensors_file","/config/custom_sensors.yaml"),
 			state_file=profiles["state_file"],

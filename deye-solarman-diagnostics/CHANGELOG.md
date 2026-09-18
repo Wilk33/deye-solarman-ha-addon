@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.0.2
+
+- Remove `default_profile` from the Home Assistant option schema and keep the built-in `deye_battery_packs` profile permanently enabled. Supervisor now drops the obsolete saved option, restoring update completion, configuration validation and app restart after the 2.0.1 regression.
+- Stop the five-second runtime refresh from rebuilding entity forms when the set of online transports has not changed. Open `Konfiguruj dekodowanie i odpytywanie` sections now remain open during normal status refreshes.
+
 ## 2.0.1
 
 - Decode inverter run state as an enum and relay, warning and fault registers as named bitmasks. Publish readable MQTT states while preserving RAW register diagnostics.
@@ -21,7 +26,7 @@
 - Bundle both transport adapters, the shared core, PL/EN i18n, and checksummed catalogs in the self-contained HAOS build context. Pin `pymodbus==3.14.0`.
 - Document that automated validation does not prove a physical USB adapter, RS485 timing, firmware-specific register maps, or a real inverter FC16 write.
 
-Entries below describe historical releases and do not define the current 2.0.1 architecture.
+Entries below describe historical releases and do not define the current 2.0.2 architecture.
 
 ## 1.4.0
 

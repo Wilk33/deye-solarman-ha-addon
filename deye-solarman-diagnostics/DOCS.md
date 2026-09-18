@@ -1,4 +1,4 @@
-# SolarMan Diagnostics 2.0.1 - instrukcja użytkownika
+# SolarMan Diagnostics 2.0.2 - instrukcja użytkownika
 
 ## Przeznaczenie
 
@@ -95,7 +95,6 @@ inverter_name: SolarMan Diagnostics
 inverter_manufacturer: Deye
 inverter_model: SG05LP3
 
-default_profile: []
 overrides_file: /config/user_sensors.yaml
 custom_sensors_file: /config/custom_sensors.yaml
 state_file: /config/runtime_state.json
@@ -154,7 +153,7 @@ Zmiana interwału jednego transportu nie zmienia interwału drugiego.
 
 ## Migracja z wersji 1.x
 
-Wersja 2.0.1 zachowuje slug oraz katalog instalacyjny, więc Home Assistant aktualizuje istniejący dodatek.
+Wersja 2.0.2 zachowuje slug oraz katalog instalacyjny, więc Home Assistant aktualizuje istniejący dodatek.
 
 Starsza konfiguracja używała sekcji:
 
@@ -183,7 +182,7 @@ Po aktualizacji sprawdź nową sekcję `solarman`, zapisz konfigurację i dopier
 
 MQTT zachowuje wcześniejsze `unique_id`, urządzenie i tematy stanu. Aktualizacja nie wymaga usuwania encji ani ponownego budowania automatyzacji Home Assistant.
 
-W 2.0.1 pola z dawnych grup `inverter`, `profiles`, `advanced` i `scan` są bezpośrednimi opcjami formularza, aby pozostawały stale widoczne i poprawnie odtwarzały przełączniki. Po aktualizacji z 2.0.0 sprawdź te wartości przed uruchomieniem dodatku, szczególnie numer seryjny falownika i niestandardowe ścieżki plików. Runtime nadal potrafi odczytać dawny zagnieżdżony układ z pliku opcji.
+Od 2.0.1 pola z dawnych grup `inverter`, `profiles`, `advanced` i `scan` są bezpośrednimi opcjami formularza, aby pozostawały stale widoczne i poprawnie odtwarzały przełączniki. Wersja 2.0.2 usuwa błędną opcję `default_profile`, która w 2.0.1 blokowała zakończenie aktualizacji i ponowne uruchomienie dodatku. Profil `deye_battery_packs` jest od tej wersji zawsze aktywny. Po aktualizacji z 2.0.0 sprawdź pozostałe wartości przed uruchomieniem dodatku, szczególnie numer seryjny falownika i niestandardowe ścieżki plików. Runtime nadal potrafi odczytać dawny zagnieżdżony układ z pliku opcji.
 
 ## MQTT i Home Assistant
 
@@ -225,7 +224,7 @@ Zapisana encja wybiera transport w konfiguracji, lecz nazwa jej tematu i `unique
 
 ## Katalogi sensorów i sterowania
 
-Nowa instalacja ma pusty `default_profile: []`. Lista panelu pochodzi z dwóch zewnętrznych adresów:
+Wbudowany profil `deye_battery_packs` jest zawsze aktywny i nie jest widoczny w konfiguracji. Lista panelu pochodzi z dwóch zewnętrznych adresów:
 
 - `catalog.url` - sensory telemetryczne i szablony BMS;
 - `catalog.control_url` - definicje sterowania.

@@ -67,7 +67,6 @@ configuration:
   inverter_name: {name: Inverter identity - device name, description: Shared device name shown in Home Assistant.}
   inverter_manufacturer: {name: Inverter identity - manufacturer, description: Inverter manufacturer shown in Home Assistant.}
   inverter_model: {name: Inverter identity - model, description: Inverter model shown in Home Assistant.}
-  default_profile: {name: Profiles and local data - startup profile, description: Minimal startup profile list. Empty by default so unverified entities are not published.}
   overrides_file: {name: Profiles and local data - overrides, description: Local /config file containing persistent definition overrides.}
   custom_sensors_file: {name: Profiles and local data - custom sensors, description: Local /config file containing Custom sensor definitions.}
   state_file: {name: Profiles and local data - runtime state, description: Local /config file containing persistent scheduling and publication state.}
