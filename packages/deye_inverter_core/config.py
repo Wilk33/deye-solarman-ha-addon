@@ -19,6 +19,10 @@ from .supervisor import discover_mqtt_service
 
 OPTIONS_PATH=Path("/data/options.json")
 BUILTIN_SENSOR_PROFILES=["deye_battery_packs"]
+TELEMETRY_CACHE_FILE="/config/deye_solarman_catalog.yaml"
+CONTROL_CACHE_FILE="/config/deye_solarman_control_catalog.yaml"
+TELEMETRY_URL="https://raw.githubusercontent.com/Wilk33/deye-solarman-ha-addon/main/catalogs/models/deye_sg04_sg05_3ph_lv/telemetry.yaml"
+CONTROL_URL="https://raw.githubusercontent.com/Wilk33/deye-solarman-ha-addon/main/catalogs/models/deye_sg04_sg05_3ph_lv/control.yaml"
 
 
 def _read_options(path: Path=OPTIONS_PATH) -> dict[str, Any]:
@@ -108,10 +112,8 @@ def load_config(path: Path=OPTIONS_PATH) -> AppConfig:
 		"catalog",
 		{
 			"refresh_on_start": True,
-			"url": "https://raw.githubusercontent.com/Wilk33/deye-solarman-ha-addon/main/deye-solarman-diagnostics/deye_sg04_sg05_3ph_lv_catalog.yaml",
-			"cache_file": "/config/deye_solarman_catalog.yaml",
-			"control_url": "https://raw.githubusercontent.com/Wilk33/deye-solarman-ha-addon/main/catalogs/models/deye_sg04_sg05_3ph_lv/control.yaml",
-			"control_cache_file": "/config/deye_solarman_control_catalog.yaml",
+			"url": TELEMETRY_URL,
+			"control_url": CONTROL_URL,
 			"timeout": 5,
 		},
 	)
@@ -192,10 +194,10 @@ def load_config(path: Path=OPTIONS_PATH) -> AppConfig:
 		),
 		catalog=CatalogConfig(
 			refresh_on_start=bool(catalog["refresh_on_start"]),
-			url=str(catalog["url"]),
-			cache_file=str(catalog["cache_file"]),
+			url=str(catalog.get("url",TELEMETRY_URL)).strip(),
+			cache_file=TELEMETRY_CACHE_FILE,
 			timeout=int(catalog["timeout"]),
-			control_url=str(catalog.get("control_url","")).strip(),
-			control_cache_file=str(catalog.get("control_cache_file","/config/deye_solarman_control_catalog.yaml")),
+			control_url=str(catalog.get("control_url",CONTROL_URL)).strip(),
+			control_cache_file=CONTROL_CACHE_FILE,
 		),
 	)

@@ -1,5 +1,6 @@
 {
   "format": 1,
+  "version": 2,
   "map_id": "telemetry",
   "catalog_set": "deye_sg04_sg05_3ph_lv",
   "purpose": "telemetry",
@@ -1196,5 +1197,344 @@
       "device_class": "energy",
       "state_class": "total_increasing"
     }
-  ]
+  ],
+  "bms_pack": {
+    "base_register": 10032,
+    "register_stride": 38,
+    "sensors": [
+      {
+        "key": "battery_{pack}_bms_serial",
+        "name": "Battery {pack} BMS Serial",
+        "register_offsets": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "type": "ascii",
+        "byte_order": "low_high",
+        "schedule": "slow",
+        "read_every": 3600,
+        "report_every": 3600
+      },
+      {
+        "key": "battery_{pack}_voltage",
+        "name": "Battery {pack} Voltage",
+        "register_offsets": [
+          8
+        ],
+        "type": "uint16",
+        "multiplier": 0.1,
+        "unit": "V",
+        "device_class": "voltage",
+        "state_class": "measurement",
+        "topic_suffix": "battery_{pack}/voltage"
+      },
+      {
+        "key": "battery_{pack}_current",
+        "name": "Battery {pack} Current",
+        "register_offsets": [
+          9
+        ],
+        "type": "int16",
+        "multiplier": 0.1,
+        "unit": "A",
+        "device_class": "current",
+        "state_class": "measurement",
+        "topic_suffix": "battery_{pack}/current"
+      },
+      {
+        "key": "battery_{pack}_temperature",
+        "name": "Battery {pack} Temperature",
+        "register_offsets": [
+          10
+        ],
+        "type": "uint16",
+        "multiplier": 0.1,
+        "offset": -100.0,
+        "unit": "°C",
+        "device_class": "temperature",
+        "state_class": "measurement",
+        "topic_suffix": "battery_{pack}/temperature"
+      },
+      {
+        "key": "battery_{pack}_max_cell_temperature",
+        "name": "Battery {pack} Max Cell Temperature",
+        "register_offsets": [
+          11
+        ],
+        "type": "uint16",
+        "multiplier": 0.1,
+        "offset": -100.0,
+        "unit": "°C",
+        "device_class": "temperature",
+        "state_class": "measurement",
+        "topic_suffix": "battery_{pack}/max_cell_temperature"
+      },
+      {
+        "key": "battery_{pack}_min_cell_temperature",
+        "name": "Battery {pack} Min Cell Temperature",
+        "register_offsets": [
+          12
+        ],
+        "type": "uint16",
+        "multiplier": 0.1,
+        "offset": -100.0,
+        "unit": "°C",
+        "device_class": "temperature",
+        "state_class": "measurement",
+        "topic_suffix": "battery_{pack}/min_cell_temperature"
+      },
+      {
+        "key": "battery_{pack}_mos_temperature",
+        "name": "Battery {pack} MOS Temperature",
+        "register_offsets": [
+          13
+        ],
+        "type": "uint16",
+        "multiplier": 0.1,
+        "offset": -100.0,
+        "unit": "°C",
+        "device_class": "temperature",
+        "state_class": "measurement",
+        "topic_suffix": "battery_{pack}/mos_temperature"
+      },
+      {
+        "key": "battery_{pack}_heat_memory_temperature",
+        "name": "Battery {pack} Heat Memory Temperature",
+        "register_offsets": [
+          14
+        ],
+        "type": "uint16",
+        "multiplier": 0.1,
+        "offset": -100.0,
+        "unit": "°C",
+        "device_class": "temperature",
+        "state_class": "measurement",
+        "topic_suffix": "battery_{pack}/heat_memory_temperature"
+      },
+      {
+        "key": "battery_{pack}_soc",
+        "name": "Battery {pack} SOC",
+        "register_offsets": [
+          15
+        ],
+        "type": "uint16",
+        "multiplier": 0.1,
+        "unit": "%",
+        "schedule": "slow",
+        "read_every": 600,
+        "report_every": 600,
+        "change_by": 0.1,
+        "device_class": "battery",
+        "state_class": "measurement",
+        "topic_suffix": "battery_{pack}/soc"
+      },
+      {
+        "key": "battery_{pack}_soh",
+        "name": "Battery {pack} SOH",
+        "register_offsets": [
+          16
+        ],
+        "type": "uint16",
+        "multiplier": 0.1,
+        "unit": "%",
+        "schedule": "slow",
+        "read_every": 600,
+        "report_every": 900,
+        "device_class": "battery",
+        "state_class": "measurement",
+        "topic_suffix": "battery_{pack}/soh"
+      },
+      {
+        "key": "battery_{pack}_remaining_capacity",
+        "name": "Battery {pack} Remaining Capacity",
+        "register_offsets": [
+          17
+        ],
+        "type": "uint16",
+        "multiplier": 0.1,
+        "unit": "Ah",
+        "schedule": "slow",
+        "read_every": 600,
+        "report_every": 900,
+        "state_class": "measurement",
+        "topic_suffix": "battery_{pack}/remaining_capacity"
+      },
+      {
+        "key": "battery_{pack}_capacity",
+        "name": "Battery {pack} Total Capacity",
+        "register_offsets": [
+          18
+        ],
+        "type": "uint16",
+        "multiplier": 0.1,
+        "unit": "Ah",
+        "schedule": "slow",
+        "read_every": 600,
+        "report_every": 900,
+        "state_class": "measurement",
+        "topic_suffix": "battery_{pack}/capacity"
+      },
+      {
+        "key": "battery_{pack}_charge_voltage_limit",
+        "name": "Battery {pack} Charge Voltage Limit",
+        "register_offsets": [
+          19
+        ],
+        "type": "uint16",
+        "multiplier": 0.01,
+        "unit": "V",
+        "schedule": "slow",
+        "read_every": 600,
+        "report_every": 900,
+        "device_class": "voltage",
+        "state_class": "measurement",
+        "topic_suffix": "battery_{pack}/charge_voltage_limit"
+      },
+      {
+        "key": "battery_{pack}_charge_current_limit",
+        "name": "Battery {pack} Charge Current Limit",
+        "register_offsets": [
+          20
+        ],
+        "type": "uint16",
+        "multiplier": 0.1,
+        "unit": "A",
+        "schedule": "slow",
+        "read_every": 600,
+        "report_every": 900,
+        "device_class": "current",
+        "state_class": "measurement",
+        "topic_suffix": "battery_{pack}/charge_current_limit"
+      },
+      {
+        "key": "battery_{pack}_discharge_current_limit",
+        "name": "Battery {pack} Discharge Current Limit",
+        "register_offsets": [
+          21
+        ],
+        "type": "uint16",
+        "multiplier": 0.1,
+        "unit": "A",
+        "schedule": "slow",
+        "read_every": 600,
+        "report_every": 900,
+        "device_class": "current",
+        "state_class": "measurement",
+        "topic_suffix": "battery_{pack}/discharge_current_limit"
+      },
+      {
+        "key": "battery_{pack}_max_cell_voltage",
+        "name": "Battery {pack} Max Cell Voltage",
+        "register_offsets": [
+          22
+        ],
+        "type": "uint16",
+        "multiplier": 0.001,
+        "unit": "V",
+        "schedule": "slow",
+        "read_every": 600,
+        "report_every": 900,
+        "device_class": "voltage",
+        "state_class": "measurement",
+        "topic_suffix": "battery_{pack}/max_cell_voltage"
+      },
+      {
+        "key": "battery_{pack}_min_cell_voltage",
+        "name": "Battery {pack} Min Cell Voltage",
+        "register_offsets": [
+          23
+        ],
+        "type": "uint16",
+        "multiplier": 0.001,
+        "unit": "V",
+        "schedule": "slow",
+        "read_every": 600,
+        "report_every": 900,
+        "device_class": "voltage",
+        "state_class": "measurement",
+        "topic_suffix": "battery_{pack}/min_cell_voltage"
+      },
+      {
+        "key": "battery_{pack}_cycles",
+        "name": "Battery {pack} Cycles",
+        "register_offsets": [
+          24
+        ],
+        "type": "uint16",
+        "schedule": "slow",
+        "read_every": 3600,
+        "report_every": 3600,
+        "state_class": "total_increasing",
+        "topic_suffix": "battery_{pack}/cycles"
+      },
+      {
+        "key": "battery_{pack}_mos",
+        "name": "Battery {pack} BMS MOS",
+        "register_offsets": [
+          25
+        ],
+        "type": "hex",
+        "schedule": "slow",
+        "read_every": 600,
+        "report_every": 900,
+        "topic_suffix": "battery_{pack}/mos"
+      },
+      {
+        "key": "battery_{pack}_alarm",
+        "name": "Battery {pack} BMS Alarm",
+        "register_offsets": [
+          26,
+          27
+        ],
+        "type": "hex",
+        "schedule": "slow",
+        "read_every": 600,
+        "report_every": 900,
+        "topic_suffix": "battery_{pack}/alarm"
+      },
+      {
+        "key": "battery_{pack}_fault",
+        "name": "Battery {pack} BMS Fault",
+        "register_offsets": [
+          28,
+          29
+        ],
+        "type": "hex",
+        "schedule": "slow",
+        "read_every": 600,
+        "report_every": 900,
+        "topic_suffix": "battery_{pack}/fault"
+      },
+      {
+        "key": "battery_{pack}_software_version",
+        "name": "Battery {pack} BMS Software Version",
+        "register_offsets": [
+          30
+        ],
+        "type": "hex",
+        "schedule": "slow",
+        "read_every": 3600,
+        "report_every": 3600,
+        "topic_suffix": "battery_{pack}/software_version"
+      },
+      {
+        "key": "battery_{pack}_hardware_version",
+        "name": "Battery {pack} BMS Hardware Version",
+        "register_offsets": [
+          31
+        ],
+        "type": "hex",
+        "schedule": "slow",
+        "read_every": 3600,
+        "report_every": 3600,
+        "topic_suffix": "battery_{pack}/hardware_version"
+      }
+    ]
+  }
 }

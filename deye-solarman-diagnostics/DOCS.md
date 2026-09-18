@@ -1,4 +1,4 @@
-# SolarMan Diagnostics 2.0.2 - instrukcja użytkownika
+# SolarMan Diagnostics 2.0.3 - instrukcja użytkownika
 
 ## Przeznaczenie
 
@@ -111,10 +111,8 @@ bms_pack_count: 4
 
 catalog:
   refresh_on_start: true
-  url: https://raw.githubusercontent.com/Wilk33/deye-solarman-ha-addon/main/deye-solarman-diagnostics/deye_sg04_sg05_3ph_lv_catalog.yaml
-  cache_file: /config/deye_solarman_catalog.yaml
+  url: https://raw.githubusercontent.com/Wilk33/deye-solarman-ha-addon/main/catalogs/models/deye_sg04_sg05_3ph_lv/telemetry.yaml
   control_url: https://raw.githubusercontent.com/Wilk33/deye-solarman-ha-addon/main/catalogs/models/deye_sg04_sg05_3ph_lv/control.yaml
-  control_cache_file: /config/deye_solarman_control_catalog.yaml
   timeout: 5
 ```
 
@@ -153,7 +151,7 @@ Zmiana interwału jednego transportu nie zmienia interwału drugiego.
 
 ## Migracja z wersji 1.x
 
-Wersja 2.0.2 zachowuje slug oraz katalog instalacyjny, więc Home Assistant aktualizuje istniejący dodatek.
+Wersja 2.0.3 zachowuje slug oraz katalog instalacyjny, więc Home Assistant aktualizuje istniejący dodatek.
 
 Starsza konfiguracja używała sekcji:
 
@@ -226,10 +224,12 @@ Zapisana encja wybiera transport w konfiguracji, lecz nazwa jej tematu i `unique
 
 Wbudowany profil `deye_battery_packs` jest zawsze aktywny i nie jest widoczny w konfiguracji. Lista panelu pochodzi z dwóch zewnętrznych adresów:
 
-- `catalog.url` - sensory telemetryczne i szablony BMS;
+- `catalog.url` - sensory telemetryczne i szablon BMS;
 - `catalog.control_url` - definicje sterowania.
 
-Dodatek pobiera YAML, waliduje strukturę, a następnie atomowo zapisuje poprawny cache. Kod z sieci nie jest wykonywany. Gdy pobranie nie powiedzie się, używana jest ostatnia poprawna kopia. Jeśli poprawnego źródła i cache nie ma, odpowiednia lista jest pusta.
+Adresy są niezależne. Można używać telemetrii jednego dostawcy i sterowania drugiego, używać tylko jednej listy albo pozostawić oba domyślne adresy. Puste pole wyłącza pobieranie odpowiedniej zdalnej listy i nie przywraca jej poprzedniego cache.
+
+Dodatek pobiera YAML, waliduje strukturę, a następnie atomowo zapisuje poprawny cache w stałej lokalizacji wewnętrznej. Ścieżki cache nie są opcjami użytkownika. Kod z sieci nie jest wykonywany. Gdy pobranie nie powiedzie się, używana jest ostatnia poprawna kopia dla skonfigurowanego źródła. Jeśli poprawnego źródła i cache nie ma, odpowiednia lista jest pusta.
 
 Katalog deklaruje obsługiwane transporty. Panel pozwala wybrać transport tylko wtedy, gdy dana definicja obsługuje więcej niż jeden transport. Wybór można zapisać dopiero po wyniku `supported` dla tego transportu.
 

@@ -20,7 +20,7 @@ def load_scan_candidates(bms_pack_count: int, remote_catalog: RemoteCatalog | No
 		sensors=build_live_telemetry()+build_bms_pack_sensors(bms_pack_count)
 	elif remote_catalog.source in {"github","cache"}:
 		sensors=apply_remote_catalog([],remote_catalog,bms_pack_count)
-	elif remote_catalog.source == "built-in":
+	elif remote_catalog.source in {"built-in","disabled"}:
 		sensors=[]
 	else:
 		sensors=apply_remote_catalog(build_live_telemetry()+build_bms_pack_sensors(bms_pack_count),remote_catalog,bms_pack_count)

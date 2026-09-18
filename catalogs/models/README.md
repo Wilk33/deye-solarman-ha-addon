@@ -1,4 +1,4 @@
-# Model catalog sets in SolarMan Diagnostics 2.0.2
+# Model catalog sets in SolarMan Diagnostics 2.0.3
 
 Each supported inverter family has its own directory, for example:
 
@@ -6,7 +6,6 @@ Each supported inverter family has its own directory, for example:
 deye_sg04_sg05_3ph_lv/
   catalog-index.yaml
   telemetry.yaml
-  telemetry-plus.yaml
   control.yaml
 ```
 

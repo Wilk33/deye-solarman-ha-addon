@@ -78,15 +78,20 @@ function transportSelector(entry,prefix="")
 	const branches=transportBranches(entry);
 	const online=Array.isArray(window.onlineTransportIds) ? window.onlineTransportIds : TRANSPORT_IDS;
 	const supported=branches.filter(([transport,result])=>result.status === "supported" && online.includes(transport)).map(([transport])=>transport);
+	const attribute=`data-${prefix ? `${prefix}-` : ""}transport="${panelEsc(entry.key)}"`;
 	if (supported.length === 1) {
 		definition.transport=supported[0];
-		return `<input type="hidden" data-${prefix ? `${prefix}-` : ""}transport="${panelEsc(entry.key)}" value="${panelEsc(supported[0])}">`;
+		return `<input type="hidden" ${attribute} value="${panelEsc(supported[0])}">`;
 	}
 	if (supported.length === 2) {
 		if (!supported.includes(definition.transport)) definition.transport="";
-		return `<label class="field wide">${panelEsc(t("transport.title"))}<select required data-${prefix ? `${prefix}-` : ""}transport="${panelEsc(entry.key)}"><option value="" ${definition.transport ? "" : "selected"} disabled>${panelEsc(t("transport.select"))}</option>${supported.map(transport=>`<option value="${panelEsc(transport)}" ${definition.transport === transport ? "selected" : ""}>${panelEsc(transportName(transport))}</option>`).join("")}</select></label>`;
+		const selectedLabel=definition.transport ? transportName(definition.transport) : t("transport.select");
+		return `<label class="field wide">${panelEsc(t("transport.title"))}<div class="select-control" data-select-control><input type="hidden" required ${attribute} value="${panelEsc(definition.transport)}"><button class="select-trigger" type="button" data-select-trigger aria-haspopup="listbox" aria-expanded="false"><span class="select-value">${panelEsc(selectedLabel)}</span><span class="select-chevron">&#9662;</span></button><div class="select-options" role="listbox">${supported.map(transport=>`<button class="select-option ${definition.transport === transport ? "selected" : ""}" type="button" data-select-option data-value="${panelEsc(transport)}">${panelEsc(transportName(transport))}</button>`).join("")}</div></div></label>`;
 	}
-	return `<label class="field wide">${panelEsc(t("transport.title"))}<select disabled data-${prefix ? `${prefix}-` : ""}transport="${panelEsc(entry.key)}">${branches.map(([transport,result])=>`<option value="${panelEsc(transport)}" ${definition.transport === transport ? "selected" : ""}>${panelEsc(transportName(transport))} - ${panelEsc(t(`status.${result.status || "unavailable"}`))}</option>`).join("")}</select></label>`;
+	const selected=branches.find(([transport])=>transport === definition.transport) || branches[0];
+	const value=selected?.[0] || "";
+	const label=selected ? `${transportName(selected[0])} - ${t(`status.${selected[1].status || "unavailable"}`)}` : t("transport.select");
+	return `<label class="field wide">${panelEsc(t("transport.title"))}<div class="select-control"><input type="hidden" ${attribute} value="${panelEsc(value)}"><button class="select-trigger" type="button" disabled><span class="select-value">${panelEsc(label)}</span><span class="select-chevron">&#9662;</span></button></div></label>`;
 }
 
 function renderTransportRuntime(payload)

@@ -1,5 +1,14 @@
 {
+  "format": 1,
   "version": 2,
+  "map_id": "telemetry",
+  "catalog_set": "deye_sg04_sg05_3ph_lv",
+  "purpose": "telemetry",
+  "writable": false,
+  "transports": [
+    "solarman_tcp",
+    "modbus_rtu"
+  ],
   "sensors": [
     {
       "key": "run_state",

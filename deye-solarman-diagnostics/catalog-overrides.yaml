@@ -1,6 +1,0 @@
-version: 1
-# Legacy compatibility catalog for existing add-on configurations.
-# New installations and model-specific configurations must use:
-# deye_sg04_sg05_3ph_lv_catalog.yaml
-# This empty version 1 overlay keeps the built-in fallback map active.
-sensors: []

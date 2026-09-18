@@ -1,8 +1,8 @@
-# SolarMan Diagnostics 2.0.2 - architektura jednego dodatku
+# SolarMan Diagnostics 2.0.3 - architektura jednego dodatku
 
 ## Stan bieżący
 
-Wersja 2.0.2 ma jeden instalowalny katalog `deye-solarman-diagnostics`, jeden proces runtime i jeden klient MQTT. Ten proces może obsługiwać SolarMan TCP, Modbus RTU przez USB-RS485 albo oba transporty równocześnie.
+Wersja 2.0.3 ma jeden instalowalny katalog `deye-solarman-diagnostics`, jeden proces runtime i jeden klient MQTT. Ten proces może obsługiwać SolarMan TCP, Modbus RTU przez USB-RS485 albo oba transporty równocześnie.
 
 Obsługiwane tryby to:
 
@@ -22,7 +22,7 @@ apps/deye-solarman/src/deye_solarman_diagnostics/
   punkt startowy, adapter SolarMan TCP i adapter Modbus RTU
 
 catalogs/models/deye_sg04_sg05_3ph_lv/
-  catalog-index.yaml, telemetry.yaml, telemetry-plus.yaml, control.yaml
+  catalog-index.yaml, telemetry.yaml, control.yaml
 
 deye-solarman-diagnostics/
   jedyny instalowalny build context Home Assistant OS
@@ -30,7 +30,7 @@ deye-solarman-diagnostics/
 
 `tools/package_addon.py` kopiuje pliki Python, JavaScript, i18n PL/EN, katalogi i manifest do `deye-solarman-diagnostics/rootfs/usr/src/app`. Tryb `--check` wykrywa każdą różnicę między źródłem a artefaktem.
 
-Indeks katalogu ma revision `2.0.2`. Obraz przypina `pymodbus==3.14.0` dla adaptera RTU.
+Indeks katalogu ma revision `2.0.3`. Obraz przypina `pymodbus==3.14.0` dla adaptera RTU.
 
 ## Granica transportu
 
@@ -114,13 +114,12 @@ Rollback plików konfiguracji nie cofa równoległej, już zatwierdzonej generac
 
 ## Model katalogu
 
-`catalog-index.yaml` wskazuje trzy mapy i ich sumy SHA-256:
+`catalog-index.yaml` wskazuje dwie mapy i ich sumy SHA-256:
 
-- `telemetry` - podstawowa telemetria dla zadeklarowanych transportów;
-- `telemetry_plus` - rozszerzona diagnostyka według deklaracji mapy;
+- `telemetry` - telemetria oraz szablon pakietów BMS dla zadeklarowanych transportów;
 - `control` - odczyt ustawień i jawnie walidowane komendy.
 
-Każda mapa deklaruje `transports`. Loader sprawdza sumę pliku i zgodność transportu przed użyciem definicji. Źródła zewnętrzne `catalog.url` oraz `catalog.control_url` są walidowane jako dane YAML i zapisywane atomowo do osobnych cache.
+Każda mapa deklaruje `transports`. Loader pakietu sprawdza sumę pliku i zgodność transportu przed użyciem definicji. Zewnętrzne źródła `catalog.url` oraz `catalog.control_url` są niezależne, dzięki czemu użytkownik może łączyć telemetrię i sterowanie od różnych dostawców albo wyłączyć jedną z list. Pobrane mapy są walidowane jako dane YAML i zapisywane atomowo do osobnych, wewnętrznych cache.
 
 Wbudowany profil `deye_battery_packs` jest zawsze aktywny. Nie jest częścią schematu opcji i użytkownik nie może go przypadkowo wyłączyć.
 
@@ -139,7 +138,7 @@ Błąd przed rozpoczęciem FC16 jest rozróżniany od niepewnego wyniku po rozpo
 
 ## Konfiguracja i migracja
 
-`config.yaml` ma `version: "2.0.2"`, `uart: true`, sekcje `solarman` i `rs485` oraz kompletne tłumaczenia PL/EN. Pola tożsamości falownika, profili, diagnostyki i skanowania są na najwyższym poziomie, dzięki czemu Home Assistant pokazuje je stale i zapisuje przełączniki jako bezpośrednie wartości konfiguracji.
+`config.yaml` ma `version: "2.0.3"`, `uart: true`, sekcje `solarman` i `rs485` oraz kompletne tłumaczenia PL/EN. Pola tożsamości falownika, profili, diagnostyki i skanowania są na najwyższym poziomie, dzięki czemu Home Assistant pokazuje je stale i zapisuje przełączniki jako bezpośrednie wartości konfiguracji.
 
 Parser zachowuje zgodność z konfiguracją 1.x. `logger` wraz ze wspólną sekcją `polling` jest interpretowany jako włączony `solarman`, a RS485 pozostaje wyłączone. Istniejące pliki wyboru są ładowane z domyślnym transportem SolarMan TCP, jeśli starszy wpis nie zawiera pola `transport`.
 

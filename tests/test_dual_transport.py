@@ -467,7 +467,7 @@ class DualTransportConfigTests(unittest.TestCase):
 	def test_addon_uses_version_2_sections_and_disables_rs485_by_default(self) -> None:
 		addon=yaml.safe_load((ROOT/"deye-solarman-diagnostics/config.yaml").read_text(encoding="utf-8"))
 
-		self.assertEqual(addon["version"],"2.0.2")
+		self.assertEqual(addon["version"],"2.0.3")
 		self.assertNotIn("logger",addon["options"])
 		self.assertNotIn("polling",addon["options"])
 		self.assertTrue(addon["options"]["solarman"]["enabled"])
@@ -2018,8 +2018,11 @@ window.i18nReady.then(()=>{
 			payload=json.loads(result.stdout)
 		self.assertIn('type="hidden"',payload["single"])
 		self.assertEqual(payload["singleTransport"],"modbus_rtu")
-		self.assertIn("<select required",payload["dual"])
-		self.assertIn('value="modbus_rtu" selected',payload["dual"])
+		self.assertNotIn("<select",payload["dual"])
+		self.assertIn('class="select-control"',payload["dual"])
+		self.assertIn('type="hidden"',payload["dual"])
+		self.assertIn('data-transport="dual"',payload["dual"])
+		self.assertIn("Modbus RTU (RS485)",payload["dual"])
 		self.assertIn("SolarMan TCP",payload["cards"])
 		self.assertIn("Modbus RTU (RS485)",payload["cards"])
 		self.assertIn("12 ms",payload["cards"])

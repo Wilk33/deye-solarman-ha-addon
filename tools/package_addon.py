@@ -18,8 +18,8 @@ def main() -> None:
 	parser.add_argument("--check",action="store_true")
 	args=parser.parse_args()
 	expected={}
-	index={"format":1,"catalog_set":"deye_sg04_sg05_3ph_lv","revision":"2.0.2","maps":{}}
-	for map_id in ("telemetry","telemetry_plus","control"):
+	index={"format":1,"catalog_set":"deye_sg04_sg05_3ph_lv","revision":"2.0.3","maps":{}}
+	for map_id in ("telemetry","control"):
 		name=map_id.replace("_","-")+".yaml"
 		content=(MODEL/name).read_bytes()
 		data=yaml.safe_load(content)
@@ -34,11 +34,9 @@ def main() -> None:
 		for source in source_root.rglob("*"):
 			if source.is_file() and "__pycache__" not in source.parts and source.suffix in {".py",".js",".json"}:
 				expected[target_root/source.relative_to(source_root)]=source.read_bytes()
-	# The old URL remains valid for installed 1.1.x clients.
-	telemetry=yaml.safe_load((MODEL/"telemetry.yaml").read_text(encoding="utf-8"))
-	extra=yaml.safe_load((MODEL/"telemetry-plus.yaml").read_text(encoding="utf-8"))
-	legacy={"version":2,"sensors":telemetry["sensors"],"bms_pack":extra["bms_pack"]}
-	expected[ROOT/"deye-solarman-diagnostics/deye_sg04_sg05_3ph_lv_catalog.yaml"]=(json.dumps(legacy,ensure_ascii=False,indent=2)+"\n").encode("utf-8")
+	# The old URL remains an exact mirror for installed clients.
+	telemetry=(MODEL/"telemetry.yaml").read_bytes()
+	expected[ROOT/"deye-solarman-diagnostics/deye_sg04_sg05_3ph_lv_catalog.yaml"]=telemetry
 	drift=[]
 	for target,content in expected.items():
 		if target.exists() and target.read_bytes() == content:

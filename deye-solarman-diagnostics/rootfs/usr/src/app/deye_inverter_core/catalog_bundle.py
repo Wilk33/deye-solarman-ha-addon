@@ -40,6 +40,4 @@ def load_map(map_id: str, transport_id: str, directory: Path | None=None) -> dic
 
 
 def legacy_telemetry_payload() -> dict[str,Any]:
-	telemetry=load_map("telemetry","solarman_tcp")
-	extra=load_map("telemetry_plus","solarman_tcp")
-	return {"version":2,"sensors":telemetry["sensors"],"bms_pack":extra["bms_pack"]}
+	return load_map("telemetry","solarman_tcp")

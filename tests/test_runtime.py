@@ -1363,7 +1363,20 @@ class RuntimeTests(unittest.TestCase):
 			config=load_config(options_path)
 
 		self.assertEqual(config.catalog.control_url,"https://example.invalid/control.yaml")
-		self.assertEqual(config.catalog.control_cache_file,"/config/control.yaml")
+		self.assertEqual(config.catalog.url,"https://example.invalid/sensors.yaml")
+		self.assertEqual(config.catalog.cache_file,"/config/deye_solarman_catalog.yaml")
+		self.assertEqual(config.catalog.control_cache_file,"/config/deye_solarman_control_catalog.yaml")
+
+	def test_empty_telemetry_source_disables_remote_telemetry_without_reusing_cache(self) -> None:
+		with tempfile.TemporaryDirectory() as directory:
+			cache=Path(directory)/"catalog.yaml"
+			cache.write_text(yaml.safe_dump({"version":1,"sensors":[{"key":"stale"}]}),encoding="utf-8")
+			config=CatalogConfig(True,"",str(cache),5,"https://example.invalid/control.yaml",str(Path(directory)/"control.yaml"))
+
+			catalog=load_remote_catalog(config)
+
+		self.assertEqual(catalog.source,"disabled")
+		self.assertEqual(catalog.sensors,[])
 
 	def test_remote_control_catalog_uses_the_configured_url(self) -> None:
 		payload={
@@ -1432,7 +1445,7 @@ class RuntimeTests(unittest.TestCase):
 		self.assertEqual(load_scan_candidates(4,RemoteCatalog([],"built-in")),[])
 
 	def test_remote_full_register_catalog_matches_builtin_fallback(self) -> None:
-		path=APP_ROOT.parent/"deye-solarman-diagnostics/deye_sg04_sg05_3ph_lv_catalog.yaml"
+		path=APP_ROOT.parent/"catalogs/models/deye_sg04_sg05_3ph_lv/telemetry.yaml"
 		payload=yaml.safe_load(path.read_text(encoding="utf-8"))
 		catalog=RemoteCatalog(payload["sensors"],"repository",payload["bms_pack"],payload["version"])
 
@@ -2013,7 +2026,7 @@ class RuntimeTests(unittest.TestCase):
 		])
 		self.assertEqual(discovery["availability_mode"],"all")
 		self.assertEqual(discovery["origin"]["name"],"SolarMan Diagnostics")
-		self.assertEqual(discovery["origin"]["sw_version"],"2.0.2")
+		self.assertEqual(discovery["origin"]["sw_version"],"2.0.3")
 
 		publisher._publish_confirmed.reset_mock()
 		publisher.publish_state(sensor,52,{"raw_registers":[52]})

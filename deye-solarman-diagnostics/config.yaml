@@ -1,6 +1,6 @@
 name: SolarMan Diagnostics
 description: Deye inverter diagnostics through SolarMan TCP and direct Modbus RTU (RS485)
-version: "2.0.2"
+version: "2.0.3"
 slug: deye-solarman-diagnostics
 url: "https://github.com/Wilk33/deye-solarman-ha-addon"
 services:
@@ -89,10 +89,8 @@ options:
   bms_pack_count: 4
   catalog:
     refresh_on_start: true
-    url: https://raw.githubusercontent.com/Wilk33/deye-solarman-ha-addon/main/deye-solarman-diagnostics/deye_sg04_sg05_3ph_lv_catalog.yaml
-    cache_file: /config/deye_solarman_catalog.yaml
+    url: https://raw.githubusercontent.com/Wilk33/deye-solarman-ha-addon/main/catalogs/models/deye_sg04_sg05_3ph_lv/telemetry.yaml
     control_url: https://raw.githubusercontent.com/Wilk33/deye-solarman-ha-addon/main/catalogs/models/deye_sg04_sg05_3ph_lv/control.yaml
-    control_cache_file: /config/deye_solarman_control_catalog.yaml
     timeout: 5
 schema:
   solarman:
@@ -161,8 +159,6 @@ schema:
   bms_pack_count: int(1,10)
   catalog:
     refresh_on_start: bool
-    url: str
-    cache_file: str
-    control_url: str
-    control_cache_file: str
+    url: str?
+    control_url: str?
     timeout: int(1,30)

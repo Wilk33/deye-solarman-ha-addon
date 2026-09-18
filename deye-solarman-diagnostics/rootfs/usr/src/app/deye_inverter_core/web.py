@@ -540,6 +540,7 @@ summary { padding: 11px 0; color: var(--green); cursor: pointer; font-family: "C
 .select-trigger { display: flex; width: 100%; min-height: 34px; align-items: center; justify-content: space-between; gap: 8px; border: 1px solid var(--line); background: var(--field); color: var(--ink); padding: 7px; text-align: left; }
 .filters .select-trigger { min-height: 44px; padding: 12px; font-family: inherit; font-size: 1rem; }
 .select-trigger:hover, .select-control.open .select-trigger { border-color: var(--solar); }
+.select-trigger:disabled { cursor: not-allowed; opacity: .65; }
 .select-chevron { color: var(--solar); font-size: .9rem; transition: transform .15s ease; }
 .select-control.open .select-chevron { transform: rotate(180deg); }
 .select-options { position: absolute; z-index: 20; top: calc(100% + 4px); right: 0; left: 0; display: none; max-height: 230px; overflow-y: auto; border: 1px solid var(--solar); background: var(--panel); box-shadow: var(--shadow); }
@@ -684,9 +685,9 @@ const byId=id=>document.getElementById(id);
 const haThemeVariables=["--primary-background-color","--secondary-background-color","--card-background-color","--primary-text-color","--secondary-text-color","--divider-color","--primary-color","--accent-color","--error-color","--success-color","--input-fill-color","--ha-card-box-shadow","--text-primary-color","--paper-font-body1_-_font-family"];
 let themeSynchronized=false;
 
-console.info("[Deye Solarman] panel script started",{href:window.location.href,base:document.baseURI});
-window.addEventListener("error",event=>console.error("[Deye Solarman] browser error",event.error || event.message));
-window.addEventListener("unhandledrejection",event=>console.error("[Deye Solarman] unhandled promise rejection",event.reason));
+console.info("[SolarMan Diagnostics] panel script started",{href:window.location.href,base:document.baseURI});
+window.addEventListener("error",event=>console.error("[SolarMan Diagnostics] browser error",event.error || event.message));
+window.addEventListener("unhandledrejection",event=>console.error("[SolarMan Diagnostics] unhandled promise rejection",event.reason));
 
 function themeIsDark(color) {
   const probe=document.createElement("span");
@@ -718,11 +719,11 @@ function syncHomeAssistantTheme() {
     }
     if (background) document.documentElement.style.colorScheme=themeIsDark(background) ? "dark" : "light";
     if (copied && !themeSynchronized) {
-      console.info("[Deye Solarman] Home Assistant theme synchronized",{variables:copied,dark:themeIsDark(background)});
+      console.info("[SolarMan Diagnostics] Home Assistant theme synchronized",{variables:copied,dark:themeIsDark(background)});
       themeSynchronized=true;
     }
   } catch (error) {
-    if (!themeSynchronized) console.info("[Deye Solarman] Home Assistant theme unavailable",error.message);
+    if (!themeSynchronized) console.info("[SolarMan Diagnostics] Home Assistant theme unavailable",error.message);
   }
 }
 
@@ -732,16 +733,16 @@ function installHomeAssistantThemeSync() {
     const observer=new MutationObserver(syncHomeAssistantTheme);
     observer.observe(window.parent.document.documentElement,{attributes:true,subtree:true,attributeFilter:["class","style","data-theme"]});
   } catch (error) {
-    console.info("[Deye Solarman] Theme change observer unavailable",error.message);
+    console.info("[SolarMan Diagnostics] Theme change observer unavailable",error.message);
   }
   window.setInterval(syncHomeAssistantTheme,10000);
 }
 
 async function request(path,options={}) {
   const url=new URL(path,document.baseURI).toString();
-  console.info("[Deye Solarman] API request",{path,url,method:options.method || "GET"});
+  console.info("[SolarMan Diagnostics] API request",{path,url,method:options.method || "GET"});
   const response=await fetch(url,{headers:{"Content-Type":"application/json"},...options});
-  console.info("[Deye Solarman] API response",{url,status:response.status});
+  console.info("[SolarMan Diagnostics] API response",{url,status:response.status});
   const data=await response.json();
   if (!response.ok) throw new Error(data.error || "Request failed");
   return data;
@@ -939,7 +940,7 @@ async function refreshScanStatus() {
 }
 
 byId("scan-button").addEventListener("click",async()=>{
-  console.info("[Deye Solarman] Scan now clicked");
+  console.info("[SolarMan Diagnostics] Scan now clicked");
   byId("save-message").textContent="";
   try { await request("api/scan",{method:"POST",body:"{}"}); await refreshScanStatus(); }
   catch (error) { byId("scan-message").textContent=error.message; }
@@ -954,7 +955,7 @@ window.i18nReady.then(async()=>{
   await Promise.all([loadSensors(),refreshScanStatus(),refreshRuntimeStatus()]);
   if (!runtimeTimer) runtimeTimer=window.setInterval(()=>refreshRuntimeStatus().catch(error=>console.error("[SolarMan Diagnostics] runtime status refresh failed",error)),5000);
 }).catch(error=>{
-  console.error("[Deye Solarman] panel initialization failed",error);
+  console.error("[SolarMan Diagnostics] panel initialization failed",error);
   byId("scan-message").textContent=error.message;
 });
 </script>

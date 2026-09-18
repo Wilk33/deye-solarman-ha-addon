@@ -27,14 +27,14 @@ class ArchitectureTests(unittest.TestCase):
 		requirements=(ROOT/"deye-solarman-diagnostics/rootfs/requirements.txt").read_text(encoding="utf-8").splitlines()
 
 		self.assertEqual(config["name"],"SolarMan Diagnostics")
-		self.assertEqual(config["version"],"2.0.2")
+		self.assertEqual(config["version"],"2.0.3")
 		self.assertTrue(config["uart"])
 		self.assertIn("solarman",config["options"])
 		self.assertIn("rs485",config["options"])
 		self.assertIn("solarman",config["schema"])
 		self.assertIn("rs485",config["schema"])
 		self.assertEqual(repository["name"],"SolarMan Diagnostics")
-		self.assertEqual(index["revision"],"2.0.2")
+		self.assertEqual(index["revision"],"2.0.3")
 		self.assertIn("pymodbus==3.14.0",requirements)
 		self.assertEqual([path.parent.name for path in ROOT.glob("*/config.yaml")],["deye-solarman-diagnostics"])
 		for relative in (
@@ -60,7 +60,7 @@ class ArchitectureTests(unittest.TestCase):
 		all_lower=all_current.lower()
 
 		for relative,content in contents.items():
-			self.assertIn("2.0.2",content,relative)
+			self.assertIn("2.0.3",content,relative)
 			self.assertIn("SolarMan Diagnostics",content,relative)
 		for forbidden in ("entityownership","entity_owners.json","/source/solarman","/source/modbus"):
 			self.assertNotIn(forbidden,all_lower)
@@ -92,7 +92,7 @@ class ArchitectureTests(unittest.TestCase):
 		)
 		for relative in documents:
 			content=(ROOT/relative).read_text(encoding="utf-8").lower()
-			self.assertIn("2.0.2",content,relative)
+			self.assertIn("2.0.3",content,relative)
 			self.assertNotIn("future",content,relative)
 			self.assertNotIn("planned",content,relative)
 			self.assertNotIn("reserved",content,relative)
@@ -195,9 +195,10 @@ class ArchitectureTests(unittest.TestCase):
 			{"control_us_version_grounding_fault","control_grid_standard","control_configured_grid_phases","control_allow_remote"}
 			& {entry["key"] for entry in controls}
 		)
-		for map_id in ("telemetry","telemetry_plus","control"):
+		for map_id in ("telemetry","control"):
 			for transport_id in ("solarman_tcp","modbus_rtu"):
 				self.assertEqual(load_map(map_id,transport_id)["map_id"],map_id)
+		self.assertIn("bms_pack",load_map("telemetry","solarman_tcp"))
 		with tempfile.TemporaryDirectory() as directory:
 			path=Path(directory)
 			index={"format":1,"catalog_set":"deye_sg04_sg05_3ph_lv","maps":{"control":{"file":"control.yaml","sha256":"wrong","transports":["solarman_tcp"]}}}
@@ -205,6 +206,31 @@ class ArchitectureTests(unittest.TestCase):
 			(path/"control.yaml").write_text("{}")
 			with self.assertRaisesRegex(ValueError,"checksum"):
 				load_map("control","solarman_tcp",path)
+
+	def test_catalog_configuration_uses_independent_canonical_sources_without_cache_fields(self):
+		config=yaml.safe_load((ROOT/"deye-solarman-diagnostics/config.yaml").read_text(encoding="utf-8"))
+		catalog=config["options"]["catalog"]
+		schema=config["schema"]["catalog"]
+
+		self.assertEqual(catalog["url"],"https://raw.githubusercontent.com/Wilk33/deye-solarman-ha-addon/main/catalogs/models/deye_sg04_sg05_3ph_lv/telemetry.yaml")
+		self.assertEqual(catalog["control_url"],"https://raw.githubusercontent.com/Wilk33/deye-solarman-ha-addon/main/catalogs/models/deye_sg04_sg05_3ph_lv/control.yaml")
+		self.assertNotIn("cache_file",catalog)
+		self.assertNotIn("control_cache_file",catalog)
+		self.assertNotIn("cache_file",schema)
+		self.assertNotIn("control_cache_file",schema)
+		self.assertEqual(schema["url"],"str?")
+		self.assertEqual(schema["control_url"],"str?")
+
+	def test_legacy_telemetry_url_is_an_exact_copy_of_the_canonical_map(self):
+		canonical=ROOT/"catalogs/models/deye_sg04_sg05_3ph_lv/telemetry.yaml"
+		legacy=ROOT/"deye-solarman-diagnostics/deye_sg04_sg05_3ph_lv_catalog.yaml"
+
+		self.assertEqual(legacy.read_bytes(),canonical.read_bytes())
+
+	def test_obsolete_catalog_files_are_removed(self):
+		self.assertFalse((ROOT/"catalogs/models/deye_sg04_sg05_3ph_lv/telemetry-plus.yaml").exists())
+		self.assertFalse((ROOT/"deye-solarman-diagnostics/catalog-overrides.yaml").exists())
+		self.assertFalse((ROOT/"docs/superpowers/plans/2026-09-17-entity-ownership.md").exists())
 
 	def test_packaged_runtime_imports_without_repository_sources(self):
 		app=str(ROOT/"deye-solarman-diagnostics/rootfs/usr/src/app")

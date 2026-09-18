@@ -147,12 +147,10 @@ configuration:
   detected_sensors_file: {name: Skanowanie sensorów - wykryte sensory, description: Lokalny plik /config z wynikami i wyborem transportu per sensor.}
   bms_pack_count: {name: Skanowanie sensorów - liczba pakietów BMS, description: Liczba pakietów używana przy budowie kandydatów katalogu.}
   catalog:
-    name: Katalogi sensorów i sterowania
-    description: Zdalne listy są zapisywane w lokalnych plikach cache. Poprzednia poprawna kopia pozostaje dostępna po błędzie pobierania.
+    name: Źródła telemetrii i sterowania
+    description: Listy są niezależne. Możesz używać telemetrii i sterowania z różnych źródeł albo pozostawić jedno z pól puste.
     fields:
       refresh_on_start: {name: Odśwież przy starcie, description: Próbuje pobrać aktualne listy po uruchomieniu dodatku.}
-      url: {name: Link do listy sensorów, description: Adres źródłowego katalogu definicji sensorów.}
-      cache_file: {name: Lokalny cache sensorów, description: Plik /config z ostatnią poprawną kopią listy sensorów.}
-      control_url: {name: Link do listy sterowania, description: Adres źródłowego katalogu definicji sterowania.}
-      control_cache_file: {name: Lokalny cache sterowania, description: Plik /config z ostatnią poprawną kopią listy sterowania.}
+      url: {name: Link do telemetrii, description: Adres katalogu sensorów. Puste pole wyłącza zdalną listę telemetrii.}
+      control_url: {name: Link do sterowania, description: Adres katalogu encji sterowania. Puste pole wyłącza zdalną listę sterowania.}
       timeout: {name: Timeout pobierania, description: Maksymalny czas pobierania katalogu w sekundach.}

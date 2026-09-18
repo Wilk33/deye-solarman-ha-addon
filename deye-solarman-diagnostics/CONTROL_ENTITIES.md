@@ -1,4 +1,4 @@
-# Encje sterowania - SolarMan Diagnostics 2.0.2
+# Encje sterowania - SolarMan Diagnostics 2.0.3
 
 ## Zakres
 

@@ -79,12 +79,10 @@ configuration:
   detected_sensors_file: {name: Sensor scanning - detected sensors, description: Local /config file containing results and the selected transport per sensor.}
   bms_pack_count: {name: Sensor scanning - BMS pack count, description: Pack count used when catalog candidates are generated.}
   catalog:
-    name: Sensor and control catalogs
-    description: Remote lists are stored in local cache files. The last valid copy remains available after a download failure.
+    name: Telemetry and control sources
+    description: The lists are independent. You can use telemetry and controls from different sources or leave either field empty.
     fields:
       refresh_on_start: {name: Refresh at startup, description: Attempts to download current catalog lists when the add-on starts.}
-      url: {name: Sensor list URL, description: Source URL for the sensor definition catalog.}
-      cache_file: {name: Local sensor cache, description: /config file containing the last valid sensor list.}
-      control_url: {name: Control list URL, description: Source URL for the control definition catalog.}
-      control_cache_file: {name: Local control cache, description: /config file containing the last valid control list.}
+      url: {name: Telemetry URL, description: Sensor catalog address. An empty value disables the remote telemetry list.}
+      control_url: {name: Control URL, description: Control entity catalog address. An empty value disables the remote control list.}
       timeout: {name: Download timeout, description: Maximum catalog download time in seconds.}

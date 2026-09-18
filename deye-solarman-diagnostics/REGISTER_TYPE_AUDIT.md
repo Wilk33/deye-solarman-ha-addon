@@ -4,7 +4,7 @@ Data audytu: 2026-09-01.
 
 ## Zakres i zrodlo
 
-Audyt obejmuje 94 definicje telemetrii falownika oraz 23 definicje na pakiet BMS z `deye_sg04_sg05_3ph_lv_catalog.yaml`. Podstawowe odczyty porownano z publiczna mapa [Developer089/deye-modbus-ha](https://github.com/Developer089/deye-modbus-ha/blob/main/custom_components/deye_modbus/maps/sun_3ph_hybrid.yaml), ktora deklaruje zgodnosc z rodzina Deye SUN-*K-SG04LP3 / SG05LP3 oraz pochodzenie z dokumentu protokolu Deye.
+Audyt obejmuje 94 definicje telemetrii falownika oraz 23 definicje na pakiet BMS z kanonicznego `catalogs/models/deye_sg04_sg05_3ph_lv/telemetry.yaml`. Podstawowe odczyty porownano z publiczna mapa [Developer089/deye-modbus-ha](https://github.com/Developer089/deye-modbus-ha/blob/main/custom_components/deye_modbus/maps/sun_3ph_hybrid.yaml), ktora deklaruje zgodnosc z rodzina Deye SUN-*K-SG04LP3 / SG05LP3 oraz pochodzenie z dokumentu protokolu Deye.
 
 Mapa zewnetrzna jest zrodlem referencyjnym projektu, nie potwierdzeniem konkretnej wersji firmware lokalnego falownika. Adresy oraz znaczenie rejestrow BMS pozostaja oddzielnym obszarem kandydatow.
 

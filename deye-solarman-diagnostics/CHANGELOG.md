@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.0.3
+
+- Keep telemetry and control catalogs as independent configurable sources so installations can mix providers or disable either remote list.
+- Point the default telemetry source at the canonical model `telemetry.yaml`; keep the historical add-on URL as an exact generated copy.
+- Merge the BMS pack template into `telemetry.yaml` and remove the redundant `telemetry-plus.yaml` map.
+- Hide internal cache paths from Home Assistant configuration while preserving the existing cache files for offline fallback.
+- Replace the native Transport selector with the same theme-aware dropdown used by the other Ingress fields.
+- Remove unused compatibility and abandoned architecture files, and refresh current documentation and generated package contents.
+
 ## 2.0.2
 
 - Remove `default_profile` from the Home Assistant option schema and keep the built-in `deye_battery_packs` profile permanently enabled. Supervisor now drops the obsolete saved option, restoring update completion, configuration validation and app restart after the 2.0.1 regression.
@@ -26,7 +35,7 @@
 - Bundle both transport adapters, the shared core, PL/EN i18n, and checksummed catalogs in the self-contained HAOS build context. Pin `pymodbus==3.14.0`.
 - Document that automated validation does not prove a physical USB adapter, RS485 timing, firmware-specific register maps, or a real inverter FC16 write.
 
-Entries below describe historical releases and do not define the current 2.0.2 architecture.
+Entries below describe historical releases and do not define the current 2.0.3 architecture.
 
 ## 1.4.0
 

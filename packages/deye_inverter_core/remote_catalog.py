@@ -34,6 +34,9 @@ class RemoteCatalog:
 
 
 def load_remote_catalog(config: CatalogConfig, force_refresh: bool=False) -> RemoteCatalog:
+	if not config.url:
+		LOGGER.info("Remote register catalog disabled")
+		return RemoteCatalog([],"disabled")
 	if config.refresh_on_start or force_refresh:
 		try:
 			payload=_download(config.url,config.timeout)
