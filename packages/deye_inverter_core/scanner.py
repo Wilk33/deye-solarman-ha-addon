@@ -539,7 +539,10 @@ def _scan_value(
 	sensor=candidate.sensor
 	try:
 		raw_values=[group_values[register-group_start] for register in sensor.registers]
-		decoded=decode_registers(raw_values,sensor.register_type,sensor.word_order,sensor.byte_order)
+		decoded=decode_registers(
+			raw_values,sensor.register_type,sensor.word_order,sensor.byte_order,
+			options=sensor.options,zero=sensor.zero,unknown=sensor.unknown,
+		)
 		value=apply_transform(decoded, sensor.multiplier, sensor.offset)
 	except (IndexError, TypeError, ValueError) as error:
 		return _scan_error(candidate, "invalid_value", str(error), latency_ms)
@@ -589,7 +592,7 @@ def _sensor_to_payload(sensor: Any) -> dict[str, Any]:
 
 
 def _validate_definition_value(key: str, field: str, value: Any) -> Any:
-	if field in {"name","unit","device_class","state_class","icon","category","topic_suffix"}:
+	if field in {"name","unit","device_class","state_class","icon","category","topic_suffix","zero","unknown"}:
 		if not isinstance(value, str):
 			raise ValueError(f"Update {key}: {field} must be text")
 		return value.strip()
@@ -622,9 +625,16 @@ def _validate_definition_value(key: str, field: str, value: Any) -> Any:
 			raise ValueError(f"Update {key}: unsupported transport")
 		return value
 	if field == "type":
-		if value not in {"uint16","int16","uint32","int32","hex","ascii"}:
+		if value not in {"uint16","int16","uint32","int32","hex","ascii","enum","bitmask"}:
 			raise ValueError(f"Update {key}: unsupported type")
 		return value
+	if field == "options":
+		if not isinstance(value,dict):
+			raise ValueError(f"Update {key}: options must be an object")
+		try:
+			return {int(option):str(label) for option,label in value.items()}
+		except (TypeError,ValueError) as error:
+			raise ValueError(f"Update {key}: option keys must be integers") from error
 	if field == "word_order":
 		if value not in {"high_low","low_high"}:
 			raise ValueError(f"Update {key}: unsupported word order")

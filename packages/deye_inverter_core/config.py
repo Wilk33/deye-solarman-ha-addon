@@ -80,18 +80,30 @@ def load_config(path: Path=OPTIONS_PATH) -> AppConfig:
 	mqtt=options["mqtt"]
 	supervisor_mqtt=discover_mqtt_service() if mqtt.get("use_supervisor",True) else None
 	mqtt_connection=supervisor_mqtt or mqtt
-	inverter=options["inverter"]
-	profiles=options["profiles"]
-	advanced=options["advanced"]
-	scan=options.get(
-		"scan",
-		{
-			"mode": "disabled",
-			"report_file": "/share/deye_solarman_candidate_scan.json",
-			"detected_sensors_file": "/config/detected_sensors.yaml",
-			"bms_pack_count": 4,
-		},
-	)
+	inverter=options.get("inverter") or {
+		"serial_number":options.get("inverter_serial_number","2507092018"),
+		"name":options.get("inverter_name","SolarMan Diagnostics"),
+		"manufacturer":options.get("inverter_manufacturer","Deye"),
+		"model":options.get("inverter_model","SG05LP3"),
+	}
+	profiles=options.get("profiles") or {
+		"default_profile":options.get("default_profile",[]),
+		"overrides_file":options.get("overrides_file","/config/user_sensors.yaml"),
+		"custom_sensors_file":options.get("custom_sensors_file","/config/custom_sensors.yaml"),
+		"state_file":options.get("state_file","/config/runtime_state.json"),
+		"scan_report_file":options.get("scan_report_file","/share/deye_solarman_scan_report.json"),
+	}
+	advanced=options.get("advanced") or {
+		"emit_raw_topics":options.get("emit_raw_topics",True),
+		"emit_scan_report":options.get("emit_scan_report",True),
+		"detailed_logs":options.get("detailed_logs",False),
+	}
+	scan=options.get("scan") or {
+		"mode":options.get("scan_mode","disabled"),
+		"report_file":options.get("scan_candidate_report_file","/share/deye_solarman_candidate_scan.json"),
+		"detected_sensors_file":options.get("detected_sensors_file","/config/detected_sensors.yaml"),
+		"bms_pack_count":options.get("bms_pack_count",4),
+	}
 	catalog=options.get(
 		"catalog",
 		{

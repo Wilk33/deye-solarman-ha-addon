@@ -61,12 +61,14 @@ function transportBranches(entry)
 function transportResultCards(entry)
 {
 	return `<div class="transport-results">${transportBranches(entry).map(([transport,result])=>{
+		const runtime=window.transportRuntimeById?.[transport];
+		const runtimeBadge=runtime ? statusBadge(runtime.online ? "online" : "offline") : "";
 		const raw=(result.raw_hex || []).join(", ") || (result.raw_registers || []).join(", ");
 		const value=result.value === null || result.value === undefined ? "" : `<div><b>${panelEsc(t("result.value"))}:</b> ${panelEsc(result.value)} ${panelEsc(entry.definition?.unit || "")}</div>`;
 		const rawLine=raw ? `<div><b>${panelEsc(t("result.raw"))}:</b> <code>${panelEsc(raw)}</code></div>` : "";
 		const latency=result.latency_ms === null || result.latency_ms === undefined ? "" : `<div><b>${panelEsc(t("result.latency"))}:</b> ${panelEsc(result.latency_ms)} ms</div>`;
 		const error=result.error || result.message;
-		return `<section class="transport-result ${panelEsc(result.status || "unavailable")}" data-transport-result="${panelEsc(transport)}"><header><strong>${panelEsc(transportName(transport))}</strong>${statusBadge(result.status || "unavailable")}</header>${value}${rawLine}${latency}${error ? `<p class="transport-error"><b>${panelEsc(t("result.error"))}:</b> ${panelEsc(error)}</p>` : ""}</section>`;
+		return `<section class="transport-result ${panelEsc(result.status || "unavailable")}" data-transport-result="${panelEsc(transport)}"><header><strong>${panelEsc(transportName(transport))}</strong><span class="badges">${statusBadge(result.status || "unavailable")}${runtimeBadge}</span></header>${value}${rawLine}${latency}${error ? `<p class="transport-error"><b>${panelEsc(t("result.error"))}:</b> ${panelEsc(error)}</p>` : ""}</section>`;
 	}).join("")}</div>`;
 }
 
@@ -74,7 +76,8 @@ function transportSelector(entry,prefix="")
 {
 	const definition=entry.definition || {};
 	const branches=transportBranches(entry);
-	const supported=branches.filter(([,result])=>result.status === "supported").map(([transport])=>transport);
+	const online=Array.isArray(window.onlineTransportIds) ? window.onlineTransportIds : TRANSPORT_IDS;
+	const supported=branches.filter(([transport,result])=>result.status === "supported" && online.includes(transport)).map(([transport])=>transport);
 	if (supported.length === 1) {
 		definition.transport=supported[0];
 		return `<input type="hidden" data-${prefix ? `${prefix}-` : ""}transport="${panelEsc(entry.key)}" value="${panelEsc(supported[0])}">`;
@@ -88,6 +91,8 @@ function transportSelector(entry,prefix="")
 
 function renderTransportRuntime(payload)
 {
+	window.transportRuntimeById=Object.fromEntries((payload.transports || []).map(status=>[status.id,status]));
+	window.onlineTransportIds=(payload.transports || []).filter(status=>status.online).map(status=>status.id);
 	window.activeTransportIds=(payload.transports || []).map(status=>status.id);
 	const target=document.getElementById("transport-status-list");
 	if (!target) return;

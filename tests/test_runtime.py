@@ -935,6 +935,36 @@ class RuntimeTests(unittest.TestCase):
 		self.assertEqual(result["transport"],"modbus_rtu")
 		self.assertEqual(solarman.reads,[])
 		self.assertEqual(rs485.reads,[(10040,1)])
+
+	def test_custom_status_sensor_decodes_enum_and_bitmask_without_writing(self) -> None:
+		manager=TransportManager([
+			TransportSlot(RuntimeTransport("solarman_tcp",{500:2,552:5}),make_polling(),10),
+		])
+
+		run_state=_test_custom_sensor(manager,{
+			"key":"custom_run_state",
+			"registers":[500],
+			"type":"enum",
+			"options":{"0":"Standby","2":"Normal"},
+			"unknown":"Unknown ({value})",
+			"transport":"solarman_tcp",
+			"transports":["solarman_tcp"],
+		})
+		relays=_test_custom_sensor(manager,{
+			"key":"custom_relays",
+			"registers":[552],
+			"type":"bitmask",
+			"options":{"0":"Inverter relay","2":"Grid connected"},
+			"zero":"All relays off",
+			"unknown":"Bit {bit}",
+			"transport":"solarman_tcp",
+			"transports":["solarman_tcp"],
+		})
+
+		self.assertEqual(run_state["value"],"Normal")
+		self.assertEqual(relays["value"],"Inverter relay, Grid connected")
+		self.assertEqual(run_state["raw_registers"],[2])
+		self.assertEqual(relays["raw_registers"],[5])
 	def test_formula_sensor_and_raw_decode_direct_registers(self) -> None:
 		registers={587:5420,591:65536-238}
 		executor=FormulaExecutor(lambda address,count: [registers[index] for index in range(address,address+count)])
@@ -1222,6 +1252,41 @@ class RuntimeTests(unittest.TestCase):
 
 		self.assertTrue(config.advanced.detailed_logs)
 
+	def test_config_loads_flat_visible_sections_and_persisted_switches(self) -> None:
+		options=make_options()
+		for section in ("inverter","profiles","advanced","scan"):
+			options.pop(section,None)
+		options.update({
+			"inverter_serial_number":"998877",
+			"inverter_name":"Flat inverter",
+			"inverter_manufacturer":"Deye",
+			"inverter_model":"SG05LP3",
+			"default_profile":[],
+			"overrides_file":"/config/flat-overrides.yaml",
+			"custom_sensors_file":"/config/flat-custom.yaml",
+			"state_file":"/config/flat-state.json",
+			"scan_report_file":"/share/flat-report.json",
+			"emit_raw_topics":False,
+			"emit_scan_report":False,
+			"detailed_logs":True,
+			"scan_mode":"scan_only",
+			"scan_candidate_report_file":"/share/flat-scan.json",
+			"detected_sensors_file":"/config/flat-detected.yaml",
+			"bms_pack_count":3,
+		})
+		with tempfile.TemporaryDirectory() as directory:
+			options_path=Path(directory)/"options.json"
+			options_path.write_text(json.dumps(options),encoding="utf-8")
+			config=load_config(options_path)
+
+		self.assertEqual(config.inverter.serial_number,"998877")
+		self.assertEqual(config.profiles.custom_sensors_file,"/config/flat-custom.yaml")
+		self.assertFalse(config.advanced.emit_raw_topics)
+		self.assertFalse(config.advanced.emit_scan_report)
+		self.assertTrue(config.advanced.detailed_logs)
+		self.assertEqual(config.scan.mode,"scan_only")
+		self.assertEqual(config.scan.bms_pack_count,3)
+
 	def test_config_accepts_manual_scan_options(self) -> None:
 		options=make_options()
 		options["scan"]={
@@ -1332,6 +1397,34 @@ class RuntimeTests(unittest.TestCase):
 		self.assertEqual(by_key["battery_4_bms_serial"].byte_order,"low_high")
 		self.assertEqual(by_key["battery_1_fault"].registers,[10060,10061])
 		self.assertEqual(by_key["battery_1_heat_memory_temperature"].registers,[10046])
+		self.assertEqual(by_key["run_state"].register_type,"enum")
+		self.assertEqual(by_key["run_state"].options[2],"Normal")
+		self.assertEqual(by_key["relay_status"].register_type,"bitmask")
+		self.assertEqual(by_key["relay_status"].options[2],"Grid connected")
+		self.assertEqual(by_key["warning_flags"].zero,"No warnings")
+		self.assertEqual(by_key["fault_flags"].zero,"No faults")
+
+	def test_status_types_decode_known_unknown_and_clear_states(self) -> None:
+		self.assertEqual(
+			decode_registers([2],"enum","high_low",options={0:"Standby",2:"Normal"},unknown="Unknown ({value})"),
+			"Normal",
+		)
+		self.assertEqual(
+			decode_registers([7],"enum","high_low",options={0:"Standby",2:"Normal"},unknown="Unknown ({value})"),
+			"Unknown (7)",
+		)
+		self.assertEqual(
+			decode_registers([0],"bitmask","high_low",options={0:"Relay"},zero="All relays off",unknown="Bit {bit}"),
+			"All relays off",
+		)
+		self.assertEqual(
+			decode_registers([0x0005],"bitmask","high_low",options={0:"Inverter relay",2:"Grid connected"},zero="All relays off",unknown="Bit {bit}"),
+			"Inverter relay, Grid connected",
+		)
+		self.assertEqual(
+			decode_registers([0,0x0002],"bitmask","high_low",options={},zero="No faults",unknown="F{code:02d}"),
+			"F18",
+		)
 
 	def test_scan_candidates_wait_for_external_sensor_catalog(self) -> None:
 		self.assertEqual(load_scan_candidates(4,RemoteCatalog([],"built-in")),[])
@@ -1918,7 +2011,7 @@ class RuntimeTests(unittest.TestCase):
 		])
 		self.assertEqual(discovery["availability_mode"],"all")
 		self.assertEqual(discovery["origin"]["name"],"SolarMan Diagnostics")
-		self.assertEqual(discovery["origin"]["sw_version"],"2.0.0")
+		self.assertEqual(discovery["origin"]["sw_version"],"2.0.1")
 
 		publisher._publish_confirmed.reset_mock()
 		publisher.publish_state(sensor,52,{"raw_registers":[52]})

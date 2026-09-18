@@ -54,12 +54,15 @@ function customDefaultDefinition(key)
 		category:"",
 		topic_suffix:key,
 		formula:"",
+		options:{},
+		zero:"",
+		unknown:"",
 	};
 }
 
 function customReadSnapshot(definition,transport)
 {
-	return {
+	const snapshot={
 		registers:[...(definition.registers || [])],
 		type:String(definition.type),
 		formula:String(definition.formula || ""),
@@ -69,6 +72,12 @@ function customReadSnapshot(definition,transport)
 		byte_order:String(definition.byte_order),
 		transport,
 	};
+	if (definition.type === "enum" || definition.type === "bitmask") {
+		snapshot.options={...(definition.options || {})};
+		snapshot.zero=String(definition.zero || "");
+		snapshot.unknown=String(definition.unknown || "");
+	}
+	return snapshot;
 }
 
 function customFrozenCopy(value)
@@ -85,6 +94,31 @@ function customFrozenCopy(value)
 function customInput(key,field,label,value,type="text",wide=false)
 {
 	return `<label class="field ${wide ? "wide" : ""}">${label}<input data-custom-field="${customEsc(field)}" data-custom-key="${customEsc(key)}" type="${type}" value="${customEsc(value)}"></label>`;
+}
+
+function customTextarea(key,field,label,value,hint="")
+{
+	return `<label class="field wide">${label}<textarea data-custom-field="${customEsc(field)}" data-custom-key="${customEsc(key)}" spellcheck="false">${customEsc(value)}</textarea>${hint ? `<span class="key">${customEsc(hint)}</span>` : ""}</label>`;
+}
+
+function formatStatusOptions(options)
+{
+	return Object.entries(options || {}).sort(([left],[right])=>Number(left)-Number(right)).map(([value,label])=>`${value}=${label}`).join("\n");
+}
+
+function parseStatusOptions(value)
+{
+	const options={};
+	for (const [index,line] of String(value || "").split(/\r?\n/).entries()) {
+		if (!line.trim()) continue;
+		const separator=line.indexOf("=");
+		if (separator <= 0 || !line.slice(separator+1).trim()) throw new Error(t("messages.invalid_status_option",{line:index+1}));
+		const key=Number(line.slice(0,separator).trim());
+		if (!Number.isInteger(key) || key < 0) throw new Error(t("messages.invalid_status_option",{line:index+1}));
+		options[key]=line.slice(separator+1).trim();
+	}
+	if (!Object.keys(options).length) throw new Error(t("messages.status_options_required"));
+	return options;
 }
 
 function customSelect(key,field,label,current,values)
@@ -114,7 +148,8 @@ function customResult(entry)
 function customTestSelector(entry)
 {
 	const allowed=entry.definition.transports || [entry.definition.transport || "solarman_tcp"];
-	const available=customTransportIds.filter(transport=>allowed.includes(transport) && customActiveTransports.includes(transport));
+	const online=Array.isArray(window.onlineTransportIds) ? window.onlineTransportIds : customActiveTransports;
+	const available=customTransportIds.filter(transport=>allowed.includes(transport) && online.includes(transport));
 	if (available.length === 1) {
 		entry._testTransport=available[0];
 		return `<input type="hidden" data-custom-test-transport="${customEsc(entry.key)}" value="${customEsc(available[0])}">`;
@@ -131,11 +166,17 @@ function customCard(entry)
 {
 	const definition=entry.definition;
 	const formula=definition.type === "auto";
+	const statusType=definition.type === "enum" || definition.type === "bitmask";
+	const statusFields=statusType ? `
+		${customTextarea(entry.key,"options",t("custom.status_options"),formatStatusOptions(definition.options),definition.type === "enum" ? t("custom.enum_hint") : t("custom.bitmask_hint"))}
+		${customInput(entry.key,"zero",t("custom.zero_label"),definition.zero || "","text",true)}
+		${customInput(entry.key,"unknown",t("custom.unknown_label"),definition.unknown || (definition.type === "enum" ? "Unknown ({value})" : "Bit {bit}"),"text",true)}` : "";
 	const formulaFields=formula ? `
 		<label class="field wide">${customEsc(t("common.formula"))}<textarea data-custom-formula data-custom-key="${customEsc(entry.key)}" spellcheck="false">${customEsc(definition.formula)}</textarea></label>
 		<div class="formula-toolbar"><button class="button secondary" type="button" data-custom-test="${customEsc(entry.key)}">${customEsc(t("actions.test"))}</button><button class="button secondary" type="button" data-custom-expand="${customEsc(entry.key)}">${customEsc(t("actions.expand"))}</button><span class="key">${customEsc(t("custom.formula_hint"))}</span></div>` : `
 		${customInput(entry.key,"registers",t("common.registers"),(definition.registers || []).join(","),"text",true)}
-		${customSelect(entry.key,"type",t("common.register_type"),definition.type,["uint16","int16","uint32","int32","hex","ascii"])}
+		${customSelect(entry.key,"type",t("common.register_type"),definition.type,["uint16","int16","uint32","int32","hex","ascii","enum","bitmask"])}
+		${statusFields}
 		${customInput(entry.key,"multiplier",t("common.multiplier"),definition.multiplier,"number")}
 		${customInput(entry.key,"offset",t("common.offset"),definition.offset,"number")}
 		${customSelect(entry.key,"word_order",t("common.word_order"),definition.word_order,["high_low","low_high"])}
@@ -195,15 +236,18 @@ function collectCustomSensors()
 		const selectedTransport=document.querySelector(`[data-custom-transport="${CSS.escape(key)}"]`)?.value || existing.definition.transport || "solarman_tcp";
 		const testTransport=document.querySelector(`[data-custom-test-transport="${CSS.escape(key)}"]`)?.value || existing._testTransport || selectedTransport;
 		const nextKey=String(value("key")).trim();
+		const registerType=formulaMode ? "auto" : String(value("type"));
+		const statusMode=registerType === "enum" || registerType === "bitmask";
+		const optionsText=document.querySelector(`[data-custom-field="options"][data-custom-key="${CSS.escape(key)}"]`)?.value;
 		const definition={
 			...existing.definition,
 			key:nextKey,
 			transport:selectedTransport,
 			name:String(value("name")).trim(),
 			registers:formulaMode ? [] : parseRegisters(value("registers")),
-			type:formulaMode ? "auto" : String(value("type")),
-			multiplier:formulaMode ? 1 : Number(value("multiplier")),
-			offset:formulaMode ? 0 : Number(value("offset")),
+			type:registerType,
+			multiplier:formulaMode || statusMode ? 1 : Number(value("multiplier")),
+			offset:formulaMode || statusMode ? 0 : Number(value("offset")),
 			unit:String(value("unit")).trim(),
 			word_order:formulaMode ? "high_low" : String(value("word_order")),
 			byte_order:formulaMode ? "high_low" : String(value("byte_order")),
@@ -218,6 +262,9 @@ function collectCustomSensors()
 			category:String(value("category")).trim(),
 			topic_suffix:String(value("topic_suffix")).trim() || nextKey,
 			formula:formulaMode ? String(formula) : "",
+			options:statusMode ? parseStatusOptions(optionsText ?? formatStatusOptions(existing.definition.options)) : {},
+			zero:statusMode ? String(value("zero") || "").trim() : "",
+			unknown:statusMode ? String(value("unknown") || "").trim() : "",
 		};
 		return {key:nextKey,monitor:document.querySelector(`[data-custom-monitor="${CSS.escape(key)}"]`)?.checked ?? true,definition,last_scan:existing.last_scan,_test:existing._test,_testTransport:testTransport};
 	});
@@ -419,6 +466,11 @@ document.addEventListener("change",event=>{
 		const entry=customSensors.find(item=>item.key === testTransport.dataset.customTestTransport);
 		if (entry) entry._testTransport=testTransport.value;
 	}
+	const registerType=event.target.closest('[data-custom-field="type"]');
+	if (registerType) {
+		try { captureCustomSensors(); renderCustomSensors(); }
+		catch (error) { customMessage(error.message,true); }
+	}
 });
 
 customById("custom-add-button").addEventListener("click",addCustomSensor);
@@ -430,6 +482,6 @@ customById("formula-modal-test-button").addEventListener("click",()=>{
 });
 if (window.i18nReady) window.i18nReady.then(async()=>{
 	const runtime=await customRequest("api/runtime");
-	customActiveTransports=(runtime.transports || []).map(status=>status.id);
+	customActiveTransports=(runtime.transports || []).filter(status=>status.online).map(status=>status.id);
 	await loadCustomSensors();
 }).catch(error=>customMessage(error.message,true));

@@ -654,7 +654,10 @@ def _test_custom_sensor(manager: TransportManager,definition: dict[str,Any]) -> 
 		values=client.read_holding_registers(start_register,max(sensor.registers)-start_register+1)
 		latency_ms=(time.perf_counter()-start)*1000
 		raw_values=[values[register-start_register] for register in sensor.registers]
-		decoded=decode_registers(raw_values,sensor.register_type,sensor.word_order,sensor.byte_order)
+		decoded=decode_registers(
+			raw_values,sensor.register_type,sensor.word_order,sensor.byte_order,
+			options=sensor.options,zero=sensor.zero,unknown=sensor.unknown,
+		)
 		value=apply_transform(decoded,sensor.multiplier,sensor.offset)
 		return {
 			"value":value,
@@ -848,7 +851,10 @@ def _handle_sensor(
 	publish_unchanged_every: int,
 ) -> dict[str, Any]:
 	raw_values=[group_values[register-group_start] for register in sensor.registers]
-	decoded=decode_registers(raw_values,sensor.register_type,sensor.word_order,sensor.byte_order)
+	decoded=decode_registers(
+		raw_values,sensor.register_type,sensor.word_order,sensor.byte_order,
+		options=sensor.options,zero=sensor.zero,unknown=sensor.unknown,
+	)
 	value=apply_transform(decoded, sensor.multiplier, sensor.offset)
 	now=time.time()
 

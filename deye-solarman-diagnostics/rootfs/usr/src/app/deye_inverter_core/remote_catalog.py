@@ -169,8 +169,18 @@ def _validate_bms_pack_template(template: Any) -> None:
 
 def _validate_definition_decoding(definition: dict[str, Any], location: str) -> None:
 	register_type=definition.get("type","uint16")
-	if register_type not in {"uint16","int16","uint32","int32","hex","ascii"}:
+	if register_type not in {"uint16","int16","uint32","int32","hex","ascii","enum","bitmask"}:
 		raise ValueError(f"{location}.type is unsupported")
+	if register_type in {"enum","bitmask"}:
+		options=definition.get("options")
+		if not isinstance(options,dict) or not options:
+			raise ValueError(f"{location}.options must define status labels")
+		try:
+			keys=[int(key) for key in options]
+		except (TypeError,ValueError) as error:
+			raise ValueError(f"{location}.options keys must be integers") from error
+		if any(key < 0 for key in keys) or any(not isinstance(label,str) or not label.strip() for label in options.values()):
+			raise ValueError(f"{location}.options must map non-negative integers to labels")
 	for field in ("word_order","byte_order"):
 		value=definition.get(field,"high_low")
 		if value not in {"high_low","low_high"}:
@@ -223,4 +233,9 @@ def _merge_definition(current: SensorDefinition | None, payload: dict[str, Any])
 		raise ValueError("catalog sensor key must be a non-empty string")
 	if not isinstance(data.get("name"),str) or not data["name"]:
 		raise ValueError(f"catalog sensor {data['key']}: name must be a non-empty string")
+	if isinstance(data.get("options"),dict):
+		try:
+			data["options"]={int(key):str(value) for key,value in data["options"].items()}
+		except (TypeError,ValueError) as error:
+			raise ValueError(f"catalog sensor {data['key']}: option keys must be integers") from error
 	return SensorDefinition(**data)

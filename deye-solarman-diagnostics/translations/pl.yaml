@@ -131,38 +131,22 @@ configuration:
       base_topic: {name: Główny temat MQTT, description: Wspólny prefiks tematów stanów i poleceń bez sufiksu transportu.}
       discovery_prefix: {name: Prefiks MQTT Discovery, description: Prefiks tematów automatycznej konfiguracji Home Assistant.}
       retain: {name: Zachowuj stan MQTT, description: Zapisuje ostatnie komunikaty stanu jako retained.}
-  inverter:
-    name: Tożsamość falownika
-    description: Wspólne dane urządzenia pokazywane przy encjach MQTT Discovery.
-    fields:
-      serial_number: {name: Numer seryjny falownika, description: Numer seryjny falownika używany w identyfikatorach urządzenia Home Assistant.}
-      name: {name: Nazwa urządzenia, description: Nazwa wspólnego urządzenia widoczna w Home Assistant.}
-      manufacturer: {name: Producent, description: Producent falownika pokazywany w Home Assistant.}
-      model: {name: Model, description: Model falownika pokazywany w Home Assistant.}
-  profiles:
-    name: Profile i lokalne dane
-    description: Domyślny profil jest celowo pusty. Sensory pochodzą z katalogu, skanu i lokalnych definicji.
-    fields:
-      default_profile: {name: Wbudowany profil startowy, description: Minimalna lista profili startowych. Domyślnie pusta, aby nie publikować niepotwierdzonych encji.}
-      overrides_file: {name: Plik nadpisań sensorów, description: Lokalny plik /config z trwałymi nadpisaniami definicji.}
-      custom_sensors_file: {name: Plik własnych sensorów, description: Lokalny plik /config z definicjami Własnych sensorów.}
-      state_file: {name: Plik stanu runtime, description: Lokalny plik /config z trwałym stanem harmonogramu i publikacji.}
-      scan_report_file: {name: Raport cyklu odczytu, description: Lokalny plik /share z raportem bieżących odczytów.}
-  advanced:
-    name: Diagnostyka
-    description: Dodatkowe dane diagnostyczne. Zwykła praca nie wymaga szczegółowych logów.
-    fields:
-      emit_raw_topics: {name: Publikuj tematy RAW, description: Publikuje surowe rejestry w dodatkowym temacie MQTT.}
-      emit_scan_report: {name: Zapisuj raport cyklu, description: Zapisuje lokalny raport wykonanych odczytów.}
-      detailed_logs: {name: Szczegółowe logi, description: Domyślnie wyłączone. Po włączeniu ustawienie pozostaje trwale zapisane w options.json do czasu ręcznej zmiany.}
-  scan:
-    name: Skanowanie sensorów
-    description: Ustawienia skanu katalogu i lokalnego raportu kandydatów.
-    fields:
-      mode: {name: Tryb skanowania, description: Określa automatyczne zachowanie skanu przy starcie dodatku.}
-      report_file: {name: Raport kandydatów, description: Lokalny plik /share z wynikami skanu kandydatów.}
-      detected_sensors_file: {name: Plik wykrytych sensorów, description: Lokalny plik /config z wynikami i wyborem transportu per sensor.}
-      bms_pack_count: {name: Liczba pakietów BMS, description: Liczba pakietów używana przy budowie kandydatów katalogu.}
+  inverter_serial_number: {name: Tożsamość falownika - numer seryjny, description: Numer seryjny falownika używany w identyfikatorach urządzenia Home Assistant.}
+  inverter_name: {name: Tożsamość falownika - nazwa urządzenia, description: Nazwa wspólnego urządzenia widoczna w Home Assistant.}
+  inverter_manufacturer: {name: Tożsamość falownika - producent, description: Producent falownika pokazywany w Home Assistant.}
+  inverter_model: {name: Tożsamość falownika - model, description: Model falownika pokazywany w Home Assistant.}
+  default_profile: {name: Profile i lokalne dane - profil startowy, description: Minimalna lista profili startowych. Domyślnie pusta, aby nie publikować niepotwierdzonych encji.}
+  overrides_file: {name: Profile i lokalne dane - plik nadpisań, description: Lokalny plik /config z trwałymi nadpisaniami definicji.}
+  custom_sensors_file: {name: Profile i lokalne dane - własne sensory, description: Lokalny plik /config z definicjami Własnych sensorów.}
+  state_file: {name: Profile i lokalne dane - stan runtime, description: Lokalny plik /config z trwałym stanem harmonogramu i publikacji.}
+  scan_report_file: {name: Profile i lokalne dane - raport odczytu, description: Lokalny plik /share z raportem bieżących odczytów.}
+  emit_raw_topics: {name: Diagnostyka - publikuj tematy RAW, description: Publikuje surowe rejestry w dodatkowym temacie MQTT.}
+  emit_scan_report: {name: Diagnostyka - zapisuj raport cyklu, description: Zapisuje lokalny raport wykonanych odczytów.}
+  detailed_logs: {name: Diagnostyka - szczegółowe logi, description: Domyślnie wyłączone. Ustawienie jest trwale zapisywane przez Home Assistant.}
+  scan_mode: {name: Skanowanie sensorów - tryb, description: Określa automatyczne zachowanie skanu przy starcie dodatku.}
+  scan_candidate_report_file: {name: Skanowanie sensorów - raport kandydatów, description: Lokalny plik /share z wynikami skanu kandydatów.}
+  detected_sensors_file: {name: Skanowanie sensorów - wykryte sensory, description: Lokalny plik /config z wynikami i wyborem transportu per sensor.}
+  bms_pack_count: {name: Skanowanie sensorów - liczba pakietów BMS, description: Liczba pakietów używana przy budowie kandydatów katalogu.}
   catalog:
     name: Katalogi sensorów i sterowania
     description: Zdalne listy są zapisywane w lokalnych plikach cache. Poprzednia poprawna kopia pozostaje dostępna po błędzie pobierania.

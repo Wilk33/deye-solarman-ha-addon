@@ -1,4 +1,4 @@
-# SolarMan Diagnostics 2.0.0
+# SolarMan Diagnostics 2.0.1
 
 Jeden dodatek Home Assistant OS do lokalnego odczytu i sterowania falownikiem Deye przez SolarMan TCP, bezpośredni Modbus RTU (RS485) albo oba transporty jednocześnie.
 
@@ -38,9 +38,9 @@ Metadane zawierają `uart: true`. Wartości `/dev/ttyUSB0`, 9600 8N1 i Modbus ID
 4. Pozostaw `mqtt.use_supervisor: true`, jeśli broker udostępnia Home Assistant Supervisor.
 5. Uruchom dodatek, wykonaj skan i wybierz encje MQTT.
 
-Nowa instalacja ma pusty `profiles.default_profile`. Listy sensorów i sterowania są pobierane odpowiednio z `catalog.url` i `catalog.control_url`, walidowane i zapisywane do osobnych cache.
+Nowa instalacja ma pusty `default_profile`. Listy sensorów i sterowania są pobierane odpowiednio z `catalog.url` i `catalog.control_url`, walidowane i zapisywane do osobnych cache.
 
-`advanced.detailed_logs` jest domyślnie wyłączone. Normalny log ogranicza szczegóły połączeń i pojedynczych publikacji. Pełny debug należy włączać tylko podczas diagnozy.
+`detailed_logs` jest domyślnie wyłączone. Normalny log ogranicza szczegóły połączeń i pojedynczych publikacji. Pełny debug należy włączać tylko podczas diagnozy.
 
 ## Aktualizacja z 1.x
 

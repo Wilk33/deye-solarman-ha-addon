@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.0.1
+
+- Decode inverter run state as an enum and relay, warning and fault registers as named bitmasks. Publish readable MQTT states while preserving RAW register diagnostics.
+- Add enum and bitmask definitions to `Własne sensory`, including configurable value or bit labels, zero state and unknown-state templates.
+- Preserve historical scan support while marking a disconnected transport offline. Remove offline transports from entity selectors without requiring another scan.
+- Put inverter identity, profiles and local data, diagnostics and sensor scanning fields directly in the Home Assistant configuration form so they remain visible and boolean values are restored from the current saved options.
+- Correct the sensor-list background with a theme-backed surface and keep both Polish and English panel text complete.
+
 ## 2.0.0
 
 - Combine SolarMan TCP and direct Modbus RTU (RS485) in one installable `SolarMan Diagnostics` add-on, one process, and one MQTT session.
@@ -13,7 +21,7 @@
 - Bundle both transport adapters, the shared core, PL/EN i18n, and checksummed catalogs in the self-contained HAOS build context. Pin `pymodbus==3.14.0`.
 - Document that automated validation does not prove a physical USB adapter, RS485 timing, firmware-specific register maps, or a real inverter FC16 write.
 
-Entries below describe historical releases and do not define the current 2.0.0 architecture.
+Entries below describe historical releases and do not define the current 2.0.1 architecture.
 
 ## 1.4.0
 

@@ -15,7 +15,16 @@
       "registers": [
         500
       ],
-      "type": "uint16",
+      "type": "enum",
+      "options": {
+        "0": "Standby",
+        "1": "Self-check",
+        "2": "Normal",
+        "3": "Alarm",
+        "4": "Fault",
+        "5": "Activating"
+      },
+      "unknown": "Unknown ({value})",
       "schedule": "slow"
     },
     {
@@ -24,7 +33,18 @@
       "registers": [
         552
       ],
-      "type": "hex",
+      "type": "bitmask",
+      "options": {
+        "0": "Inverter relay",
+        "1": "Load relay (reserved)",
+        "2": "Grid connected",
+        "3": "Generator relay",
+        "4": "Grid supply relay",
+        "5": "Dry contact 1",
+        "6": "Dry contact 2"
+      },
+      "zero": "All relays off",
+      "unknown": "Relay bit {bit}",
       "schedule": "slow",
       "read_every": 300,
       "report_every": 600
@@ -36,7 +56,13 @@
         553,
         554
       ],
-      "type": "hex",
+      "type": "bitmask",
+      "options": {
+        "1": "W02 Fan failure",
+        "2": "W03 Grid phase error"
+      },
+      "zero": "No warnings",
+      "unknown": "W{code:02d}",
       "schedule": "slow",
       "read_every": 300,
       "report_every": 600
@@ -50,7 +76,24 @@
         557,
         558
       ],
-      "type": "hex",
+      "type": "bitmask",
+      "options": {
+        "12": "F13 Working mode change",
+        "17": "F18 AC over current",
+        "19": "F20 DC over current",
+        "22": "F23 AC leakage or transient over current",
+        "23": "F24 DC insulation impedance",
+        "25": "F26 DC busbar imbalanced",
+        "28": "F29 Parallel communication cable",
+        "34": "F35 No AC grid",
+        "41": "F42 AC line low voltage",
+        "46": "F47 AC frequency high or low",
+        "55": "F56 DC busbar voltage low",
+        "62": "F63 ARC fault",
+        "63": "F64 Heat sink temperature failure"
+      },
+      "zero": "No faults",
+      "unknown": "F{code:02d}",
       "schedule": "slow",
       "read_every": 300,
       "report_every": 600

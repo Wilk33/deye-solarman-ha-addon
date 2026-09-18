@@ -502,6 +502,9 @@ h1 { margin: 0; font-size: clamp(2rem, 5vw, 4.2rem); letter-spacing: -.055em; li
 .filters input { width: 100%; border: 1px solid var(--line); background: var(--field); padding: 12px; color: var(--ink); }
 #empty { margin: 32px 0; color: var(--muted); font-style: italic; }
 .group { margin-top: 34px; }
+.sensor-list-surface { margin-top: 28px; border: 1px solid var(--line); background: var(--panel); padding: 0 12px 12px; box-shadow: var(--shadow); }
+.sensor-list-surface .group:first-child { margin-top: 12px; }
+.sensor-list-surface .sensor { background: var(--field); }
 .group-title { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; font-size: 1.25rem; }
 .group-title small { color: var(--muted); font-family: "Courier New", monospace; }
 .sensor-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 12px; }
@@ -518,8 +521,8 @@ h1 { margin: 0; font-size: clamp(2rem, 5vw, 4.2rem); letter-spacing: -.055em; li
 .raw-line.ascii code { color: var(--sun); letter-spacing: .04em; }
 .badges { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 11px; }
 .badge { padding: 3px 6px; border: 1px solid var(--line); color: var(--muted); font-family: "Courier New", monospace; font-size: .66rem; text-transform: uppercase; }
-.badge.supported, .badge.verified_local { border-color: var(--green); color: var(--green); }
-.badge.timeout, .badge.unsupported, .badge.invalid_value { border-color: var(--red); color: var(--red); }
+.badge.supported, .badge.verified_local, .badge.online { border-color: var(--green); color: var(--green); }
+.badge.timeout, .badge.unsupported, .badge.invalid_value, .badge.offline { border-color: var(--red); color: var(--red); }
 .toggle { display: inline-flex; gap: 7px; align-items: center; white-space: nowrap; font-family: "Courier New", monospace; font-size: .72rem; }
 .toggle input { accent-color: var(--green); width: 18px; height: 18px; }
 details { border-top: 1px solid var(--line); padding: 0 15px 14px; }
@@ -618,7 +621,7 @@ summary { padding: 11px 0; color: var(--green); cursor: pointer; font-family: "C
     </div>
   </section>
   <p id="empty" hidden data-i18n="sensors.empty">Brak danych skanu. Uzyj Skanuj teraz po skonfigurowaniu polaczenia loggera w zakladce Konfiguracja dodatku.</p>
-  <section id="sensor-groups"></section>
+  <section id="sensor-groups" class="sensor-list-surface"></section>
   <p class="notice" data-i18n="sensors.notice">Zapis aktualizuje trwaly plik wyboru. Dodatek automatycznie przeladowuje odczyt i MQTT. Poprawny odczyt potwierdza dostep transportowy, ale niekoniecznie znaczenie rejestru.</p>
   </section>
 
@@ -778,7 +781,7 @@ function sensorCard(entry) {
       ${input(entry.key,"multiplier",t("common.multiplier"),definition.multiplier,"number")}
       ${input(entry.key,"offset",t("common.offset"),definition.offset,"number")}
       ${input(entry.key,"unit",t("common.unit"),definition.unit)}
-      ${select(entry.key,"type",t("common.register_type"),definition.type,["uint16","int16","uint32","int32","hex","ascii"])}
+      ${select(entry.key,"type",t("common.register_type"),definition.type,["uint16","int16","uint32","int32","hex","ascii","enum","bitmask"])}
       ${select(entry.key,"word_order",t("common.word_order"),definition.word_order,["high_low","low_high"])}
       ${select(entry.key,"byte_order",t("common.byte_order"),definition.byte_order,["high_low","low_high"])}
       ${select(entry.key,"schedule",t("common.schedule"),definition.schedule,["default","slow"])}
@@ -867,6 +870,8 @@ async function loadSensors() {
 
 async function refreshRuntimeStatus() {
   renderTransportRuntime(await request("api/runtime"));
+  render();
+  if (typeof renderCustomSensors === "function") renderCustomSensors();
 }
 
 function collectUpdates() {

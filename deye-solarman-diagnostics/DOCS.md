@@ -1,4 +1,4 @@
-# SolarMan Diagnostics 2.0.0 - instrukcja użytkownika
+# SolarMan Diagnostics 2.0.1 - instrukcja użytkownika
 
 ## Przeznaczenie
 
@@ -90,29 +90,25 @@ mqtt:
   discovery_prefix: homeassistant
   retain: true
 
-inverter:
-  serial_number: "2507092018"
-  name: SolarMan Diagnostics
-  manufacturer: Deye
-  model: SG05LP3
+inverter_serial_number: "2507092018"
+inverter_name: SolarMan Diagnostics
+inverter_manufacturer: Deye
+inverter_model: SG05LP3
 
-profiles:
-  default_profile: []
-  overrides_file: /config/user_sensors.yaml
-  custom_sensors_file: /config/custom_sensors.yaml
-  state_file: /config/runtime_state.json
-  scan_report_file: /share/deye_solarman_scan_report.json
+default_profile: []
+overrides_file: /config/user_sensors.yaml
+custom_sensors_file: /config/custom_sensors.yaml
+state_file: /config/runtime_state.json
+scan_report_file: /share/deye_solarman_scan_report.json
 
-advanced:
-  emit_raw_topics: true
-  emit_scan_report: true
-  detailed_logs: false
+emit_raw_topics: true
+emit_scan_report: true
+detailed_logs: false
 
-scan:
-  mode: disabled
-  report_file: /share/deye_solarman_candidate_scan.json
-  detected_sensors_file: /config/detected_sensors.yaml
-  bms_pack_count: 4
+scan_mode: disabled
+scan_candidate_report_file: /share/deye_solarman_candidate_scan.json
+detected_sensors_file: /config/detected_sensors.yaml
+bms_pack_count: 4
 
 catalog:
   refresh_on_start: true
@@ -125,7 +121,7 @@ catalog:
 
 ### SolarMan TCP
 
-`solarman.host` wskazuje lokalny adres loggera, a nie interfejs sieciowy falownika. `solarman.serial_number` jest numerem loggera wymaganym przez protokół SolarMan. `inverter.serial_number` jest oddzielnym numerem używanym przez MQTT Discovery.
+`solarman.host` wskazuje lokalny adres loggera, a nie interfejs sieciowy falownika. `solarman.serial_number` jest numerem loggera wymaganym przez protokół SolarMan. `inverter_serial_number` jest oddzielnym numerem używanym przez MQTT Discovery.
 
 Worker SolarMan ma własne ustawienia `polling`, timeout i `reconnect_delay`. Utrata sesji TCP nie zatrzymuje działającego workera RS485.
 
@@ -158,7 +154,7 @@ Zmiana interwału jednego transportu nie zmienia interwału drugiego.
 
 ## Migracja z wersji 1.x
 
-Wersja 2.0.0 zachowuje slug oraz katalog instalacyjny, więc Home Assistant aktualizuje istniejący dodatek.
+Wersja 2.0.1 zachowuje slug oraz katalog instalacyjny, więc Home Assistant aktualizuje istniejący dodatek.
 
 Starsza konfiguracja używała sekcji:
 
@@ -186,6 +182,8 @@ rs485:
 Po aktualizacji sprawdź nową sekcję `solarman`, zapisz konfigurację i dopiero wtedy opcjonalnie skonfiguruj RS485. Migracja zachowuje pliki z wykrytymi sensorami, własnymi sensorami, wyborem sterowania, stanem runtime i kolejką usuwania Discovery. Zapisany wybór `transport` nie jest wymagany w plikach 1.x - brakujące pole otrzymuje SolarMan TCP, dzięki czemu dotychczasowy wybór nie znika.
 
 MQTT zachowuje wcześniejsze `unique_id`, urządzenie i tematy stanu. Aktualizacja nie wymaga usuwania encji ani ponownego budowania automatyzacji Home Assistant.
+
+W 2.0.1 pola z dawnych grup `inverter`, `profiles`, `advanced` i `scan` są bezpośrednimi opcjami formularza, aby pozostawały stale widoczne i poprawnie odtwarzały przełączniki. Po aktualizacji z 2.0.0 sprawdź te wartości przed uruchomieniem dodatku, szczególnie numer seryjny falownika i niestandardowe ścieżki plików. Runtime nadal potrafi odczytać dawny zagnieżdżony układ z pliku opcji.
 
 ## MQTT i Home Assistant
 
@@ -227,7 +225,7 @@ Zapisana encja wybiera transport w konfiguracji, lecz nazwa jej tematu i `unique
 
 ## Katalogi sensorów i sterowania
 
-Nowa instalacja ma pusty `profiles.default_profile: []`. Lista panelu pochodzi z dwóch zewnętrznych adresów:
+Nowa instalacja ma pusty `default_profile: []`. Lista panelu pochodzi z dwóch zewnętrznych adresów:
 
 - `catalog.url` - sensory telemetryczne i szablony BMS;
 - `catalog.control_url` - definicje sterowania.
@@ -247,6 +245,8 @@ Zakładki panelu:
 - `Własne sensory` - ręczne sensory Modbus oraz formuły.
 
 Nagłówek pokazuje aktywność SolarMan TCP oraz Modbus RTU. Wyniki skanu przechowują oddzielny status i `latency_ms` dla obu transportów. Typowe statusy to `supported`, `unsupported`, `unavailable`, `timeout` i `invalid_value`.
+
+Wynik `supported` jest pamiętany jako potwierdzenie mapy rejestru. Bieżący stan `online` albo `offline` pochodzi z działającego workera transportu. Jeśli wcześniej sprawdzony RS485 zostanie odłączony, karta nadal pokazuje `supported`, dodaje `offline` i natychmiast usuwa RS485 z pola wyboru bez potrzeby ponownego skanu.
 
 ### Skan sensorów
 
@@ -268,6 +268,8 @@ Prawdziwy zapis następuje dopiero po wysłaniu komendy do wybranej encji MQTT. 
 ### Własne sensory
 
 `Własne sensory` przechowują definicje w `/config/custom_sensors.yaml`. Standardowy sensor określa rejestry, typ, mnożnik, offset, kolejność słów i transport. Formuła może używać ograniczonego interpretera z funkcjami `sensor(...)` i `RAW(...)`.
+
+Typ `enum` mapuje całą wartość jednego rejestru na opis stanu. Typ `bitmask` dekoduje aktywne bity jednego lub kilku kolejnych rejestrów. Dla obu typów można podać mapę wartości lub bitów, opis zera oraz szablon nieznanego stanu. Wbudowany katalog używa tego mechanizmu dla Run State, Relay Status, Warning Flags i Fault Flags.
 
 Test własnego sensora jest operacją read-only. Dla wyboru `oba` wykonuje kolejno SolarMan TCP, a następnie RS485 i pokazuje oddzielny wynik każdego transportu. Test nie publikuje MQTT i nie zmienia ustawień falownika.
 
@@ -297,7 +299,7 @@ Zmiana transportu lub wyłączenie encji zachowuje jej tożsamość MQTT. Usuni�
 
 ## Logowanie i diagnostyka
 
-`advanced.detailed_logs` jest domyślnie `false`. W normalnym trybie dodatek rejestruje start, utratę połączenia, ponowne łączenie i błędy, ale ogranicza:
+`detailed_logs` jest domyślnie `false`. W normalnym trybie dodatek rejestruje start, utratę połączenia, ponowne łączenie i błędy, ale ogranicza:
 
 - pojedyncze potwierdzenia każdej publikacji MQTT;
 - zakresy każdego odczytu;

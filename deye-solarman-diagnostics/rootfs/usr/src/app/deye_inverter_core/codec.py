@@ -14,8 +14,27 @@ def decode_registers(
 	register_type: str,
 	word_order: str,
 	byte_order: str="high_low",
+	*,
+	options: dict[int,str] | None=None,
+	zero: str="",
+	unknown: str="",
 ) -> int | str:
 	ordered=combine_words(registers, word_order)
+	status_options=options or {}
+	if register_type == "enum":
+		value=ordered[0]
+		if value in status_options:
+			return status_options[value]
+		return _status_label(unknown or "Unknown ({value})",value=value,bit=value,code=value)
+	if register_type == "bitmask":
+		active=[]
+		for word_index,word in enumerate(registers):
+			for bit_offset in range(16):
+				if not word&(1 << bit_offset):
+					continue
+				bit=word_index*16+bit_offset
+				active.append(status_options.get(bit) or _status_label(unknown or "Bit {bit}",value=word,bit=bit,code=bit+1))
+		return ", ".join(active) if active else (zero or "None")
 	if register_type == "hex":
 		return " ".join(f"0x{value:04X}" for value in ordered)
 	if register_type == "ascii":
@@ -31,6 +50,13 @@ def decode_registers(
 			return value-4294967296
 		return value
 	raise ValueError(f"Unsupported register type: {register_type}")
+
+
+def _status_label(template: str, *, value: int, bit: int, code: int) -> str:
+	try:
+		return template.format(value=value,bit=bit,code=code,hex=f"0x{value:04X}")
+	except (KeyError,ValueError) as error:
+		raise ValueError(f"Invalid status label template: {template!r}") from error
 
 
 def registers_to_ascii(registers: list[int], byte_order: str="high_low") -> str:

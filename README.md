@@ -1,4 +1,4 @@
-# SolarMan Diagnostics 2.0.0
+# SolarMan Diagnostics 2.0.1
 
 `SolarMan Diagnostics` jest jednym instalowalnym dodatkiem Home Assistant OS do lokalnej komunikacji z falownikiem Deye. Jeden proces może jednocześnie obsługiwać dwa transporty:
 
@@ -129,7 +129,7 @@ Pełny opis opcji, migracji i diagnostyki znajduje się w [DOCS.md](deye-solarma
 
 ## Migracja z 1.x
 
-Wersja 2.0.0 zachowuje katalog instalacyjny i slug `deye-solarman-diagnostics`, dlatego aktualizacja odbywa się w miejscu.
+Wersja 2.0.1 zachowuje katalog instalacyjny i slug `deye-solarman-diagnostics`, dlatego aktualizacja odbywa się w miejscu.
 
 Starszy układ:
 
@@ -152,14 +152,14 @@ Zapisane wybory sensorów, własnych sensorów, sterowania i MQTT pozostają w d
 
 ## Katalogi i ustawienia domyślne
 
-Nowa instalacja ma pusty `profiles.default_profile: []`. Listy są pobierane z:
+Nowa instalacja ma pusty `default_profile: []`. Listy są pobierane z:
 
 - `catalog.url` - katalog sensorów;
 - `catalog.control_url` - katalog sterowania.
 
 Po walidacji katalog trafia do osobnego lokalnego cache. Jeśli źródło i poprawny cache są niedostępne, odpowiednia lista pozostaje pusta. Zdalny YAML jest traktowany jako dane i nie jest wykonywany jako kod.
 
-`advanced.detailed_logs` jest domyślnie wyłączone. W tym trybie log zachowuje informacje operacyjne, ale ogranicza wpisy o pojedynczych publikacjach, zakresach połączeń i tracebackach. Tryb szczegółowy należy włączać tylko na czas diagnostyki.
+`detailed_logs` jest domyślnie wyłączone. W tym trybie log zachowuje informacje operacyjne, ale ogranicza wpisy o pojedynczych publikacjach, zakresach połączeń i tracebackach. Tryb szczegółowy należy włączać tylko na czas diagnostyki.
 
 ## Źródła kodu i pakowanie
 
@@ -176,7 +176,7 @@ Kopia w `deye-solarman-diagnostics/rootfs/usr/src/app` jest generowana. Po zmian
 .work/venv/Scripts/python.exe -m unittest discover -s tests -v
 ```
 
-Pakiet 2.0.0 zawiera wspólny rdzeń, oba adaptery, i18n PL/EN oraz katalogi z sumami kontrolnymi. Zależność RTU jest przypięta jako `pymodbus==3.14.0`. Repozytorium nie zawiera drugiego instalowalnego folderu RS485.
+Pakiet 2.0.1 zawiera wspólny rdzeń, oba adaptery, i18n PL/EN oraz katalogi z sumami kontrolnymi. Zależność RTU jest przypięta jako `pymodbus==3.14.0`. Repozytorium nie zawiera drugiego instalowalnego folderu RS485.
 
 ## Granice weryfikacji
 

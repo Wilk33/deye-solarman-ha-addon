@@ -63,38 +63,22 @@ configuration:
       base_topic: {name: MQTT base topic, description: Shared state and command topic prefix without a transport suffix.}
       discovery_prefix: {name: MQTT Discovery prefix, description: Prefix for Home Assistant automatic configuration topics.}
       retain: {name: Retain MQTT state, description: Stores the most recent state messages as retained MQTT messages.}
-  inverter:
-    name: Inverter identity
-    description: Shared device information shown with MQTT Discovery entities.
-    fields:
-      serial_number: {name: Inverter serial number, description: Inverter serial used in Home Assistant device identifiers.}
-      name: {name: Device name, description: Shared device name shown in Home Assistant.}
-      manufacturer: {name: Manufacturer, description: Inverter manufacturer shown in Home Assistant.}
-      model: {name: Model, description: Inverter model shown in Home Assistant.}
-  profiles:
-    name: Profiles and local data
-    description: The default profile is intentionally empty. Sensors come from catalogs, scans, and local definitions.
-    fields:
-      default_profile: {name: Built-in startup profile, description: Minimal startup profile list. Empty by default so unverified entities are not published.}
-      overrides_file: {name: Sensor overrides file, description: Local /config file containing persistent definition overrides.}
-      custom_sensors_file: {name: Custom sensors file, description: Local /config file containing Custom sensor definitions.}
-      state_file: {name: Runtime state file, description: Local /config file containing persistent scheduling and publication state.}
-      scan_report_file: {name: Read cycle report, description: Local /share file containing the current read report.}
-  advanced:
-    name: Diagnostics
-    description: Additional diagnostic data. Normal operation does not require detailed logging.
-    fields:
-      emit_raw_topics: {name: Publish RAW topics, description: Publishes raw registers to an additional MQTT topic.}
-      emit_scan_report: {name: Save read cycle report, description: Writes a local report for completed reads.}
-      detailed_logs: {name: Detailed logs, description: Off by default. When enabled it remains persistently stored in options.json until changed manually.}
-  scan:
-    name: Sensor scanning
-    description: Settings for catalog scanning and the local candidate report.
-    fields:
-      mode: {name: Scan mode, description: Controls automatic scan behavior when the add-on starts.}
-      report_file: {name: Candidate report, description: Local /share file containing candidate scan results.}
-      detected_sensors_file: {name: Detected sensors file, description: Local /config file containing results and the selected transport per sensor.}
-      bms_pack_count: {name: BMS pack count, description: Pack count used when catalog candidates are generated.}
+  inverter_serial_number: {name: Inverter identity - serial number, description: Inverter serial used in Home Assistant device identifiers.}
+  inverter_name: {name: Inverter identity - device name, description: Shared device name shown in Home Assistant.}
+  inverter_manufacturer: {name: Inverter identity - manufacturer, description: Inverter manufacturer shown in Home Assistant.}
+  inverter_model: {name: Inverter identity - model, description: Inverter model shown in Home Assistant.}
+  default_profile: {name: Profiles and local data - startup profile, description: Minimal startup profile list. Empty by default so unverified entities are not published.}
+  overrides_file: {name: Profiles and local data - overrides, description: Local /config file containing persistent definition overrides.}
+  custom_sensors_file: {name: Profiles and local data - custom sensors, description: Local /config file containing Custom sensor definitions.}
+  state_file: {name: Profiles and local data - runtime state, description: Local /config file containing persistent scheduling and publication state.}
+  scan_report_file: {name: Profiles and local data - read report, description: Local /share file containing the current read report.}
+  emit_raw_topics: {name: Diagnostics - publish RAW topics, description: Publishes raw registers to an additional MQTT topic.}
+  emit_scan_report: {name: Diagnostics - save read report, description: Writes a local report for completed reads.}
+  detailed_logs: {name: Diagnostics - detailed logs, description: Off by default. Home Assistant persistently stores the selected value.}
+  scan_mode: {name: Sensor scanning - mode, description: Controls automatic scan behavior when the add-on starts.}
+  scan_candidate_report_file: {name: Sensor scanning - candidate report, description: Local /share file containing candidate scan results.}
+  detected_sensors_file: {name: Sensor scanning - detected sensors, description: Local /config file containing results and the selected transport per sensor.}
+  bms_pack_count: {name: Sensor scanning - BMS pack count, description: Pack count used when catalog candidates are generated.}
   catalog:
     name: Sensor and control catalogs
     description: Remote lists are stored in local cache files. The last valid copy remains available after a download failure.

@@ -1,6 +1,6 @@
 name: SolarMan Diagnostics
 description: Deye inverter diagnostics through SolarMan TCP and direct Modbus RTU (RS485)
-version: "2.0.0"
+version: "2.0.1"
 slug: deye-solarman-diagnostics
 url: "https://github.com/Wilk33/deye-solarman-ha-addon"
 services:
@@ -72,26 +72,22 @@ options:
     base_topic: solarman_diagnostics
     discovery_prefix: homeassistant
     retain: true
-  inverter:
-    serial_number: "2507092018"
-    name: SolarMan Diagnostics
-    manufacturer: Deye
-    model: SG05LP3
-  profiles:
-    default_profile: []
-    overrides_file: /config/user_sensors.yaml
-    custom_sensors_file: /config/custom_sensors.yaml
-    state_file: /config/runtime_state.json
-    scan_report_file: /share/deye_solarman_scan_report.json
-  advanced:
-    emit_raw_topics: true
-    emit_scan_report: true
-    detailed_logs: false
-  scan:
-    mode: disabled
-    report_file: /share/deye_solarman_candidate_scan.json
-    detected_sensors_file: /config/detected_sensors.yaml
-    bms_pack_count: 4
+  inverter_serial_number: "2507092018"
+  inverter_name: SolarMan Diagnostics
+  inverter_manufacturer: Deye
+  inverter_model: SG05LP3
+  default_profile: []
+  overrides_file: /config/user_sensors.yaml
+  custom_sensors_file: /config/custom_sensors.yaml
+  state_file: /config/runtime_state.json
+  scan_report_file: /share/deye_solarman_scan_report.json
+  emit_raw_topics: true
+  emit_scan_report: true
+  detailed_logs: false
+  scan_mode: disabled
+  scan_candidate_report_file: /share/deye_solarman_candidate_scan.json
+  detected_sensors_file: /config/detected_sensors.yaml
+  bms_pack_count: 4
   catalog:
     refresh_on_start: true
     url: https://raw.githubusercontent.com/Wilk33/deye-solarman-ha-addon/main/deye-solarman-diagnostics/deye_sg04_sg05_3ph_lv_catalog.yaml
@@ -149,26 +145,22 @@ schema:
     base_topic: str
     discovery_prefix: str
     retain: bool
-  inverter:
-    serial_number: str
-    name: str
-    manufacturer: str
-    model: str
-  profiles:
-    default_profile: list(deye_battery_packs)
-    overrides_file: str
-    custom_sensors_file: str
-    state_file: str
-    scan_report_file: str
-  advanced:
-    emit_raw_topics: bool
-    emit_scan_report: bool
-    detailed_logs: bool
-  scan:
-    mode: list(disabled|scan_only|scan_and_monitor)
-    report_file: str
-    detected_sensors_file: str
-    bms_pack_count: int(1,10)
+  inverter_serial_number: str
+  inverter_name: str
+  inverter_manufacturer: str
+  inverter_model: str
+  default_profile: list(deye_battery_packs)
+  overrides_file: str
+  custom_sensors_file: str
+  state_file: str
+  scan_report_file: str
+  emit_raw_topics: bool
+  emit_scan_report: bool
+  detailed_logs: bool
+  scan_mode: list(disabled|scan_only|scan_and_monitor)
+  scan_candidate_report_file: str
+  detected_sensors_file: str
+  bms_pack_count: int(1,10)
   catalog:
     refresh_on_start: bool
     url: str

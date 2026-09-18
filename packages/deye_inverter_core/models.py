@@ -139,6 +139,9 @@ class SensorDefinition:
 	topic_suffix: str=""
 	formula: str=""
 	attributes: dict[str, Any]=field(default_factory=dict)
+	options: dict[int,str]=field(default_factory=dict)
+	zero: str=""
+	unknown: str=""
 	transport: str="solarman_tcp"
 	transports: list[str]=field(default_factory=lambda:list(TRANSPORT_IDS))
 

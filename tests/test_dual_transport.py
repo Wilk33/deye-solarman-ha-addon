@@ -467,7 +467,7 @@ class DualTransportConfigTests(unittest.TestCase):
 	def test_addon_uses_version_2_sections_and_disables_rs485_by_default(self) -> None:
 		addon=yaml.safe_load((ROOT/"deye-solarman-diagnostics/config.yaml").read_text(encoding="utf-8"))
 
-		self.assertEqual(addon["version"],"2.0.0")
+		self.assertEqual(addon["version"],"2.0.1")
 		self.assertNotIn("logger",addon["options"])
 		self.assertNotIn("polling",addon["options"])
 		self.assertTrue(addon["options"]["solarman"]["enabled"])
@@ -2025,6 +2025,67 @@ window.i18nReady.then(()=>{
 		self.assertIn("12 ms",payload["cards"])
 		self.assertIn("0x01FF",payload["cards"])
 
+	def test_panel_hides_offline_rs485_choice_but_keeps_supported_history(self) -> None:
+		panel_script=(ROOT/"packages/deye_inverter_core/panel.js").read_text(encoding="utf-8")
+		bootstrap=r'''
+globalThis.window=globalThis;
+console.info=()=>{};
+window.location={href:"http://example.test/"};
+window.addEventListener=()=>{};
+globalThis.navigator={language:"en-US"};
+const runtimeTarget={innerHTML:""};
+globalThis.document={
+	baseURI:"http://example.test/",
+	title:"",
+	documentElement:{dataset:{language:"en"},lang:""},
+	querySelectorAll(){ return []; },
+	getElementById(id){ return id === "transport-status-list" ? runtimeTarget : null; },
+};
+globalThis.statusBadge=status=>`<span>${status}</span>`;
+globalThis.fetch=async()=>({ok:true,json:async()=>({language:"en",translations:{
+	"transport.title":"Transport","transport.select":"Select transport",
+	"transport.solarman_tcp":"SolarMan TCP","transport.modbus_rtu":"Modbus RTU (RS485)",
+	"status.supported":"supported","status.offline":"offline","status.unavailable":"unavailable",
+	"runtime.online":"online","runtime.offline":"offline","runtime.latency":"Latency {value}",
+	"runtime.errors":"Errors {value}","runtime.reconnect":"Reconnect {value}",
+	"result.value":"Value","result.raw":"RAW","result.latency":"Latency","result.error":"Error"
+}})});
+'''
+		harness=r'''
+window.i18nReady.then(()=>{
+	window.renderTransportRuntime({transports:[
+		{id:"solarman_tcp",online:true,latency_ms:10,error_count:0},
+		{id:"modbus_rtu",online:false,latency_ms:0,error_count:1,last_error:"disconnected"},
+	]});
+	const entry={key:"run_state",definition:{transport:"modbus_rtu",transports:["solarman_tcp","modbus_rtu"]},last_scan:{
+		solarman_tcp:{status:"supported",value:"Normal"},
+		modbus_rtu:{status:"supported",value:"Normal"},
+	}};
+	process.stdout.write(JSON.stringify({selector:window.transportSelector(entry),cards:window.transportResultCards(entry),selected:entry.definition.transport,online:window.onlineTransportIds}));
+}).catch(error=>{ console.error(error); process.exitCode=1; });
+'''
+		with tempfile.TemporaryDirectory() as directory:
+			path=Path(directory)/"offline-selector.cjs"
+			path.write_text(bootstrap+"\n"+panel_script+"\n"+harness,encoding="utf-8")
+			result=subprocess.run(["node",str(path)],capture_output=True,text=True,check=False)
+			self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+			payload=json.loads(result.stdout)
+
+		self.assertIn('type="hidden"',payload["selector"])
+		self.assertNotIn("<select",payload["selector"])
+		self.assertEqual(payload["selected"],"solarman_tcp")
+		self.assertEqual(payload["online"],["solarman_tcp"])
+		self.assertIn("supported",payload["cards"])
+		self.assertIn("offline",payload["cards"])
+
+	def test_custom_panel_exposes_status_decoding_configuration(self) -> None:
+		custom_script=(ROOT/"packages/deye_inverter_core/custom_panel.js").read_text(encoding="utf-8")
+
+		self.assertIn('"enum","bitmask"',custom_script)
+		self.assertIn("parseStatusOptions",custom_script)
+		self.assertIn('customTextarea(entry.key,"options"',custom_script)
+		self.assertIn("window.onlineTransportIds",custom_script)
+
 	def test_ingress_dictionaries_are_complete_polish_and_english_variants(self) -> None:
 		translations={}
 		for language in ("pl","en"):
@@ -2040,7 +2101,7 @@ window.i18nReady.then(()=>{
 		self.assertEqual(translations["en"]["tabs.controls"],"Controls")
 		self.assertEqual(translations["en"]["tabs.custom"],"Custom sensors")
 
-	def test_home_assistant_translations_cover_the_current_nested_schema(self) -> None:
+	def test_home_assistant_translations_cover_the_current_schema(self) -> None:
 		config=yaml.safe_load((ROOT/"deye-solarman-diagnostics/config.yaml").read_text(encoding="utf-8"))
 		self.assertEqual(config["panel_title"],"SolarMan Diagnostics")
 		for language in ("pl","en"):
@@ -2059,7 +2120,11 @@ window.i18nReady.then(()=>{
 						assert_group(value,fields[key],f"{path}.{key}")
 			for section,schema in config["schema"].items():
 				self.assertIn(section,translated,section)
-				assert_group(schema,translated[section],section)
+				if isinstance(schema,dict):
+					assert_group(schema,translated[section],section)
+				else:
+					self.assertIn("name",translated[section],section)
+					self.assertIn("description",translated[section],section)
 
 	def test_exact_modbus_exception_codes_classify_only_illegal_requests_as_unsupported(self) -> None:
 		for code in (1,2):

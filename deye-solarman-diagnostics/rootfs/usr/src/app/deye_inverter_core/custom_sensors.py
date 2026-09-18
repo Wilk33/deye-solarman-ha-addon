@@ -165,13 +165,16 @@ def _normalized_definition(sensor: Any) -> dict[str, Any]:
 		"category": sensor.category,
 		"topic_suffix": sensor.topic_suffix,
 		"formula": sensor.formula,
+		"options": sensor.options,
+		"zero": sensor.zero,
+		"unknown": sensor.unknown,
 		"transport": sensor.transport,
 		"transports": sensor.transports,
 	}
 
 
 def _read_definition_snapshot(sensor: Any) -> dict[str, Any]:
-	return {
+	snapshot={
 		"registers":list(sensor.registers),
 		"type":sensor.register_type,
 		"formula":sensor.formula,
@@ -181,6 +184,9 @@ def _read_definition_snapshot(sensor: Any) -> dict[str, Any]:
 		"byte_order":sensor.byte_order,
 		"transport":sensor.transport,
 	}
+	if sensor.register_type in {"enum","bitmask"}:
+		snapshot.update({"options":sensor.options,"zero":sensor.zero,"unknown":sensor.unknown})
+	return snapshot
 
 
 def _load_yaml_mapping(path: Path) -> dict[str, Any]:

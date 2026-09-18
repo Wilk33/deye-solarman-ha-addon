@@ -13,7 +13,7 @@ from .models import SensorDefinition
 from .scanner import load_monitored_definitions
 
 
-SUPPORTED_REGISTER_TYPES={"uint16","int16","uint32","int32","hex","ascii"}
+SUPPORTED_REGISTER_TYPES={"uint16","int16","uint32","int32","hex","ascii","enum","bitmask"}
 FORMULA_REGISTER_TYPE="auto"
 
 
@@ -142,10 +142,17 @@ def _validate_sensor_definitions(sensors: list[SensorDefinition]) -> list[Sensor
 		else:
 			if not sensor.registers or any(type(register) is not int or register < 0 or register > 65535 for register in sensor.registers):
 				raise ValueError(f"Sensor {sensor.key}: registers must contain values from 0 to 65535")
-			if sensor.register_type in {"uint16","int16"} and len(sensor.registers) != 1:
+			if sensor.register_type in {"uint16","int16","enum"} and len(sensor.registers) != 1:
 				raise ValueError(f"Sensor {sensor.key}: {sensor.register_type} requires exactly one register")
 			if sensor.register_type in {"uint32","int32"} and len(sensor.registers) != 2:
 				raise ValueError(f"Sensor {sensor.key}: {sensor.register_type} requires exactly two registers")
+			if sensor.register_type in {"enum","bitmask"}:
+				if not sensor.options or any(type(key) is not int or key < 0 or not isinstance(label,str) or not label.strip() for key,label in sensor.options.items()):
+					raise ValueError(f"Sensor {sensor.key}: status options must map non-negative integers to labels")
+				if sensor.register_type == "bitmask" and any(key >= len(sensor.registers)*16 for key in sensor.options):
+					raise ValueError(f"Sensor {sensor.key}: bitmask option exceeds the declared register range")
+				if not isinstance(sensor.zero,str) or not isinstance(sensor.unknown,str):
+					raise ValueError(f"Sensor {sensor.key}: status labels must be text")
 		if sensor.word_order not in {"high_low","low_high"}:
 			raise ValueError(f"Sensor {sensor.key}: unsupported word_order {sensor.word_order!r}")
 		if sensor.byte_order not in {"high_low","low_high"}:
@@ -169,6 +176,13 @@ def sensor_from_payload(payload: dict[str, Any], enabled: bool=True) -> SensorDe
 	transport=payload.get("transport")
 	if transport is None:
 		transport="solarman_tcp" if isinstance(transports,list) and "solarman_tcp" in transports else (transports[0] if isinstance(transports,list) and transports else "solarman_tcp")
+	status_options=payload.get("options",{})
+	if not isinstance(status_options,dict):
+		raise ValueError("Sensor options must be an object")
+	try:
+		parsed_options={int(key):str(value) for key,value in status_options.items()}
+	except (TypeError,ValueError) as error:
+		raise ValueError("Sensor option keys must be integers") from error
 	return SensorDefinition(
 		key=payload["key"],
 		name=payload.get("name", payload["key"].replace("_"," ").title()),
@@ -192,6 +206,9 @@ def sensor_from_payload(payload: dict[str, Any], enabled: bool=True) -> SensorDe
 		topic_suffix=payload.get("topic_suffix",payload["key"]),
 		formula=formula,
 		attributes=dict(payload.get("attributes",{})),
+		options=parsed_options,
+		zero=str(payload.get("zero","")),
+		unknown=str(payload.get("unknown","")),
 		transport=transport,
 		transports=transports,
 	)
