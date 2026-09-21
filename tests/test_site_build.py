@@ -9,6 +9,19 @@ import yaml
 from tools.build_site import BuildConfig,build_site
 from tools.catalog_integrity import normalized_sha256
 
+ROOT=Path(__file__).resolve().parents[1]
+
+
+def flatten_keys(value,base="") -> set[str]:
+	result=set()
+	for key,item in value.items():
+		path=f"{base}.{key}" if base else key
+		if isinstance(item,dict):
+			result.update(flatten_keys(item,path))
+		else:
+			result.add(path)
+	return result
+
 
 class SiteBuildTests(unittest.TestCase):
 	def setUp(self):
@@ -142,6 +155,28 @@ class SiteBuildTests(unittest.TestCase):
 			build_site(replace(self.config,output=self.root.parent/"outside"))
 		with self.assertRaisesRegex(ValueError,"output"):
 			build_site(replace(self.config,output=self.site_root))
+
+	def test_polish_and_english_translations_have_identical_keys(self):
+		pl=json.loads((ROOT/"site/i18n/pl.json").read_text(encoding="utf-8"))
+		en=json.loads((ROOT/"site/i18n/en.json").read_text(encoding="utf-8"))
+
+		self.assertEqual(flatten_keys(pl),flatten_keys(en))
+
+	def test_landing_page_has_required_sections_and_no_inline_scripts(self):
+		html=(ROOT/"site/index.html").read_text(encoding="utf-8")
+
+		for section in ("hero","transports","telemetry","controls","custom-sensors","catalogs","install"):
+			self.assertIn(f'id="{section}"',html)
+		self.assertNotIn("<script>",html)
+		self.assertIn('type="module"',html)
+
+	def test_styles_define_required_theme_and_accessibility_contract(self):
+		css=(ROOT/"site/assets/site.css").read_text(encoding="utf-8")
+
+		for token in ("--color-bg","--color-surface","--color-cyan","--color-green","--color-orange","--color-red","--color-text","--color-muted"):
+			self.assertIn(token,css)
+		for required in (":focus-visible","min-height:44px","prefers-reduced-motion","max-width:720px","max-width:1100px"):
+			self.assertIn(required,css)
 
 
 if __name__ == "__main__":

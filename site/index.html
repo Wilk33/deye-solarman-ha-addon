@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="pl" data-theme="dark">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width,initial-scale=1">
+	<meta name="color-scheme" content="dark light">
+	<meta name="theme-color" content="#071217">
+	<meta name="description" content="SolarMan Diagnostics" data-i18n-meta="meta.description">
+	<title data-i18n="meta.title">SolarMan Diagnostics</title>
+	<link rel="icon" href="__BASE_PATH__assets/brand.svg" type="image/svg+xml">
+	<link rel="stylesheet" href="__BASE_PATH__assets/site.css">
+	<script type="module" src="__BASE_PATH__assets/app.mjs"></script>
+</head>
+<body data-base-path="__BASE_PATH__">
+	<a class="skip-link" href="#main" data-i18n="accessibility.skip">Przejdź do treści</a>
+	<header class="site-header">
+		<a class="brand" href="__BASE_PATH__" aria-label="SolarMan Diagnostics">
+			<img src="__BASE_PATH__assets/brand.svg" alt="" width="42" height="42">
+			<span>SolarMan Diagnostics</span>
+		</a>
+		<nav class="primary-nav" data-i18n-aria="nav.label">
+			<a href="#capabilities" data-i18n="nav.capabilities">Możliwości</a>
+			<a href="__BASE_PATH__reference/" data-i18n="nav.reference">Definicje</a>
+			<a href="#install" data-i18n="nav.install">Instalacja</a>
+		</nav>
+		<div class="site-actions">
+			<button class="icon-button" type="button" data-language-toggle data-i18n-aria="actions.language" title="English">EN</button>
+			<button class="icon-button" type="button" data-theme-toggle data-i18n-aria="actions.theme" title="Zmień motyw">
+				<span aria-hidden="true">◐</span>
+			</button>
+			<a class="button button-quiet header-github" href="__REPOSITORY_URL__" data-i18n="actions.github">GitHub</a>
+		</div>
+	</header>
+
+	<main id="main">
+		<section id="hero" class="hero shell">
+			<div class="hero-copy">
+				<p class="eyebrow" data-i18n="hero.eyebrow">DIAGNOSTYKA FALOWNIKA DEYE</p>
+				<h1 data-i18n="hero.title">Jedna mapa urządzenia. Dwie drogi komunikacji.</h1>
+				<p class="hero-lede" data-i18n="hero.lede">Odczytuj telemetrię, porównuj SolarMan TCP z bezpośrednim Modbus RTU i publikuj wybrane encje w Home Assistant przez wspólne MQTT.</p>
+				<div class="hero-actions">
+					<a class="button button-primary" href="__BASE_PATH__reference/" data-i18n="hero.referenceCta">Przeglądaj rejestry</a>
+					<a class="button button-secondary" href="#install" data-i18n="hero.installCta">Zainstaluj dodatek</a>
+				</div>
+				<ul class="signal-list" data-i18n-aria="hero.signalsLabel">
+					<li><span class="signal signal-green"></span><span data-i18n="hero.signalDual">SolarMan TCP i RS485 mogą działać równolegle</span></li>
+					<li><span class="signal signal-cyan"></span><span data-i18n="hero.signalCatalogs">Telemetria i sterowanie mają niezależne katalogi</span></li>
+					<li><span class="signal signal-orange"></span><span data-i18n="hero.signalMqtt">Jedna tożsamość MQTT bez duplikowania encji</span></li>
+				</ul>
+			</div>
+			<div class="hero-console" data-i18n-aria="hero.consoleLabel">
+				<div class="console-topline"><span></span><span></span><span></span><strong data-i18n="hero.consoleTitle">STATUS TRANSPORTÓW</strong></div>
+				<div class="console-row">
+					<div><small data-i18n="hero.transport">TRANSPORT</small><strong>SolarMan TCP</strong></div>
+					<span class="status status-online" data-i18n="status.online">ONLINE</span>
+				</div>
+				<div class="console-meter"><span class="meter-network"></span></div>
+				<div class="console-row">
+					<div><small data-i18n="hero.transport">TRANSPORT</small><strong>Modbus RTU</strong></div>
+					<span class="status status-online" data-i18n="status.online">ONLINE</span>
+				</div>
+				<div class="console-meter"><span class="meter-direct"></span></div>
+				<div class="console-footer">
+					<span>MQTT</span>
+					<strong data-i18n="hero.sharedState">WSPÓLNY STAN</strong>
+				</div>
+			</div>
+		</section>
+
+		<section class="catalog-stats shell" data-i18n-aria="stats.label">
+			<article><strong data-catalog-stat="models">-</strong><span data-i18n="stats.models">modele katalogów</span></article>
+			<article><strong data-catalog-stat="maps">-</strong><span data-i18n="stats.maps">niezależne mapy</span></article>
+			<article><strong data-catalog-stat="definitions">-</strong><span data-i18n="stats.definitions">definicje rejestrów</span></article>
+		</section>
+
+		<section id="capabilities" class="section shell">
+			<div class="section-heading">
+				<p class="eyebrow" data-i18n="capabilities.eyebrow">OD DIAGNOSTYKI DO HOME ASSISTANT</p>
+				<h2 data-i18n="capabilities.title">Pełny obraz falownika bez zamykania się na jeden transport</h2>
+				<p data-i18n="capabilities.lede">Sprawdzaj to, co urządzenie naprawdę udostępnia, wybieraj źródło per encja i zachowaj czytelną konfigurację.</p>
+			</div>
+			<div class="feature-grid">
+				<article id="transports" class="feature-card feature-wide">
+					<span class="feature-index">01</span>
+					<div><h3 data-i18n="transports.title">Dwa niezależne transporty</h3><p data-i18n="transports.body">Logger SolarMan obsługuje wygodną komunikację sieciową, a Modbus RTU daje bezpośredni dostęp przez RS485. Każdy transport ma własne cykle, opóźnienia i ponowne połączenia.</p></div>
+					<div class="transport-diagram" aria-hidden="true"><span>TCP</span><i></i><b>MQTT</b><i></i><span>RTU</span></div>
+				</article>
+				<article id="telemetry" class="feature-card">
+					<span class="feature-index">02</span>
+					<h3 data-i18n="telemetry.title">Telemetria i statusy</h3>
+					<p data-i18n="telemetry.body">Liczby, tekst, daty, enumy i maski bitowe są dekodowane zgodnie z katalogiem modelu. Wartość RAW pozostaje dostępna do diagnostyki.</p>
+				</article>
+				<article id="controls" class="feature-card">
+					<span class="feature-index">03</span>
+					<h3 data-i18n="controls.title">Bezpieczne sterowanie</h3>
+					<p data-i18n="controls.body">Encje sterowania stosują walidację, read-before-write, zapis FC16 i kontrolny read-back. Niepotwierdzone definicje pozostają tylko do odczytu.</p>
+				</article>
+				<article id="custom-sensors" class="feature-card">
+					<span class="feature-index">04</span>
+					<h3 data-i18n="custom.title">Własne sensory i formuły</h3>
+					<p data-i18n="custom.body">Dodawaj pojedyncze rejestry, dekoduj statusy albo buduj lokalne formuły łączące kilka odczytów. Test diagnostyczny zawsze pozostaje tylko odczytem.</p>
+				</article>
+				<article id="catalogs" class="feature-card">
+					<span class="feature-index">05</span>
+					<h3 data-i18n="catalogs.title">Katalogi wybierane niezależnie</h3>
+					<p data-i18n="catalogs.body">Możesz użyć telemetrii jednego dostawcy i sterowania drugiego albo wyłączyć jedną listę. Suma SHA-256 chroni pobrane definicje.</p>
+				</article>
+			</div>
+		</section>
+
+		<section class="reference-callout shell">
+			<div>
+				<p class="eyebrow" data-i18n="reference.eyebrow">ŻYWA DOKUMENTACJA KATALOGÓW</p>
+				<h2 data-i18n="reference.title">Znajdź rejestr zanim podłączysz go do automatyzacji</h2>
+				<p data-i18n="reference.body">Przeglądarka powstaje bezpośrednio z katalogów w repozytorium. Wybierz model, przeszukaj numery rejestrów i zobacz maski, zakresy, transporty oraz metody dostępu.</p>
+			</div>
+			<a class="button button-primary" href="__BASE_PATH__reference/" data-i18n="reference.cta">Otwórz definicje</a>
+		</section>
+
+		<section id="install" class="section install-section shell">
+			<div class="section-heading">
+				<p class="eyebrow" data-i18n="install.eyebrow">HOME ASSISTANT OS</p>
+				<h2 data-i18n="install.title">Uruchom w trzech krokach</h2>
+			</div>
+			<ol class="install-steps">
+				<li><span>1</span><div><h3 data-i18n="install.step1Title">Dodaj repozytorium</h3><p data-i18n="install.step1Body">Dodaj repozytorium dodatków SolarMan Diagnostics w sklepie Home Assistant.</p></div></li>
+				<li><span>2</span><div><h3 data-i18n="install.step2Title">Wybierz transport</h3><p data-i18n="install.step2Body">Podaj dane loggera SolarMan, urządzenie RS485 albo skonfiguruj oba połączenia.</p></div></li>
+				<li><span>3</span><div><h3 data-i18n="install.step3Title">Przeskanuj i wybierz</h3><p data-i18n="install.step3Body">Porównaj odczyty i zaznacz encje publikowane przez MQTT Discovery.</p></div></li>
+			</ol>
+			<div class="install-actions">
+				<a class="button button-primary" href="__REPOSITORY_URL__" data-i18n="install.github">Zobacz instalację na GitHub</a>
+				<a class="button button-secondary" href="__REPOSITORY_URL__/blob/main/deye-solarman-diagnostics/DOCS.md" data-i18n="install.docs">Czytaj dokumentację</a>
+			</div>
+		</section>
+	</main>
+
+	<footer class="site-footer shell">
+		<div><img src="__BASE_PATH__assets/brand.svg" alt="" width="34" height="34"><strong>SolarMan Diagnostics</strong></div>
+		<p data-i18n="footer.note">Projekt społecznościowy dla falowników Deye i Home Assistant.</p>
+		<a href="__REPOSITORY_URL__" data-i18n="footer.source">Kod źródłowy</a>
+	</footer>
+</body>
+</html>

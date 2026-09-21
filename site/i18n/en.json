@@ -1,0 +1,56 @@
+{
+	"meta": {
+		"title": "SolarMan Diagnostics - Deye in Home Assistant",
+		"description": "Deye inverter diagnostics over SolarMan TCP and Modbus RTU, independent register catalogs, and MQTT integration with Home Assistant."
+	},
+	"accessibility": {"skip": "Skip to content"},
+	"nav": {"label": "Primary navigation", "capabilities": "Capabilities", "reference": "Definitions", "install": "Installation"},
+	"actions": {"language": "Change language", "theme": "Change theme", "github": "GitHub"},
+	"hero": {
+		"eyebrow": "DEYE INVERTER DIAGNOSTICS",
+		"title": "One device map. Two communication paths.",
+		"lede": "Read telemetry, compare SolarMan TCP with direct Modbus RTU, and publish selected entities to Home Assistant through one shared MQTT connection.",
+		"referenceCta": "Browse registers",
+		"installCta": "Install the add-on",
+		"signalDual": "SolarMan TCP and RS485 can run side by side",
+		"signalCatalogs": "Telemetry and control use independent catalogs",
+		"signalMqtt": "One MQTT identity without duplicated entities",
+		"signalsLabel": "Key capabilities",
+		"consoleTitle": "TRANSPORT STATUS",
+		"consoleLabel": "Transport status preview",
+		"transport": "TRANSPORT",
+		"sharedState": "SHARED STATE"
+	},
+	"status": {"online": "ONLINE"},
+	"stats": {"label": "Catalog statistics", "models": "catalog models", "maps": "independent maps", "definitions": "register definitions"},
+	"capabilities": {
+		"eyebrow": "FROM DIAGNOSTICS TO HOME ASSISTANT",
+		"title": "A complete inverter view without committing to one transport",
+		"lede": "Verify what the device actually exposes, choose a source per entity, and keep the configuration understandable."
+	},
+	"transports": {"title": "Two independent transports", "body": "The SolarMan logger provides convenient network communication while Modbus RTU gives direct access over RS485. Each transport has its own schedules, delays, and reconnect behavior."},
+	"telemetry": {"title": "Telemetry and status values", "body": "Numbers, text, dates, enums, and bitmasks are decoded using the selected model catalog. RAW values remain available for diagnostics."},
+	"controls": {"title": "Controlled writes", "body": "Control entities apply validation, read-before-write, FC16 writes, and read-back verification. Unconfirmed definitions remain read-only."},
+	"custom": {"title": "Custom sensors and formulas", "body": "Add individual registers, decode status values, or create local formulas that combine several reads. The diagnostic test always remains read-only."},
+	"catalogs": {"title": "Catalogs selected independently", "body": "Use telemetry from one provider and controls from another, or disable either list. SHA-256 checks protect downloaded definitions."},
+	"reference": {
+		"eyebrow": "LIVE CATALOG DOCUMENTATION",
+		"title": "Find the register before wiring it into an automation",
+		"body": "The browser is generated directly from catalogs in the repository. Select a model, search register numbers, and inspect masks, ranges, transports, and access methods.",
+		"cta": "Open definitions"
+	},
+	"install": {
+		"eyebrow": "HOME ASSISTANT OS",
+		"title": "Start in three steps",
+		"step1Title": "Add the repository",
+		"step1Body": "Add the SolarMan Diagnostics add-on repository to the Home Assistant store.",
+		"step2Title": "Choose a transport",
+		"step2Body": "Enter your SolarMan logger details, select an RS485 device, or configure both connections.",
+		"step3Title": "Scan and select",
+		"step3Body": "Compare readings and select entities published through MQTT Discovery.",
+		"github": "View installation on GitHub",
+		"docs": "Read the documentation"
+	},
+	"footer": {"note": "A community project for Deye inverters and Home Assistant.", "source": "Source code"},
+	"notFound": {"title": "Page not found", "body": "The address may have changed. Return to the project site or open the register browser.", "home": "Home page", "reference": "Register definitions"}
+}

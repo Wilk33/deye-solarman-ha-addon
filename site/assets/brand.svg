@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+	<title id="title">SolarMan Diagnostics</title>
+	<defs>
+		<linearGradient id="beam" x1="0" y1="0" x2="1" y2="1">
+			<stop stop-color="#13bce3"/>
+			<stop offset="1" stop-color="#42d36b"/>
+		</linearGradient>
+	</defs>
+	<circle cx="32" cy="17" r="8" fill="#ffae35"/>
+	<g stroke="#ffae35" stroke-width="3" stroke-linecap="round">
+		<path d="M32 3v4M18 9l4 4M46 9l-4 4M14 22h5M50 22h-5"/>
+	</g>
+	<path d="M12 39h14l8 10h18M12 51h14l8-10h18" fill="none" stroke="url(#beam)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+	<circle cx="52" cy="45" r="6" fill="#071217" stroke="#13bce3" stroke-width="4"/>
+</svg>
