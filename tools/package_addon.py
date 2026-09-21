@@ -2,19 +2,21 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
+import sys
 from pathlib import Path
 
 import yaml
 
 ROOT=Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+	sys.path.insert(0,str(ROOT))
+
+from tools.catalog_integrity import normalized_sha256,normalized_text_bytes
+
 MODEL=ROOT/"catalogs/models/deye_sg04_sg05_3ph_lv"
 APP=ROOT/"deye-solarman-diagnostics/rootfs/usr/src/app"
-
-
-def normalized_text_bytes(path: Path) -> bytes:
-	return path.read_text(encoding="utf-8").replace("\r\n","\n").replace("\r","\n").encode("utf-8")
+PRESENTATION_FIELDS=("display_name","manufacturer","model_families")
 
 
 def main() -> None:
@@ -22,12 +24,16 @@ def main() -> None:
 	parser.add_argument("--check",action="store_true")
 	args=parser.parse_args()
 	expected={}
-	index={"format":1,"catalog_set":"deye_sg04_sg05_3ph_lv","revision":"2.0.5","maps":{}}
+	source_index=yaml.safe_load(normalized_text_bytes(MODEL/"catalog-index.yaml"))
+	index={"format":1,"catalog_set":source_index["catalog_set"],"revision":"2.0.5","maps":{}}
+	for field in PRESENTATION_FIELDS:
+		if field in source_index:
+			index[field]=source_index[field]
 	for map_id in ("telemetry","control"):
 		name=map_id.replace("_","-")+".yaml"
 		content=normalized_text_bytes(MODEL/name)
 		data=yaml.safe_load(content)
-		index["maps"][map_id]={"file":name,"sha256":hashlib.sha256(content).hexdigest(),"transports":data["transports"],"writable":data["writable"]}
+		index["maps"][map_id]={"file":name,"sha256":normalized_sha256(MODEL/name),"transports":data["transports"],"writable":data["writable"]}
 		expected[APP/"deye_inverter_core/data"/name]=content
 	index_bytes=(json.dumps(index,indent=2)+"\n").encode()
 	expected[MODEL/"catalog-index.yaml"]=index_bytes

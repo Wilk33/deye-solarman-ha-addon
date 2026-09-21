@@ -17,7 +17,7 @@ sys.path.insert(0,str(ROOT/"apps/deye-solarman/src"))
 from deye_inverter_core.catalog_bundle import load_map
 from deye_solarman_diagnostics.solarman import SolarmanClient
 from deye_inverter_core.models import LoggerConfig
-from tools.package_addon import normalized_text_bytes
+from tools.catalog_integrity import normalized_text_bytes
 
 
 class ArchitectureTests(unittest.TestCase):
@@ -36,6 +36,9 @@ class ArchitectureTests(unittest.TestCase):
 		self.assertIn("rs485",config["schema"])
 		self.assertEqual(repository["name"],"SolarMan Diagnostics")
 		self.assertEqual(index["revision"],"2.0.5")
+		self.assertEqual(index["display_name"],"Deye SG04/SG05 3PH LV")
+		self.assertEqual(index["manufacturer"],"Deye")
+		self.assertEqual(index["model_families"],["SG04LP3","SG05LP3"])
 		self.assertIn("pymodbus==3.14.0",requirements)
 		self.assertEqual([path.parent.name for path in ROOT.glob("*/config.yaml")],["deye-solarman-diagnostics"])
 		for relative in (

@@ -21,5 +21,11 @@
       ],
       "writable": true
     }
-  }
+  },
+  "display_name": "Deye SG04/SG05 3PH LV",
+  "manufacturer": "Deye",
+  "model_families": [
+    "SG04LP3",
+    "SG05LP3"
+  ]
 }
