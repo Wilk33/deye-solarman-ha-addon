@@ -151,6 +151,23 @@ class ArchitectureTests(unittest.TestCase):
 			relative=line.split(marker,1)[1].strip()
 			self.assertTrue((ROOT/relative).is_file(),relative)
 
+	def test_validation_workflow_builds_and_deploys_pages_after_validation(self):
+		workflow=(ROOT/".github/workflows/validate.yml").read_text(encoding="utf-8")
+		for required in (
+			"python tools/build_site.py",
+			"node --test tests/site_reference.test.mjs",
+			"actions/configure-pages@v5",
+			"actions/upload-pages-artifact@v4",
+			"actions/deploy-pages@v4",
+			"needs: validate",
+			"environment:",
+			"name: github-pages",
+			"actions: read",
+			"pages: write",
+			"id-token: write",
+		):
+			self.assertIn(required,workflow,required)
+
 	def test_configuration_defaults_are_minimal_and_name_catalog_sources(self):
 		config=yaml.safe_load((ROOT/"deye-solarman-diagnostics/config.yaml").read_text(encoding="utf-8"))
 

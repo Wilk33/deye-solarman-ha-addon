@@ -2,6 +2,12 @@ name: Validate add-on
 on:
   push:
   pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -17,3 +23,33 @@ jobs:
       - run: node --check packages/deye_inverter_core/control_panel.js
       - run: node --check packages/deye_inverter_core/custom_panel.js
       - run: node --check packages/deye_inverter_core/panel.js
+      - run: node --check site/assets/app.mjs
+      - run: node --check site/assets/reference.mjs
+      - run: node --test tests/site_app.test.mjs
+      - run: node --test tests/site_reference.test.mjs
+      - run: python tools/build_site.py --output .site-dist --base-path /deye-solarman-ha-addon/ --site-url https://wilk33.github.io/deye-solarman-ha-addon/
+      - name: Configure GitHub Pages
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/configure-pages@v5
+      - name: Upload GitHub Pages artifact
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: .site-dist
+
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
