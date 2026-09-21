@@ -28,14 +28,14 @@ class ArchitectureTests(unittest.TestCase):
 		requirements=(ROOT/"deye-solarman-diagnostics/rootfs/requirements.txt").read_text(encoding="utf-8").splitlines()
 
 		self.assertEqual(config["name"],"SolarMan Diagnostics")
-		self.assertEqual(config["version"],"2.0.4")
+		self.assertEqual(config["version"],"2.0.5")
 		self.assertTrue(config["uart"])
 		self.assertIn("solarman",config["options"])
 		self.assertIn("rs485",config["options"])
 		self.assertIn("solarman",config["schema"])
 		self.assertIn("rs485",config["schema"])
 		self.assertEqual(repository["name"],"SolarMan Diagnostics")
-		self.assertEqual(index["revision"],"2.0.4")
+		self.assertEqual(index["revision"],"2.0.5")
 		self.assertIn("pymodbus==3.14.0",requirements)
 		self.assertEqual([path.parent.name for path in ROOT.glob("*/config.yaml")],["deye-solarman-diagnostics"])
 		for relative in (
@@ -61,7 +61,7 @@ class ArchitectureTests(unittest.TestCase):
 		all_lower=all_current.lower()
 
 		for relative,content in contents.items():
-			self.assertIn("2.0.4",content,relative)
+			self.assertIn("2.0.5",content,relative)
 			self.assertIn("SolarMan Diagnostics",content,relative)
 		for forbidden in ("entityownership","entity_owners.json","/source/solarman","/source/modbus"):
 			self.assertNotIn(forbidden,all_lower)
@@ -93,7 +93,7 @@ class ArchitectureTests(unittest.TestCase):
 		)
 		for relative in documents:
 			content=(ROOT/relative).read_text(encoding="utf-8").lower()
-			self.assertIn("2.0.4",content,relative)
+			self.assertIn("2.0.5",content,relative)
 			self.assertNotIn("future",content,relative)
 			self.assertNotIn("planned",content,relative)
 			self.assertNotIn("reserved",content,relative)

@@ -467,7 +467,7 @@ class DualTransportConfigTests(unittest.TestCase):
 	def test_addon_uses_version_2_sections_and_disables_rs485_by_default(self) -> None:
 		addon=yaml.safe_load((ROOT/"deye-solarman-diagnostics/config.yaml").read_text(encoding="utf-8"))
 
-		self.assertEqual(addon["version"],"2.0.4")
+		self.assertEqual(addon["version"],"2.0.5")
 		self.assertNotIn("logger",addon["options"])
 		self.assertNotIn("polling",addon["options"])
 		self.assertTrue(addon["options"]["solarman"]["enabled"])
@@ -2027,6 +2027,33 @@ window.i18nReady.then(()=>{
 		self.assertIn("Modbus RTU (RS485)",payload["cards"])
 		self.assertIn("12 ms",payload["cards"])
 		self.assertIn("0x01FF",payload["cards"])
+
+	def test_custom_sensor_test_transport_uses_the_theme_backed_selector(self) -> None:
+		custom_script=(ROOT/"packages/deye_inverter_core/custom_panel.js").read_text(encoding="utf-8")
+		start=custom_script.index("function customTestSelector")
+		end=custom_script.index("\nfunction customCard",start)
+		function_source=custom_script[start:end]
+		harness=r'''
+globalThis.window=globalThis;
+window.onlineTransportIds=["solarman_tcp","modbus_rtu"];
+const customActiveTransports=[];
+const customTransportIds=["solarman_tcp","modbus_rtu"];
+const customEsc=value=>String(value ?? "");
+const t=key=>({"transport.test":"Test transport","transport.both":"Both"}[key] || key);
+const transportName=transport=>transport === "solarman_tcp" ? "SolarMan TCP" : "Modbus RTU (RS485)";
+const entry={key:"custom_power",definition:{transport:"solarman_tcp",transports:["solarman_tcp","modbus_rtu"]}};
+process.stdout.write(customTestSelector(entry));
+'''
+		with tempfile.TemporaryDirectory() as directory:
+			path=Path(directory)/"custom-test-selector.cjs"
+			path.write_text(function_source+"\n"+harness,encoding="utf-8")
+			result=subprocess.run(["node",str(path)],capture_output=True,text=True,check=False)
+			self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+			self.assertNotIn("<select",result.stdout)
+			self.assertIn('class="select-control"',result.stdout)
+			self.assertIn('type="hidden"',result.stdout)
+			self.assertIn('data-custom-test-transport="custom_power"',result.stdout)
+			self.assertIn('data-value="both"',result.stdout)
 
 	def test_panel_hides_offline_rs485_choice_but_keeps_supported_history(self) -> None:
 		panel_script=(ROOT/"packages/deye_inverter_core/panel.js").read_text(encoding="utf-8")

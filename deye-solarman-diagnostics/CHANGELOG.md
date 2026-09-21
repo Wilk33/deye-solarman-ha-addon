@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.0.5
+
+- Replace the native test transport selector in `Własne sensory` with the shared theme-aware dropdown.
+- Keep the cross-platform LF normalization introduced in 2.0.4 for catalog hashing and packaging; register definitions and transport behavior are unchanged.
+
 ## 2.0.4
 
 - Fix add-on startup failure caused by a telemetry checksum generated from Windows CRLF line endings and verified against Linux LF line endings.
@@ -40,7 +45,7 @@
 - Bundle both transport adapters, the shared core, PL/EN i18n, and checksummed catalogs in the self-contained HAOS build context. Pin `pymodbus==3.14.0`.
 - Document that automated validation does not prove a physical USB adapter, RS485 timing, firmware-specific register maps, or a real inverter FC16 write.
 
-Entries below describe historical releases and do not define the current 2.0.4 architecture.
+Entries below describe historical releases and do not define the current 2.0.5 architecture.
 
 ## 1.4.0
 

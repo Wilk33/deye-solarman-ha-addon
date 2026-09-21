@@ -157,7 +157,9 @@ function customTestSelector(entry)
 	if (available.length === 2) {
 		const testTransportSelection=entry._testTransport || entry.definition.transport || available[0];
 		entry._testTransport=testTransportSelection;
-		return `<label class="field wide">${customEsc(t("transport.test"))}<select data-custom-test-transport="${customEsc(entry.key)}"><option value="solarman_tcp" ${testTransportSelection === "solarman_tcp" ? "selected" : ""}>${customEsc(transportName("solarman_tcp"))}</option><option value="modbus_rtu" ${testTransportSelection === "modbus_rtu" ? "selected" : ""}>${customEsc(transportName("modbus_rtu"))}</option><option value="both" ${testTransportSelection === "both" ? "selected" : ""}>${customEsc(t("transport.both"))}</option></select></label>`;
+		const choices=[...available,"both"];
+		const label=testTransportSelection === "both" ? t("transport.both") : transportName(testTransportSelection);
+		return `<label class="field wide">${customEsc(t("transport.test"))}<div class="select-control" data-select-control><input type="hidden" data-custom-test-transport="${customEsc(entry.key)}" value="${customEsc(testTransportSelection)}"><button class="select-trigger" type="button" data-select-trigger aria-haspopup="listbox" aria-expanded="false"><span class="select-value">${customEsc(label)}</span><span class="select-chevron">&#9662;</span></button><div class="select-options" role="listbox">${choices.map(transport=>`<button class="select-option ${testTransportSelection === transport ? "selected" : ""}" type="button" data-select-option data-value="${customEsc(transport)}">${customEsc(transport === "both" ? t("transport.both") : transportName(transport))}</button>`).join("")}</div></div></label>`;
 	}
 	return `<p class="notice wide">${customEsc(t("transport.unavailable"))}</p>`;
 }

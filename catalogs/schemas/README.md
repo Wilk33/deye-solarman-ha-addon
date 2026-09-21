@@ -1,4 +1,4 @@
-# Catalog schemas in SolarMan Diagnostics 2.0.4
+# Catalog schemas in SolarMan Diagnostics 2.0.5
 
 The runtime validates catalog manifests and map payloads while loading them. This directory documents the schema area for source-controlled validation assets.
 

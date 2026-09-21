@@ -22,7 +22,7 @@ def main() -> None:
 	parser.add_argument("--check",action="store_true")
 	args=parser.parse_args()
 	expected={}
-	index={"format":1,"catalog_set":"deye_sg04_sg05_3ph_lv","revision":"2.0.4","maps":{}}
+	index={"format":1,"catalog_set":"deye_sg04_sg05_3ph_lv","revision":"2.0.5","maps":{}}
 	for map_id in ("telemetry","control"):
 		name=map_id.replace("_","-")+".yaml"
 		content=normalized_text_bytes(MODEL/name)
