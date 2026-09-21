@@ -145,6 +145,7 @@ async function initialize()
 			languageToggle.title=activeLanguage === "pl"?"English":"Polski";
 		}
 		window.solarmanSite.activeLanguage=activeLanguage;
+		window.dispatchEvent(new CustomEvent("solarman:language",{detail:{language:activeLanguage,dictionary}}));
 	};
 
 	window.solarmanSite={activeLanguage,setLanguage};

@@ -178,6 +178,18 @@ class SiteBuildTests(unittest.TestCase):
 		for required in (":focus-visible","min-height:44px","prefers-reduced-motion","max-width:720px","max-width:1100px"):
 			self.assertIn(required,css)
 
+	def test_reference_module_avoids_unsafe_html_execution_apis(self):
+		source=(ROOT/"site/assets/reference.mjs").read_text(encoding="utf-8")
+
+		for forbidden in ("innerHTML","outerHTML","insertAdjacentHTML","document.write","eval("):
+			self.assertNotIn(forbidden,source)
+
+	def test_every_html_page_declares_content_security_policy(self):
+		for path in (ROOT/"site").rglob("*.html"):
+			with self.subTest(path=path):
+				html=path.read_text(encoding="utf-8")
+				self.assertIn('http-equiv="Content-Security-Policy"',html)
+
 
 if __name__ == "__main__":
 	unittest.main()

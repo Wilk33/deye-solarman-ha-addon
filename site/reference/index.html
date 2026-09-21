@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="pl" data-theme="dark">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width,initial-scale=1">
+	<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+	<meta name="color-scheme" content="dark light">
+	<meta name="theme-color" content="#071217">
+	<meta name="description" content="Przeglądarka definicji rejestrów SolarMan Diagnostics" data-i18n-meta="referenceBrowser.metaDescription">
+	<title data-i18n="referenceBrowser.metaTitle">Definicje rejestrów - SolarMan Diagnostics</title>
+	<link rel="icon" href="__BASE_PATH__assets/brand.svg" type="image/svg+xml">
+	<link rel="stylesheet" href="__BASE_PATH__assets/site.css">
+	<script type="module" src="__BASE_PATH__assets/app.mjs"></script>
+	<script type="module" src="__BASE_PATH__assets/reference.mjs"></script>
+</head>
+<body data-base-path="__BASE_PATH__">
+	<a class="skip-link" href="#main" data-i18n="accessibility.skip">Przejdź do treści</a>
+	<header class="site-header">
+		<a class="brand" href="__BASE_PATH__" aria-label="SolarMan Diagnostics">
+			<img src="__BASE_PATH__assets/brand.svg" alt="" width="42" height="42">
+			<span>SolarMan Diagnostics</span>
+		</a>
+		<nav class="primary-nav" data-i18n-aria="nav.label">
+			<a href="__BASE_PATH__#capabilities" data-i18n="nav.capabilities">Możliwości</a>
+			<a href="__BASE_PATH__reference/" aria-current="page" data-i18n="nav.reference">Definicje</a>
+			<a href="__BASE_PATH__#install" data-i18n="nav.install">Instalacja</a>
+		</nav>
+		<div class="site-actions">
+			<button class="icon-button" type="button" data-language-toggle data-i18n-aria="actions.language" title="English">EN</button>
+			<button class="icon-button" type="button" data-theme-toggle data-i18n-aria="actions.theme" title="Zmień motyw"><span aria-hidden="true">◐</span></button>
+			<a class="button button-quiet header-github" href="__REPOSITORY_URL__" data-i18n="actions.github">GitHub</a>
+		</div>
+	</header>
+
+	<main id="main" class="reference-page shell">
+		<header class="reference-hero">
+			<div>
+				<p class="eyebrow" data-i18n="referenceBrowser.eyebrow">KATALOGI MODELI</p>
+				<h1 data-i18n="referenceBrowser.title">Definicje rejestrów</h1>
+				<p data-i18n="referenceBrowser.lede">Wybierz rodzinę falownika, mapę i sprawdź każde pole używane przez SolarMan Diagnostics.</p>
+			</div>
+			<div class="model-picker">
+				<label for="model-select" data-i18n="referenceBrowser.modelLabel">Model falownika</label>
+				<select id="model-select"></select>
+				<small id="model-summary" data-i18n="referenceBrowser.loading">Ładowanie katalogów...</small>
+			</div>
+		</header>
+
+		<div class="map-tabs" role="tablist" data-i18n-aria="referenceBrowser.mapLabel">
+			<button id="telemetry-tab" type="button" role="tab" data-map="telemetry" aria-selected="true" data-i18n="referenceBrowser.telemetry">Telemetria</button>
+			<button id="control-tab" type="button" role="tab" data-map="control" aria-selected="false" data-i18n="referenceBrowser.control">Sterowanie</button>
+		</div>
+
+		<section class="reference-tools" data-i18n-aria="referenceBrowser.filtersTitle">
+			<div class="search-field">
+				<label for="definition-search" data-i18n="referenceBrowser.searchLabel">Szukaj definicji</label>
+				<input id="definition-search" type="search" autocomplete="off" placeholder="Nazwa, klucz, rejestr, opcja...">
+			</div>
+			<details class="filter-panel">
+				<summary data-i18n="referenceBrowser.filtersTitle">Filtry</summary>
+				<div class="filter-grid">
+					<label><span data-i18n="referenceBrowser.category">Kategoria</span><select id="category-filter" data-filter="category"></select></label>
+					<label><span data-i18n="referenceBrowser.transport">Transport</span><select id="transport-filter" data-filter="transport"></select></label>
+					<label><span data-i18n="referenceBrowser.type">Typ danych</span><select id="type-filter" data-filter="type"></select></label>
+					<label><span data-i18n="referenceBrowser.access">Dostęp</span><select id="access-filter" data-filter="access"></select></label>
+					<label><span data-i18n="referenceBrowser.registerCount">Liczba rejestrów</span><select id="count-filter" data-filter="registerCount"></select></label>
+					<label><span data-i18n="referenceBrowser.range">Zakres</span><select id="range-filter" data-filter="range"></select></label>
+				</div>
+			</details>
+			<div class="reference-toolbar">
+				<output id="result-count" aria-live="polite">0</output>
+				<a id="map-source" class="source-link" href="__REPOSITORY_URL__" data-i18n="referenceBrowser.source">Plik źródłowy</a>
+			</div>
+		</section>
+
+		<section id="error-state" class="reference-error" hidden>
+			<h2 data-i18n="referenceBrowser.errorTitle">Nie udało się wczytać katalogu</h2>
+			<p data-i18n="referenceBrowser.errorBody">Strona produktu nadal działa. Możesz sprawdzić plik źródłowy katalogu w repozytorium.</p>
+			<a id="error-source" class="button button-secondary" href="__REPOSITORY_URL__" data-i18n="referenceBrowser.errorSource">Otwórz źródło</a>
+		</section>
+
+		<section id="reference-results" aria-busy="true">
+			<div class="table-wrap">
+				<table id="definition-table">
+					<thead><tr>
+						<th scope="col"><button type="button" data-sort="name" data-i18n="referenceBrowser.name">Nazwa</button></th>
+						<th scope="col"><button type="button" data-sort="key" data-i18n="referenceBrowser.key">Klucz</button></th>
+						<th scope="col"><button type="button" data-sort="register" data-i18n="referenceBrowser.registers">Rejestry</button></th>
+						<th scope="col" data-i18n="referenceBrowser.type">Typ danych</th>
+						<th scope="col" data-i18n="referenceBrowser.unit">Jednostka</th>
+						<th scope="col" data-i18n="referenceBrowser.access">Dostęp</th>
+						<th scope="col" data-i18n="referenceBrowser.transports">Transporty</th>
+						<th scope="col" data-i18n="referenceBrowser.category">Kategoria</th>
+					</tr></thead>
+					<tbody></tbody>
+				</table>
+			</div>
+			<section id="definition-cards" aria-label="Definicje"></section>
+			<p id="empty-state" class="empty-state" hidden data-i18n="referenceBrowser.empty">Brak definicji pasujących do filtrów.</p>
+		</section>
+	</main>
+
+	<dialog id="definition-details" class="definition-dialog">
+		<form method="dialog" class="dialog-topline">
+			<div><span id="detail-map" class="detail-map"></span><h2 id="detail-title"></h2><code id="detail-key"></code></div>
+			<button class="icon-button" type="submit" data-i18n-aria="referenceBrowser.close">×</button>
+		</form>
+		<div id="detail-content"></div>
+		<a id="detail-source" class="source-link" href="__REPOSITORY_URL__" data-i18n="referenceBrowser.source">Plik źródłowy</a>
+	</dialog>
+</body>
+</html>
