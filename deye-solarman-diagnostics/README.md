@@ -1,5 +1,8 @@
 # SolarMan Diagnostics 2.0.5
 
+- [Strona projektu / Project site](https://wilk33.github.io/deye-solarman-ha-addon/)
+- [Definicje rejestrów / Register reference](https://wilk33.github.io/deye-solarman-ha-addon/reference/)
+
 Jeden dodatek Home Assistant OS do lokalnego odczytu i sterowania falownikiem Deye przez SolarMan TCP, bezpośredni Modbus RTU (RS485) albo oba transporty jednocześnie.
 
 ## Trzy tryby

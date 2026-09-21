@@ -1,5 +1,22 @@
 # SolarMan Diagnostics 2.0.5
 
+[![Validate add-on](https://github.com/Wilk33/deye-solarman-ha-addon/actions/workflows/validate.yml/badge.svg)](https://github.com/Wilk33/deye-solarman-ha-addon/actions/workflows/validate.yml)
+
+SolarMan Diagnostics łączy lokalną diagnostykę falownika Deye, porównanie dwóch transportów i bezpieczne encje MQTT w jednym dodatku Home Assistant OS.
+
+SolarMan Diagnostics combines local Deye inverter diagnostics, dual-transport comparison, and controlled MQTT entities in one Home Assistant OS add-on.
+
+- [Strona projektu / Project site](https://wilk33.github.io/deye-solarman-ha-addon/)
+- [Definicje rejestrów / Register reference](https://wilk33.github.io/deye-solarman-ha-addon/reference/)
+
+## Trzy filary / Three pillars
+
+- Dwa transporty / Two transports - SolarMan TCP i bezpośredni Modbus RTU przez RS485.
+- Niezależne katalogi / Independent catalogs - telemetria i sterowanie mogą pochodzić z różnych źródeł.
+- Jedno MQTT / One MQTT - wspólne urządzenie, identyfikatory i tematy encji w Home Assistant.
+
+![Panel sensorów SolarMan Diagnostics](site/assets/screenshots/sensors.png)
+
 `SolarMan Diagnostics` jest jednym instalowalnym dodatkiem Home Assistant OS do lokalnej komunikacji z falownikiem Deye. Jeden proces może jednocześnie obsługiwać dwa transporty:
 
 - SolarMan TCP przez logger w sieci LAN;
@@ -126,6 +143,8 @@ Jest to 9600 8N1 z Modbus ID 1. Nazwę urządzenia, parametry portu i adres Modb
 6. Uruchom dodatek i otwórz panel Ingress.
 
 Pełny opis opcji, migracji i diagnostyki znajduje się w [DOCS.md](deye-solarman-diagnostics/DOCS.md).
+
+Interaktywny opis katalogów znajduje się w [publicznej przeglądarce definicji](https://wilk33.github.io/deye-solarman-ha-addon/reference/), a przegląd funkcji na [stronie projektu](https://wilk33.github.io/deye-solarman-ha-addon/).
 
 ## Migracja z 1.x
 

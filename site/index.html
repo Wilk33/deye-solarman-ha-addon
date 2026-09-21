@@ -7,6 +7,12 @@
 	<meta name="color-scheme" content="dark light">
 	<meta name="theme-color" content="#071217">
 	<meta name="description" content="SolarMan Diagnostics" data-i18n-meta="meta.description">
+	<meta property="og:type" content="website">
+	<meta property="og:title" content="SolarMan Diagnostics" data-i18n-meta="meta.title">
+	<meta property="og:description" content="SolarMan Diagnostics" data-i18n-meta="meta.description">
+	<meta property="og:url" content="__SITE_URL__">
+	<meta property="og:image" content="__SITE_URL__assets/screenshots/sensors.png">
+	<link rel="canonical" href="__SITE_URL__">
 	<title data-i18n="meta.title">SolarMan Diagnostics</title>
 	<link rel="icon" href="__BASE_PATH__assets/brand.svg" type="image/svg+xml">
 	<link rel="stylesheet" href="__BASE_PATH__assets/site.css">
@@ -106,6 +112,32 @@
 					<h3 data-i18n="catalogs.title">Katalogi wybierane niezależnie</h3>
 					<p data-i18n="catalogs.body">Możesz użyć telemetrii jednego dostawcy i sterowania drugiego albo wyłączyć jedną listę. Suma SHA-256 chroni pobrane definicje.</p>
 				</article>
+			</div>
+		</section>
+
+		<section id="gallery" class="section gallery-section shell">
+			<div class="section-heading">
+				<p class="eyebrow" data-i18n="gallery.eyebrow">PRAWDZIWY INTERFEJS</p>
+				<h2 data-i18n="gallery.title">Od wykrywania rejestrów do własnych formuł</h2>
+				<p data-i18n="gallery.lede">Panel pozwala porównać transporty, wybrać encje MQTT i rozdzielić źródła telemetrii od sterowania.</p>
+			</div>
+			<div class="screenshot-grid">
+				<figure class="screenshot screenshot-wide">
+					<img src="__BASE_PATH__assets/screenshots/sensors.png" alt="Panel sensorów SolarMan Diagnostics z wynikami skanu" data-i18n-alt="gallery.sensorsAlt" loading="lazy" decoding="async">
+					<figcaption data-i18n="gallery.sensorsCaption">Sensory - statusy, wartości RAW i porównanie SolarMan TCP z Modbus RTU.</figcaption>
+				</figure>
+				<figure class="screenshot screenshot-wide">
+					<img src="__BASE_PATH__assets/screenshots/controls.png" alt="Panel encji sterowania SolarMan Diagnostics" data-i18n-alt="gallery.controlsAlt" loading="lazy" decoding="async">
+					<figcaption data-i18n="gallery.controlsCaption">Sterowanie - aktualny stan, typ encji i świadomy wybór publikacji MQTT.</figcaption>
+				</figure>
+				<figure class="screenshot">
+					<img src="__BASE_PATH__assets/screenshots/custom-sensors.png" alt="Edytor własnych sensorów i formuł" data-i18n-alt="gallery.customAlt" loading="lazy" decoding="async">
+					<figcaption data-i18n="gallery.customCaption">Własne sensory - lokalne formuły oraz diagnostyczne testy tylko do odczytu.</figcaption>
+				</figure>
+				<figure class="screenshot">
+					<img src="__BASE_PATH__assets/screenshots/catalog-sources.png" alt="Niezależne źródła katalogów telemetrii i sterowania" data-i18n-alt="gallery.catalogsAlt" loading="lazy" decoding="async">
+					<figcaption data-i18n="gallery.catalogsCaption">Źródła katalogów - telemetria i sterowanie mogą pochodzić od różnych dostawców.</figcaption>
+				</figure>
 			</div>
 		</section>
 

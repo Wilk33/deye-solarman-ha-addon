@@ -33,6 +33,19 @@
 	"controls": {"title": "Controlled writes", "body": "Control entities apply validation, read-before-write, FC16 writes, and read-back verification. Unconfirmed definitions remain read-only."},
 	"custom": {"title": "Custom sensors and formulas", "body": "Add individual registers, decode status values, or create local formulas that combine several reads. The diagnostic test always remains read-only."},
 	"catalogs": {"title": "Catalogs selected independently", "body": "Use telemetry from one provider and controls from another, or disable either list. SHA-256 checks protect downloaded definitions."},
+	"gallery": {
+		"eyebrow": "THE REAL INTERFACE",
+		"title": "From register discovery to custom formulas",
+		"lede": "Compare transports, select MQTT entities, and keep telemetry sources independent from control sources.",
+		"sensorsAlt": "SolarMan Diagnostics sensor panel with scan results",
+		"sensorsCaption": "Sensors - decoded states, RAW values, and SolarMan TCP versus Modbus RTU comparison.",
+		"controlsAlt": "SolarMan Diagnostics control entity panel",
+		"controlsCaption": "Controls - current state, entity type, and explicit MQTT publishing selection.",
+		"customAlt": "Custom sensor and formula editor",
+		"customCaption": "Custom sensors - local formulas and read-only diagnostic tests.",
+		"catalogsAlt": "Independent telemetry and control catalog sources",
+		"catalogsCaption": "Catalog sources - telemetry and controls can come from different providers."
+	},
 	"reference": {
 		"eyebrow": "LIVE CATALOG DOCUMENTATION",
 		"title": "Find the register before wiring it into an automation",

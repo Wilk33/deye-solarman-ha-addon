@@ -1,5 +1,8 @@
 # SolarMan Diagnostics 2.0.5 - instrukcja użytkownika
 
+- [Strona projektu / Project site](https://wilk33.github.io/deye-solarman-ha-addon/)
+- [Definicje rejestrów / Register reference](https://wilk33.github.io/deye-solarman-ha-addon/reference/)
+
 ## Przeznaczenie
 
 `SolarMan Diagnostics` jest jednym dodatkiem Home Assistant OS i jednym procesem, który obsługuje SolarMan TCP oraz bezpośredni Modbus RTU przez USB-RS485. Dodatek może pracować w trzech trybach:

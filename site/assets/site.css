@@ -516,6 +516,48 @@ h3
 	background:linear-gradient(110deg,rgb(16 191 233/.13),rgb(74 214 109/.05));
 }
 
+.gallery-section
+{
+	padding-top:0;
+}
+
+.screenshot-grid
+{
+	display:grid;
+	grid-template-columns:repeat(2,minmax(0,1fr));
+	gap:18px;
+}
+
+.screenshot
+{
+	margin:0;
+	overflow:hidden;
+	border:1px solid var(--color-border);
+	border-radius:var(--radius);
+	background:var(--color-surface);
+	box-shadow:var(--shadow);
+}
+
+.screenshot-wide
+{
+	grid-column:1/-1;
+}
+
+.screenshot img
+{
+	display:block;
+	width:100%;
+	height:auto;
+	background:#0e0e0e;
+}
+
+.screenshot figcaption
+{
+	padding:18px 22px;
+	border-top:1px solid var(--color-border);
+	color:var(--color-muted);
+}
+
 .reference-callout h2
 {
 	margin-bottom:16px;
@@ -1050,6 +1092,16 @@ select,input[type="search"]
 	.catalog-stats,.feature-grid,.install-steps
 	{
 		grid-template-columns:1fr;
+	}
+
+	.screenshot-grid
+	{
+		grid-template-columns:1fr;
+	}
+
+	.screenshot-wide
+	{
+		grid-column:auto;
 	}
 
 	.catalog-stats article+article

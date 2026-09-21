@@ -70,6 +70,14 @@ function applyTranslations(dictionary)
 			element.setAttribute("content",value);
 		}
 	});
+	document.querySelectorAll("[data-i18n-alt]").forEach(element=>
+	{
+		const value=translatedValue(dictionary,element.dataset.i18nAlt);
+		if (typeof value === "string")
+		{
+			element.setAttribute("alt",value);
+		}
+	});
 }
 
 

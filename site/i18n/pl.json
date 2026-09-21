@@ -33,6 +33,19 @@
 	"controls": {"title": "Bezpieczne sterowanie", "body": "Encje sterowania stosują walidację, read-before-write, zapis FC16 i kontrolny read-back. Niepotwierdzone definicje pozostają tylko do odczytu."},
 	"custom": {"title": "Własne sensory i formuły", "body": "Dodawaj pojedyncze rejestry, dekoduj statusy albo buduj lokalne formuły łączące kilka odczytów. Test diagnostyczny zawsze pozostaje tylko odczytem."},
 	"catalogs": {"title": "Katalogi wybierane niezależnie", "body": "Możesz użyć telemetrii jednego dostawcy i sterowania drugiego albo wyłączyć jedną listę. Suma SHA-256 chroni pobrane definicje."},
+	"gallery": {
+		"eyebrow": "PRAWDZIWY INTERFEJS",
+		"title": "Od wykrywania rejestrów do własnych formuł",
+		"lede": "Panel pozwala porównać transporty, wybrać encje MQTT i rozdzielić źródła telemetrii od sterowania.",
+		"sensorsAlt": "Panel sensorów SolarMan Diagnostics z wynikami skanu",
+		"sensorsCaption": "Sensory - statusy, wartości RAW i porównanie SolarMan TCP z Modbus RTU.",
+		"controlsAlt": "Panel encji sterowania SolarMan Diagnostics",
+		"controlsCaption": "Sterowanie - aktualny stan, typ encji i świadomy wybór publikacji MQTT.",
+		"customAlt": "Edytor własnych sensorów i formuł",
+		"customCaption": "Własne sensory - lokalne formuły oraz diagnostyczne testy tylko do odczytu.",
+		"catalogsAlt": "Niezależne źródła katalogów telemetrii i sterowania",
+		"catalogsCaption": "Źródła katalogów - telemetria i sterowanie mogą pochodzić od różnych dostawców."
+	},
 	"reference": {
 		"eyebrow": "ŻYWA DOKUMENTACJA KATALOGÓW",
 		"title": "Znajdź rejestr zanim podłączysz go do automatyzacji",

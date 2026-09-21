@@ -165,10 +165,20 @@ class SiteBuildTests(unittest.TestCase):
 	def test_landing_page_has_required_sections_and_no_inline_scripts(self):
 		html=(ROOT/"site/index.html").read_text(encoding="utf-8")
 
-		for section in ("hero","transports","telemetry","controls","custom-sensors","catalogs","install"):
+		for section in ("hero","transports","telemetry","controls","custom-sensors","catalogs","gallery","install"):
 			self.assertIn(f'id="{section}"',html)
 		self.assertNotIn("<script>",html)
 		self.assertIn('type="module"',html)
+
+	def test_landing_gallery_uses_local_lazy_loaded_images(self):
+		html=(ROOT/"site/index.html").read_text(encoding="utf-8")
+
+		for name in ("sensors","controls","custom-sensors","catalog-sources"):
+			self.assertIn(f'assets/screenshots/{name}.png',html)
+			self.assertTrue((ROOT/f"site/assets/screenshots/{name}.png").is_file())
+		self.assertEqual(html.count('loading="lazy"'),4)
+		self.assertEqual(html.count('decoding="async"'),4)
+		self.assertIn('rel="canonical" href="__SITE_URL__"',html)
 
 	def test_styles_define_required_theme_and_accessibility_contract(self):
 		css=(ROOT/"site/assets/site.css").read_text(encoding="utf-8")
@@ -189,6 +199,26 @@ class SiteBuildTests(unittest.TestCase):
 			with self.subTest(path=path):
 				html=path.read_text(encoding="utf-8")
 				self.assertIn('http-equiv="Content-Security-Policy"',html)
+
+	def test_public_text_does_not_contain_private_installation_values(self):
+		forbidden=(
+			"192.168.177.144",
+			"3556142832",
+			"2502092014",
+			"/api/hassio_ingress/",
+			"usb-FTDI_FT232R_USB_UART_BG02YHGK-if00-port0",
+		)
+		public_files=list((ROOT/"site").rglob("*.html"))+list((ROOT/"site/i18n").glob("*.json"))
+		for path in public_files:
+			content=path.read_text(encoding="utf-8")
+			for value in forbidden:
+				self.assertNotIn(value,content,path)
+
+	def test_marketing_documents_link_to_site_and_reference(self):
+		for relative in ("README.md","deye-solarman-diagnostics/README.md","deye-solarman-diagnostics/DOCS.md","catalogs/README.md"):
+			content=(ROOT/relative).read_text(encoding="utf-8")
+			self.assertIn("https://wilk33.github.io/deye-solarman-ha-addon/",content,relative)
+			self.assertIn("https://wilk33.github.io/deye-solarman-ha-addon/reference/",content,relative)
 
 
 if __name__ == "__main__":
