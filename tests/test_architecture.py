@@ -138,6 +138,16 @@ class ArchitectureTests(unittest.TestCase):
 		):
 			self.assertFalse((ROOT/relative).exists(),relative)
 
+	def test_validation_workflow_checks_only_existing_javascript_files(self):
+		workflow=(ROOT/".github/workflows/validate.yml").read_text(encoding="utf-8")
+		self.assertNotIn("ownership_panel.js",workflow)
+		for line in workflow.splitlines():
+			marker="node --check "
+			if marker not in line:
+				continue
+			relative=line.split(marker,1)[1].strip()
+			self.assertTrue((ROOT/relative).is_file(),relative)
+
 	def test_configuration_defaults_are_minimal_and_name_catalog_sources(self):
 		config=yaml.safe_load((ROOT/"deye-solarman-diagnostics/config.yaml").read_text(encoding="utf-8"))
 
