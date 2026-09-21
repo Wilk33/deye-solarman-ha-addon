@@ -266,7 +266,7 @@ Pull request buduje i testuje stronę bez publikacji. Push do `main` po poprawne
 - `actions/upload-pages-artifact@v4`;
 - `actions/deploy-pages@v4`.
 
-Job wdrożenia ma uprawnienia `contents: read`, `pages: write` i `id-token: write`. Wdrożenie używa środowiska `github-pages` i zależy od udanego jobu budowania. Źródłem Pages jest GitHub Actions. Nie powstaje gałąź `gh-pages`.
+Job wdrożenia ma uprawnienia `contents: read`, `actions: read`, `pages: write` i `id-token: write`. Wdrożenie używa środowiska `github-pages` i zależy od udanego jobu budowania. Źródłem Pages jest GitHub Actions. Nie powstaje gałąź `gh-pages`.
 
 ## 17. Integracja z repozytorium
 
@@ -330,4 +330,3 @@ Opcjonalne metadane prezentacyjne indeksu nie zmieniają logicznej zawartości m
 - [Katalogi modeli](../../../catalogs/models/README.md)
 - [Architektura katalogów](../../architecture/MULTI_ADDON_AND_CATALOGS.md)
 - [README projektu](../../../README.md)
-
