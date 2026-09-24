@@ -1,4 +1,4 @@
-# SolarMan Diagnostics 2.0.5 - instrukcja użytkownika
+# SolarMan Diagnostics 2.0.6 - instrukcja użytkownika
 
 - [Strona projektu / Project site](https://wilk33.github.io/deye-solarman-ha-addon/)
 - [Definicje rejestrów / Register reference](https://wilk33.github.io/deye-solarman-ha-addon/reference/)
@@ -154,7 +154,7 @@ Zmiana interwału jednego transportu nie zmienia interwału drugiego.
 
 ## Migracja z wersji 1.x
 
-Wersja 2.0.5 zachowuje slug oraz katalog instalacyjny, więc Home Assistant aktualizuje istniejący dodatek.
+Wersja 2.0.6 zachowuje slug oraz katalog instalacyjny, więc Home Assistant aktualizuje istniejący dodatek.
 
 Starsza konfiguracja używała sekcji:
 

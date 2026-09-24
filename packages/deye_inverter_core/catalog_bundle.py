@@ -10,6 +10,10 @@ import yaml
 CATALOG_SET="deye_sg04_sg05_3ph_lv"
 
 
+def _normalized_text_bytes(data: bytes) -> bytes:
+	return data.replace(b"\r\n",b"\n").replace(b"\r",b"\n")
+
+
 def catalog_directory() -> Path:
 	packaged=Path(__file__).with_name("data")
 	if (packaged/"catalog-index.yaml").is_file():
@@ -28,7 +32,7 @@ def load_map(map_id: str, transport_id: str, directory: Path | None=None) -> dic
 	path=(root/metadata["file"]).resolve()
 	if path.parent != root:
 		raise ValueError("Map file must stay inside catalog directory")
-	data=path.read_bytes()
+	data=_normalized_text_bytes(path.read_bytes())
 	if hashlib.sha256(data).hexdigest() != metadata["sha256"]:
 		raise ValueError(f"Catalog checksum mismatch: {map_id}")
 	result=yaml.safe_load(data)

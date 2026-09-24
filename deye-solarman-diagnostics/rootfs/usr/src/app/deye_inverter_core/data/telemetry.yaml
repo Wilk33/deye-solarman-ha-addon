@@ -1196,6 +1196,58 @@
       "report_every": 900,
       "device_class": "energy",
       "state_class": "total_increasing"
+    },
+    {
+      "key": "pv_installation_efficiency",
+      "name": "Sprawność instalacji PV.",
+      "registers": [],
+      "type": "auto",
+      "formula": "pv1=sensor(R672,uint16,1)\npv2=sensor(R673,uint16,1)\ngrid=sensor(R607,int16,1)\nbattery=sensor(R590,int16,1)\nload=sensor(R653,int16,1)\n\npv=pv1+pv2\n\ngrid_import=max(grid,0)\ngrid_export=max(-grid,0)\n\nbattery_discharge=max(battery,0)\nbattery_charge=max(-battery,0)\n\ninput_power=pv+grid_import+battery_discharge\noutput_power=load+grid_export+battery_charge\n\nif input_power<=0:\n\treturn 0\n\nreturn round((output_power/input_power)*100,1)",
+      "unit": "%",
+      "schedule": "default",
+      "read_every": 60,
+      "report_every": 300,
+      "change_by": 1,
+      "state_class": "measurement",
+      "category": "diagnostic",
+      "topic_suffix": "pv_installation_efficiency",
+      "retain": true
+    },
+    {
+      "key": "pv_power",
+      "name": "PV Power",
+      "registers": [],
+      "type": "auto",
+      "formula": "pv1=sensor(R672,uint16,1)\npv2=sensor(R673,uint16,1)\n\nreturn pv1+pv2",
+      "unit": "W",
+      "schedule": "default",
+      "read_every": 5,
+      "report_every": 60,
+      "change_by": 1,
+      "device_class": "power",
+      "state_class": "measurement",
+      "topic_suffix": "pv_power",
+      "retain": true
+    },
+    {
+      "key": "battery_temperature_1",
+      "name": "Battery Temperature 1",
+      "registers": [
+        585
+      ],
+      "type": "uint16",
+      "multiplier": 0.1,
+      "offset": 0,
+      "unit": "°C",
+      "word_order": "high_low",
+      "byte_order": "high_low",
+      "schedule": "default",
+      "read_every": 5,
+      "report_every": 30,
+      "change_by": 0,
+      "state_class": "measurement",
+      "topic_suffix": "battery_temperature_1",
+      "retain": true
     }
   ],
   "bms_pack": {

@@ -467,7 +467,7 @@ class DualTransportConfigTests(unittest.TestCase):
 	def test_addon_uses_version_2_sections_and_disables_rs485_by_default(self) -> None:
 		addon=yaml.safe_load((ROOT/"deye-solarman-diagnostics/config.yaml").read_text(encoding="utf-8"))
 
-		self.assertEqual(addon["version"],"2.0.5")
+		self.assertEqual(addon["version"],"2.0.6")
 		self.assertNotIn("logger",addon["options"])
 		self.assertNotIn("polling",addon["options"])
 		self.assertTrue(addon["options"]["solarman"]["enabled"])
@@ -1968,6 +1968,7 @@ pending.then(()=>process.stdout.write(JSON.stringify(customSensors[0]))).catch(e
 		self.assertEqual(sum(source.count("function t(") for source in (panel_script,control_script,custom_script,web_source)),1)
 		self.assertIn("window.t=t",panel_script)
 		self.assertIn("transportResultCards(entry)",web_source)
+		self.assertIn('definition.formula ? ["auto"]',web_source)
 		self.assertIn("transportResultCards(entry)",control_script)
 		self.assertIn("latency_ms",panel_script)
 		self.assertIn("supported.length === 1",panel_script)

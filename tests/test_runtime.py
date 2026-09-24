@@ -1399,7 +1399,7 @@ class RuntimeTests(unittest.TestCase):
 		candidates=load_scan_candidates(4)
 		by_key={candidate.sensor.key: candidate.sensor for candidate in candidates}
 
-		self.assertEqual(len(candidates), 186)
+		self.assertEqual(len(candidates),189)
 		self.assertEqual(by_key["grid_power_total"].registers, [619])
 		self.assertEqual(by_key["pv_energy_total"].registers, [534,535])
 		self.assertEqual(by_key["pv_energy_total"].word_order, "low_high")
@@ -1418,6 +1418,11 @@ class RuntimeTests(unittest.TestCase):
 		self.assertEqual(by_key["relay_status"].options[2],"Grid connected")
 		self.assertEqual(by_key["warning_flags"].zero,"No warnings")
 		self.assertEqual(by_key["fault_flags"].zero,"No faults")
+		self.assertEqual(by_key["pv_installation_efficiency"].register_type,"auto")
+		self.assertTrue(by_key["pv_installation_efficiency"].formula)
+		self.assertEqual(by_key["pv_power"].device_class,"power")
+		self.assertEqual(by_key["battery_temperature_1"].registers,[585])
+		self.assertEqual(by_key["battery_temperature_1"].multiplier,0.1)
 
 	def test_status_types_decode_known_unknown_and_clear_states(self) -> None:
 		self.assertEqual(
@@ -1453,13 +1458,13 @@ class RuntimeTests(unittest.TestCase):
 		fallback={candidate.sensor.key: candidate.sensor for candidate in load_scan_candidates(4)}
 
 		self.assertEqual(payload["version"],2)
-		self.assertEqual(len(payload["sensors"]),94)
+		self.assertEqual(len(payload["sensors"]),97)
 		self.assertEqual(len(payload["bms_pack"]["sensors"]),23)
 		self.assertEqual({entry["key"] for entry in payload["sensors"]},{candidate.sensor.key for candidate in load_scan_candidates(0)})
 		self.assertEqual(remote,fallback)
 
 		maximum={sensor.key: sensor for sensor in apply_remote_catalog([],catalog,10)}
-		self.assertEqual(len(maximum),324)
+		self.assertEqual(len(maximum),327)
 		self.assertEqual(maximum["battery_10_voltage"].registers,[10382])
 
 	def test_ascii_type_decodes_modbus_words_and_replaces_control_bytes(self) -> None:
@@ -1512,6 +1517,45 @@ class RuntimeTests(unittest.TestCase):
 				catalog=load_remote_catalog(config,force_refresh=True)
 
 		self.assertEqual(catalog.source,"github")
+
+	def test_remote_catalog_accepts_formula_telemetry(self) -> None:
+		payload={
+			"version":1,
+			"sensors":[{
+				"key":"pv_power",
+				"name":"PV Power",
+				"registers":[],
+				"type":"auto",
+				"formula":"pv1=sensor(R672,uint16,1)\npv2=sensor(R673,uint16,1)\nreturn pv1+pv2",
+			}],
+		}
+		with tempfile.TemporaryDirectory() as directory:
+			config=CatalogConfig(True,"https://example.invalid/catalog.yaml",str(Path(directory)/"catalog.yaml"),1)
+			with patch("deye_inverter_core.remote_catalog.urlopen",return_value=FakeSupervisorResponse(payload)):
+				catalog=load_remote_catalog(config)
+
+		self.assertEqual(catalog.source,"github")
+		self.assertEqual(catalog.sensors[0]["type"],"auto")
+
+	def test_scan_candidates_evaluates_formula_telemetry(self) -> None:
+		candidate=ScanCandidate(
+			SensorDefinition(
+				"pv_power",
+				"PV Power",
+				[],
+				"auto",
+				formula="pv1=sensor(R672,uint16,1)\npv2=sensor(R673,uint16,1)\nreturn pv1+pv2",
+			),
+			"documented",
+			"test",
+		)
+
+		report=scan_candidates([candidate],RegisterSolarman({672:790,673:722}),make_polling())
+
+		self.assertEqual(report[0]["status"],"supported")
+		self.assertEqual(report[0]["value"],1512)
+		self.assertEqual(report[0]["raw_registers"],[790,722])
+		self.assertEqual([read["address"] for read in report[0]["formula_reads"]],[672,673])
 
 	def test_candidate_scan_reports_raw_hex_and_supported_status(self) -> None:
 		candidate=ScanCandidate(
@@ -1710,6 +1754,34 @@ class RuntimeTests(unittest.TestCase):
 				[{"key": "battery_2_voltage","monitor": False,"definition": {}}],
 			)
 			self.assertEqual(load_pending_discovery_removals(str(detected_path)),["battery_2_voltage"])
+
+	def test_formula_telemetry_keeps_auto_type_when_panel_settings_are_saved(self) -> None:
+		candidate=ScanCandidate(
+			SensorDefinition(
+				"pv_power",
+				"PV Power",
+				[],
+				"auto",
+				formula="return sensor(R672,uint16,1)+sensor(R673,uint16,1)",
+			),
+			"documented",
+			"test",
+		)
+		report=scan_candidates([candidate],RegisterSolarman({672:790,673:722}),make_polling())
+		with tempfile.TemporaryDirectory() as directory:
+			path=Path(directory)/"detected_sensors.yaml"
+			save_detected_sensors(str(path),report)
+
+			updated=update_detected_sensors(str(path),[{
+				"key":"pv_power",
+				"monitor":True,
+				"definition":{"name":"PV total","type":"auto"},
+			}])
+
+		entry=updated["available_sensors"][0]
+		self.assertEqual(entry["definition"]["type"],"auto")
+		self.assertTrue(entry["definition"]["formula"])
+		self.assertEqual(entry["definition"]["name"],"PV total")
 
 	def test_detected_sensors_can_be_reset_to_catalog_defaults_or_cleared(self) -> None:
 		candidate=ScanCandidate(
@@ -2026,7 +2098,7 @@ class RuntimeTests(unittest.TestCase):
 		])
 		self.assertEqual(discovery["availability_mode"],"all")
 		self.assertEqual(discovery["origin"]["name"],"SolarMan Diagnostics")
-		self.assertEqual(discovery["origin"]["sw_version"],"2.0.5")
+		self.assertEqual(discovery["origin"]["sw_version"],"2.0.6")
 
 		publisher._publish_confirmed.reset_mock()
 		publisher.publish_state(sensor,52,{"raw_registers":[52]})

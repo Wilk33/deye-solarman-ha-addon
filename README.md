@@ -1,4 +1,4 @@
-# SolarMan Diagnostics 2.0.5
+# SolarMan Diagnostics 2.0.6
 
 [![Validate add-on](https://github.com/Wilk33/deye-solarman-ha-addon/actions/workflows/validate.yml/badge.svg)](https://github.com/Wilk33/deye-solarman-ha-addon/actions/workflows/validate.yml)
 
@@ -44,6 +44,7 @@ Co najmniej jeden transport musi być włączony. W trybie `dual` każdy transpo
 - wybór transportu tylko wtedy, gdy mapa rejestru i skan potwierdzają jego obsługę;
 - MQTT Discovery dla wybranych sensorów i encji sterowania;
 - zewnętrzne, walidowane katalogi sensorów i sterowania z lokalnym cache;
+- typy złożone i bezpieczne formuły `type: auto` w katalogach telemetrii;
 - odczyty RAW, HEX i atrybuty diagnostyczne;
 - bezpieczne, lokalne formuły własnych sensorów;
 - kontrolowany zapis ustawień przez MQTT.
@@ -148,7 +149,7 @@ Interaktywny opis katalogów znajduje się w [publicznej przeglądarce definicji
 
 ## Migracja z 1.x
 
-Wersja 2.0.5 zachowuje katalog instalacyjny i slug `deye-solarman-diagnostics`, dlatego aktualizacja odbywa się w miejscu.
+Wersja 2.0.6 zachowuje katalog instalacyjny i slug `deye-solarman-diagnostics`, dlatego aktualizacja odbywa się w miejscu.
 
 Starszy układ:
 
@@ -176,7 +177,9 @@ Wbudowany profil `deye_battery_packs` jest zawsze aktywny i nie jest wystawiany 
 - `catalog.url` - niezależny katalog telemetrii;
 - `catalog.control_url` - niezależny katalog sterowania.
 
-Każdy adres można pozostawić pusty. Pozwala to używać wyłącznie jednej listy albo łączyć telemetrię i sterowanie od różnych dostawców. Po walidacji każda lista trafia do osobnego, wewnętrznego cache. Jeśli źródło i poprawny cache są niedostępne, odpowiednia lista pozostaje pusta. Zdalny YAML jest traktowany jako dane i nie jest wykonywany jako kod.
+Każdy adres można pozostawić pusty. Pozwala to używać wyłącznie jednej listy albo łączyć telemetrię i sterowanie od różnych dostawców. Po walidacji każda lista trafia do osobnego, wewnętrznego cache. Jeśli źródło i poprawny cache są niedostępne, odpowiednia lista pozostaje pusta. Zdalny YAML jest parsowany jako dane. Tylko jawne pole `formula` trafia do ograniczonego interpretera po przejściu walidacji składni.
+
+Katalog telemetrii może zawierać typy proste i złożone: `uint16`, `int16`, `uint32`, `int32`, `hex`, `ascii`, `enum`, wielorejestrowy `bitmask` oraz formuły `type: auto`. Formuły są walidowane przez ograniczony interpreter, skanowane tylko przez odczyt i nie mają dostępu do systemu ani sieci poza odczytem wskazanych rejestrów przez wybrany transport.
 
 `detailed_logs` jest domyślnie wyłączone. W tym trybie log zachowuje informacje operacyjne, ale ogranicza wpisy o pojedynczych publikacjach, zakresach połączeń i tracebackach. Tryb szczegółowy należy włączać tylko na czas diagnostyki.
 
@@ -195,7 +198,7 @@ Kopia w `deye-solarman-diagnostics/rootfs/usr/src/app` jest generowana. Po zmian
 .work/venv/Scripts/python.exe -m unittest discover -s tests -v
 ```
 
-Pakiet 2.0.5 zawiera wspólny rdzeń, oba adaptery, i18n PL/EN oraz katalogi z sumami kontrolnymi. Zależność RTU jest przypięta jako `pymodbus==3.14.0`. Repozytorium nie zawiera drugiego instalowalnego folderu RS485.
+Pakiet 2.0.6 zawiera wspólny rdzeń, oba adaptery, i18n PL/EN oraz katalogi z sumami kontrolnymi. Zależność RTU jest przypięta jako `pymodbus==3.14.0`. Repozytorium nie zawiera drugiego instalowalnego folderu RS485.
 
 ## Granice weryfikacji
 

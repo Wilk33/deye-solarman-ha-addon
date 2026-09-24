@@ -25,7 +25,7 @@ def main() -> None:
 	args=parser.parse_args()
 	expected={}
 	source_index=yaml.safe_load(normalized_text_bytes(MODEL/"catalog-index.yaml"))
-	index={"format":1,"catalog_set":source_index["catalog_set"],"revision":"2.0.5","maps":{}}
+	index={"format":1,"catalog_set":source_index["catalog_set"],"revision":"2.0.6","maps":{}}
 	for field in PRESENTATION_FIELDS:
 		if field in source_index:
 			index[field]=source_index[field]

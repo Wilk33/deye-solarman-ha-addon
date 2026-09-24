@@ -782,7 +782,7 @@ function sensorCard(entry) {
       ${input(entry.key,"multiplier",t("common.multiplier"),definition.multiplier,"number")}
       ${input(entry.key,"offset",t("common.offset"),definition.offset,"number")}
       ${input(entry.key,"unit",t("common.unit"),definition.unit)}
-      ${select(entry.key,"type",t("common.register_type"),definition.type,["uint16","int16","uint32","int32","hex","ascii","enum","bitmask"])}
+      ${select(entry.key,"type",t("common.register_type"),definition.type,definition.formula ? ["auto"] : ["uint16","int16","uint32","int32","hex","ascii","enum","bitmask"])}
       ${select(entry.key,"word_order",t("common.word_order"),definition.word_order,["high_low","low_high"])}
       ${select(entry.key,"byte_order",t("common.byte_order"),definition.byte_order,["high_low","low_high"])}
       ${select(entry.key,"schedule",t("common.schedule"),definition.schedule,["default","slow"])}

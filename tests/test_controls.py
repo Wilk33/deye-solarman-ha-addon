@@ -93,6 +93,11 @@ class ControlTests(unittest.TestCase):
 		self.assertEqual(CONTROLS["control_battery_1_manufacturer"]["registers"],[229])
 		self.assertEqual(CONTROLS["control_prog1_charge"]["bitmask"],3)
 		self.assertEqual(CONTROLS["control_prog1_mode"]["bitmask"],28)
+		self.assertTrue(all(
+			entry.get("mode") == "slider"
+			for entry in CONTROLS.values()
+			if entry["method"] == "NumberRWSensor"
+		))
 
 	def test_read_test_never_writes_and_updates_saved_scan(self):
 		key="control_grid_charge_battery_current"
@@ -622,6 +627,8 @@ class ControlTests(unittest.TestCase):
 			self.assertIn(f"/{kind}/",topic)
 			self.assertFalse(json.loads(payload)["retain"])
 			self.assertFalse(json.loads(payload)["optimistic"])
+			if kind == "number":
+				self.assertEqual(json.loads(payload)["mode"],"slider")
 		callback=Mock()
 		mqtt.configure_controls(callback,["control_load_limit"])
 		mqtt._on_control_message(None,None,SimpleNamespace(topic=mqtt.control_command_topic("control_load_limit"),payload=b"Essentials",retain=False))

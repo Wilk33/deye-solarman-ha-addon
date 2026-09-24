@@ -8,6 +8,8 @@ from typing import Any
 
 import yaml
 
+from packages.deye_inverter_core.formula import FormulaError
+from packages.deye_inverter_core.formula import validate_formula
 
 ALLOWED_MAPS={"telemetry":"sensors","control":"commands"}
 
@@ -95,7 +97,21 @@ def _validate_definitions(
 			_fail(model_dir,f"duplicate key {key}",map_id,file_name)
 		keys.add(key)
 		registers=definition.get("registers")
-		if not isinstance(registers,list) or not registers:
+		formula=definition.get("formula","")
+		if not isinstance(formula,str):
+			_fail(model_dir,f"definition {key} formula must be text",map_id,file_name)
+		if formula:
+			if map_id != "telemetry" or definition.get("type") != "auto":
+				_fail(model_dir,f"definition {key} formula requires telemetry type auto",map_id,file_name)
+			if registers != []:
+				_fail(model_dir,f"definition {key} formula cannot declare direct registers",map_id,file_name)
+			try:
+				validate_formula(formula)
+			except FormulaError as error:
+				_fail(model_dir,f"definition {key} has invalid formula: {error}",map_id,file_name)
+		elif definition.get("type") == "auto":
+			_fail(model_dir,f"definition {key} type auto requires a formula",map_id,file_name)
+		elif not isinstance(registers,list) or not registers:
 			_fail(model_dir,f"definition {key} registers must be a non-empty list",map_id,file_name)
 		if any(not isinstance(register,int) or isinstance(register,bool) for register in registers):
 			_fail(model_dir,f"definition {key} registers must contain integers",map_id,file_name)

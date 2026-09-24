@@ -32,6 +32,8 @@ for key,sensor in SENSORS.all.items():
 	if not isinstance(sensor,RWSensor) or key in aliases:
 		continue
 	entry={"key": "control_"+key,"name": sensor.name,"registers": list(sensor.address),"method": type(sensor).__name__,"factor": sensor.factor,"unit": sensor.unit,"bitmask": sensor.bitmask}
+	if entry["method"] == "NumberRWSensor":
+		entry["mode"]="slider"
 	for field in ("min","max","options","on","off","year_offset"):
 		if hasattr(sensor,field):
 			entry[field]=reference(getattr(sensor,field))

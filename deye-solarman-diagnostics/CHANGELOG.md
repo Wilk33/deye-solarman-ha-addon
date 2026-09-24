@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.0.6
+
+- Publish numeric control entities with the MQTT Discovery mode selected by the control catalog. The bundled Deye number controls now use `mode: slider`.
+- Accept validated telemetry formulas with `type: auto` in remote and packaged catalogs, including read-only scan evaluation through the selected transport.
+- Keep the existing compound telemetry decoders for `uint32`, `int32`, `hex`, `ascii`, `enum` and multi-register `bitmask` definitions under the same catalog validation path.
+- Verify packaged catalog checksums from canonical LF content, accepting equivalent LF, CRLF and CR line endings at runtime.
+- Add `Sprawność instalacji PV.`, `PV Power` and `Battery Temperature 1` to the Deye SG04/SG05 3PH LV telemetry catalog.
+
 ## 2.0.5
 
 - Replace the native test transport selector in `Własne sensory` with the shared theme-aware dropdown.
@@ -45,7 +53,7 @@
 - Bundle both transport adapters, the shared core, PL/EN i18n, and checksummed catalogs in the self-contained HAOS build context. Pin `pymodbus==3.14.0`.
 - Document that automated validation does not prove a physical USB adapter, RS485 timing, firmware-specific register maps, or a real inverter FC16 write.
 
-Entries below describe historical releases and do not define the current 2.0.5 architecture.
+Entries below describe historical releases and do not define the current 2.0.6 architecture.
 
 ## 1.4.0
 

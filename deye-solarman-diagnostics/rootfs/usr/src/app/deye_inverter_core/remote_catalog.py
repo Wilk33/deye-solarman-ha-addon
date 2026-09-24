@@ -10,6 +10,7 @@ from urllib.request import urlopen
 
 import yaml
 
+from .formula import validate_formula
 from .models import CatalogConfig
 from .models import SensorDefinition
 from .logging_utils import success
@@ -172,6 +173,18 @@ def _validate_bms_pack_template(template: Any) -> None:
 
 def _validate_definition_decoding(definition: dict[str, Any], location: str) -> None:
 	register_type=definition.get("type","uint16")
+	formula=definition.get("formula","")
+	if not isinstance(formula,str):
+		raise ValueError(f"{location}.formula must be text")
+	if formula:
+		if register_type != "auto":
+			raise ValueError(f"{location}.formula requires type auto")
+		if definition.get("registers",[]) != []:
+			raise ValueError(f"{location}.formula cannot declare direct registers")
+		validate_formula(formula)
+		return
+	if register_type == "auto":
+		raise ValueError(f"{location}.type auto requires a formula")
 	if register_type not in {"uint16","int16","uint32","int32","hex","ascii","enum","bitmask"}:
 		raise ValueError(f"{location}.type is unsupported")
 	if register_type in {"enum","bitmask"}:
@@ -227,7 +240,7 @@ def _merge_definition(current: SensorDefinition | None, payload: dict[str, Any])
 	if not current:
 		data.setdefault("key",payload.get("key"))
 		data.setdefault("name",data.get("key",""))
-		data.setdefault("register_type",payload.get("type","uint16"))
+		data.setdefault("register_type",payload.get("type","auto" if payload.get("formula") else "uint16"))
 		data.setdefault("registers",[])
 	transports=data.get("transports")
 	if "transport" not in payload and isinstance(transports,list) and transports and data.get("transport") not in transports:

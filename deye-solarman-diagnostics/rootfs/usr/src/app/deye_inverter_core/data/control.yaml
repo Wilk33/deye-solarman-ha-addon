@@ -2,7 +2,7 @@
   "version": 1,
   "source_revision": "e2466b6505c1990aced1f18c12a42ded638aee9b",
   "source": "https://github.com/kellerza/sunsynk/tree/e2466b6505c1990aced1f18c12a42ded638aee9b/src/sunsynk",
-  "project_revision": "1.2.1",
+  "project_revision": "1.2.2",
   "correction_sources": [
     "https://www.deyeinverter.com/deyeinverter/2026/03/19/BManualSUN-5-12K-SG04LP3-EU20260319en.pdf",
     "https://pl.deyeinverter.com/deyeinverter/2024/08/05/datasheet_sun-8-12k-sg04lp3_240729_pl.pdf",
@@ -77,7 +77,8 @@
       "unit": "A",
       "bitmask": 0,
       "min": 0,
-      "max": 185
+      "max": 185,
+      "mode": "slider"
     },
     {
       "key": "control_grid_charge_start_battery_voltage",
@@ -90,7 +91,8 @@
       "unit": "V",
       "bitmask": 0,
       "min": 0,
-      "max": 6300
+      "max": 6300,
+      "mode": "slider"
     },
     {
       "key": "control_grid_charge_start_battery_soc",
@@ -103,7 +105,8 @@
       "unit": "%",
       "bitmask": 0,
       "min": 0,
-      "max": 100
+      "max": 100,
+      "mode": "slider"
     },
     {
       "key": "control_grid_charge_enabled",
@@ -149,7 +152,8 @@
         ],
         "factor": 0.1,
         "name": "Rated power"
-      }
+      },
+      "mode": "slider"
     },
     {
       "key": "control_battery_max_charge_current",
@@ -176,7 +180,8 @@
           "10000": 210,
           "12000": 240
         }
-      }
+      },
+      "mode": "slider"
     },
     {
       "key": "control_battery_max_discharge_current",
@@ -203,7 +208,8 @@
           "10000": 210,
           "12000": 240
         }
-      }
+      },
+      "mode": "slider"
     },
     {
       "key": "control_battery_capacity_current",
@@ -219,7 +225,8 @@
       "max": 2000,
       "legacy_names": [
         "Battery Capacity current"
-      ]
+      ],
+      "mode": "slider"
     },
     {
       "key": "control_grid_peak_shaving_power",
@@ -232,7 +239,8 @@
       "unit": "W",
       "bitmask": 0,
       "min": 0,
-      "max": 100000
+      "max": 100000,
+      "mode": "slider"
     },
     {
       "key": "control_max_solar_power",
@@ -245,7 +253,8 @@
       "unit": "W",
       "bitmask": 0,
       "min": 0,
-      "max": 32000
+      "max": 32000,
+      "mode": "slider"
     },
     {
       "key": "control_battery_low_voltage",
@@ -264,7 +273,8 @@
         "factor": 0.01,
         "name": "Battery Shutdown voltage"
       },
-      "max": 60
+      "max": 60,
+      "mode": "slider"
     },
     {
       "key": "control_system_zero_export_power",
@@ -277,7 +287,8 @@
       "unit": "W",
       "bitmask": 0,
       "min": -500,
-      "max": 500
+      "max": 500,
+      "mode": "slider"
     },
     {
       "key": "control_battery_equalization_days",
@@ -290,7 +301,8 @@
       "unit": "days",
       "bitmask": 0,
       "min": 0,
-      "max": 100
+      "max": 100,
+      "mode": "slider"
     },
     {
       "key": "control_battery_equalization_hours",
@@ -303,7 +315,8 @@
       "unit": "h",
       "bitmask": 0,
       "min": 0,
-      "max": 100
+      "max": 100,
+      "mode": "slider"
     },
     {
       "key": "control_generator_charge_battery_current",
@@ -316,7 +329,8 @@
       "unit": "A",
       "bitmask": 0,
       "min": 0,
-      "max": 185
+      "max": 185,
+      "mode": "slider"
     },
     {
       "key": "control_generator_charge_start_battery_voltage",
@@ -329,7 +343,8 @@
       "unit": "V",
       "bitmask": 0,
       "min": 0,
-      "max": 6300
+      "max": 6300,
+      "mode": "slider"
     },
     {
       "key": "control_generator_charge_start_battery_soc",
@@ -342,7 +357,8 @@
       "unit": "%",
       "bitmask": 0,
       "min": 0,
-      "max": 100
+      "max": 100,
+      "mode": "slider"
     },
     {
       "key": "control_generator_charge_enabled",
@@ -399,7 +415,8 @@
       "unit": "mΩ",
       "bitmask": 0,
       "min": 0,
-      "max": 6000
+      "max": 6000,
+      "mode": "slider"
     },
     {
       "key": "control_battery_equalization_voltage",
@@ -412,7 +429,8 @@
       "unit": "V",
       "bitmask": 0,
       "min": 41,
-      "max": 60
+      "max": 60,
+      "mode": "slider"
     },
     {
       "key": "control_battery_absorption_voltage",
@@ -425,7 +443,8 @@
       "unit": "V",
       "bitmask": 0,
       "min": 41,
-      "max": 60
+      "max": 60,
+      "mode": "slider"
     },
     {
       "key": "control_battery_float_voltage",
@@ -438,7 +457,8 @@
       "unit": "V",
       "bitmask": 0,
       "min": 41,
-      "max": 60
+      "max": 60,
+      "mode": "slider"
     },
     {
       "key": "control_battery_shutdown_capacity",
@@ -457,7 +477,8 @@
         ],
         "factor": 1,
         "name": "Battery Low Capacity"
-      }
+      },
+      "mode": "slider"
     },
     {
       "key": "control_battery_restart_capacity",
@@ -476,7 +497,8 @@
         "factor": 1,
         "name": "Battery Low Capacity"
       },
-      "max": 100
+      "max": 100,
+      "mode": "slider"
     },
     {
       "key": "control_battery_low_capacity",
@@ -501,7 +523,8 @@
         ],
         "factor": 1,
         "name": "Battery Restart Capacity"
-      }
+      },
+      "mode": "slider"
     },
     {
       "key": "control_battery_shutdown_voltage",
@@ -520,7 +543,8 @@
         ],
         "factor": 0.01,
         "name": "Battery Low voltage"
-      }
+      },
+      "mode": "slider"
     },
     {
       "key": "control_battery_restart_voltage",
@@ -539,7 +563,8 @@
         "factor": 0.01,
         "name": "Battery Low voltage"
       },
-      "max": 60
+      "max": 60,
+      "mode": "slider"
     },
     {
       "key": "control_priority_load",
@@ -842,7 +867,8 @@
         ],
         "factor": 0.1,
         "name": "Rated power"
-      }
+      },
+      "mode": "slider"
     },
     {
       "key": "control_prog2_power",
@@ -862,7 +888,8 @@
         ],
         "factor": 0.1,
         "name": "Rated power"
-      }
+      },
+      "mode": "slider"
     },
     {
       "key": "control_prog3_power",
@@ -882,7 +909,8 @@
         ],
         "factor": 0.1,
         "name": "Rated power"
-      }
+      },
+      "mode": "slider"
     },
     {
       "key": "control_prog4_power",
@@ -902,7 +930,8 @@
         ],
         "factor": 0.1,
         "name": "Rated power"
-      }
+      },
+      "mode": "slider"
     },
     {
       "key": "control_prog5_power",
@@ -922,7 +951,8 @@
         ],
         "factor": 0.1,
         "name": "Rated power"
-      }
+      },
+      "mode": "slider"
     },
     {
       "key": "control_prog6_power",
@@ -942,7 +972,8 @@
         ],
         "factor": 0.1,
         "name": "Rated power"
-      }
+      },
+      "mode": "slider"
     },
     {
       "key": "control_prog1_capacity",
@@ -961,7 +992,8 @@
         "factor": 1,
         "name": "Battery Low Capacity"
       },
-      "max": 100
+      "max": 100,
+      "mode": "slider"
     },
     {
       "key": "control_prog2_capacity",
@@ -980,7 +1012,8 @@
         "factor": 1,
         "name": "Battery Low Capacity"
       },
-      "max": 100
+      "max": 100,
+      "mode": "slider"
     },
     {
       "key": "control_prog3_capacity",
@@ -999,7 +1032,8 @@
         "factor": 1,
         "name": "Battery Low Capacity"
       },
-      "max": 100
+      "max": 100,
+      "mode": "slider"
     },
     {
       "key": "control_prog4_capacity",
@@ -1018,7 +1052,8 @@
         "factor": 1,
         "name": "Battery Low Capacity"
       },
-      "max": 100
+      "max": 100,
+      "mode": "slider"
     },
     {
       "key": "control_prog5_capacity",
@@ -1037,7 +1072,8 @@
         "factor": 1,
         "name": "Battery Low Capacity"
       },
-      "max": 100
+      "max": 100,
+      "mode": "slider"
     },
     {
       "key": "control_prog6_capacity",
@@ -1056,7 +1092,8 @@
         "factor": 1,
         "name": "Battery Low Capacity"
       },
-      "max": 100
+      "max": 100,
+      "mode": "slider"
     },
     {
       "key": "control_prog1_charge",
@@ -1285,7 +1322,8 @@
         ],
         "factor": 0.01,
         "name": "Battery Float voltage"
-      }
+      },
+      "mode": "slider"
     },
     {
       "key": "control_prog2_voltage",
@@ -1310,7 +1348,8 @@
         ],
         "factor": 0.01,
         "name": "Battery Float voltage"
-      }
+      },
+      "mode": "slider"
     },
     {
       "key": "control_prog3_voltage",
@@ -1335,7 +1374,8 @@
         ],
         "factor": 0.01,
         "name": "Battery Float voltage"
-      }
+      },
+      "mode": "slider"
     },
     {
       "key": "control_prog4_voltage",
@@ -1360,7 +1400,8 @@
         ],
         "factor": 0.01,
         "name": "Battery Float voltage"
-      }
+      },
+      "mode": "slider"
     },
     {
       "key": "control_prog5_voltage",
@@ -1385,7 +1426,8 @@
         ],
         "factor": 0.01,
         "name": "Battery Float voltage"
-      }
+      },
+      "mode": "slider"
     },
     {
       "key": "control_prog6_voltage",
@@ -1410,7 +1452,8 @@
         ],
         "factor": 0.01,
         "name": "Battery Float voltage"
-      }
+      },
+      "mode": "slider"
     },
     {
       "key": "control_prog1_sell",
@@ -1606,7 +1649,8 @@
       "unit": "Hz",
       "bitmask": 0,
       "min": 0,
-      "max": 100
+      "max": 100,
+      "mode": "slider"
     },
     {
       "key": "control_generator_off_soc",
@@ -1619,7 +1663,8 @@
       "unit": "%",
       "bitmask": 0,
       "min": 0,
-      "max": 100
+      "max": 100,
+      "mode": "slider"
     },
     {
       "key": "control_generator_on_soc",
@@ -1632,7 +1677,8 @@
       "unit": "%",
       "bitmask": 0,
       "min": 0,
-      "max": 100
+      "max": 100,
+      "mode": "slider"
     },
     {
       "key": "control_generator_max_operating_time",
@@ -1645,7 +1691,8 @@
       "unit": "Hours",
       "bitmask": 0,
       "min": 0,
-      "max": 100
+      "max": 100,
+      "mode": "slider"
     },
     {
       "key": "control_generator_cooling_time",
@@ -1658,7 +1705,8 @@
       "unit": "Hours",
       "bitmask": 0,
       "min": 0,
-      "max": 100
+      "max": 100,
+      "mode": "slider"
     },
     {
       "key": "control_min_pv_power_for_gen_start",
@@ -1673,7 +1721,8 @@
       "min": 0,
       "max": null,
       "read_only": true,
-      "read_only_reason": "Maksimum R139 niepotwierdzone. Dostępny odczyt, zapis zablokowany."
+      "read_only_reason": "Maksimum R139 niepotwierdzone. Dostępny odczyt, zapis zablokowany.",
+      "mode": "slider"
     },
     {
       "key": "control_grid_signal_on",
@@ -1784,7 +1833,8 @@
       "bitmask": 64512,
       "min": 0,
       "max": 63,
-      "shift": 10
+      "shift": 10,
+      "mode": "slider"
     },
     {
       "key": "control_configured_grid_frequency",
@@ -1889,7 +1939,8 @@
       "unit": "s",
       "bitmask": 0,
       "min": 0,
-      "max": 100
+      "max": 100,
+      "mode": "slider"
     },
     {
       "key": "control_battery_1_manufacturer",

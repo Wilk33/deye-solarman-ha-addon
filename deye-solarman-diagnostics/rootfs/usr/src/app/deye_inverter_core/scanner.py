@@ -14,6 +14,8 @@ import yaml
 from .codec import apply_transform
 from .codec import decode_registers
 from .codec import registers_to_ascii
+from .formula import FormulaError
+from .formula import FormulaExecutor
 from .models import PollingConfig
 from .models import TRANSPORT_IDS
 from .scan_catalog import ScanCandidate
@@ -223,10 +225,14 @@ def scan_candidates(
 ) -> list[dict[str, Any]]:
 	by_key={candidate.sensor.key: candidate for candidate in candidates}
 	readable=[replace(candidate.sensor, enabled=True) for candidate in candidates]
+	direct=[sensor for sensor in readable if not sensor.formula]
+	formula_candidates=[candidate for candidate in candidates if candidate.sensor.formula]
 	report: list[dict[str, Any]]=[]
-	groups=group_sensors_for_read(readable, polling)
+	groups=group_sensors_for_read(direct,polling)
+	operation_count=len(groups)+len(formula_candidates)
+	operation_index=0
 
-	for index, group in enumerate(groups):
+	for group in groups:
 		group_start=min(register for sensor in group for register in sensor.registers)
 		group_end=max(register for sensor in group for register in sensor.registers)
 		count=group_end-group_start+1
@@ -245,12 +251,49 @@ def scan_candidates(
 			for sensor in group:
 				report.append(_scan_value(by_key[sensor.key], values, group_start, latency_ms))
 
-		if index < len(groups)-1 and polling.read_message_spacing > 0:
+		operation_index+=1
+		if operation_index < operation_count and polling.read_message_spacing > 0:
+			time.sleep(polling.read_message_spacing)
+
+	for candidate in formula_candidates:
+		try:
+			start=time.perf_counter()
+			result=FormulaExecutor(solarman.read_holding_registers).execute(candidate.sensor.formula)
+			latency_ms=(time.perf_counter()-start)*1000
+		except TransportConnectionClosedError as error:
+			raise PartialScanConnectionError(str(error),report) from error
+		except (FormulaError,ArithmeticError,TypeError,ValueError) as error:
+			report.append(_scan_error(candidate,"invalid_value",str(error)))
+		except Exception as error:
+			report.append(_scan_error(candidate,_read_error_status(error),str(error)))
+		else:
+			report.append(_scan_formula_value(candidate,result,latency_ms))
+		operation_index+=1
+		if operation_index < operation_count and polling.read_message_spacing > 0:
 			time.sleep(polling.read_message_spacing)
 
 	if raise_on_all_failures and report and all(result.get("status") in {"timeout","unsupported"} for result in report):
 		raise ScanBatchError("All scan reads failed",report)
 	return report
+
+
+def _scan_formula_value(candidate: ScanCandidate,result: Any,latency_ms: float) -> dict[str,Any]:
+	raw_values=[raw for read in result.reads for raw in read.raw_registers]
+	return {
+		"key":candidate.sensor.key,
+		"name":candidate.sensor.name,
+		"definition":_sensor_to_payload(candidate.sensor),
+		"status":"supported",
+		"raw_registers":raw_values,
+		"raw_hex":[f"0x{value:04X}" for value in raw_values],
+		"raw_ascii":registers_to_ascii(raw_values),
+		"decoded":result.value,
+		"value":result.value,
+		"formula_reads":[asdict(read) for read in result.reads],
+		"latency_ms":round(latency_ms,2),
+		"verification":candidate.verification,
+		"description":candidate.description,
+	}
 
 
 def _read_error_status(error: Exception) -> str:
@@ -519,6 +562,11 @@ def update_detected_sensors(path: str, updates: list[dict[str, Any]]) -> dict[st
 		entry["monitor"]=monitor
 		for field, value in definition_update.items():
 			if field not in EDITABLE_DEFINITION_FIELDS:
+				continue
+			if field == "type" and definition.get("formula"):
+				if value != "auto":
+					raise ValueError(f"Update {key}: formula type must remain auto")
+				definition[field]="auto"
 				continue
 			definition[field]=_validate_definition_value(key, field, value)
 		definition["transport"]=requested_transport

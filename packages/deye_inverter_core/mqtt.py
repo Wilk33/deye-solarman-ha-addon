@@ -22,7 +22,7 @@ class MqttPublisher:
 		self._config=config
 		self._inverter=inverter
 		self.detailed_logs=detailed_logs
-		self.origin={"name":"SolarMan Diagnostics","sw_version":"2.0.5","support_url":"https://github.com/Wilk33/deye-solarman-ha-addon"}
+		self.origin={"name":"SolarMan Diagnostics","sw_version":"2.0.6","support_url":"https://github.com/Wilk33/deye-solarman-ha-addon"}
 		self._connected=threading.Event()
 		self._connection_error: str | None=None
 		self._session_lock=threading.RLock()
@@ -250,7 +250,7 @@ class MqttPublisher:
 		}
 		kind=component(definition)
 		if kind == "number":
-			payload.update(min=result["min"],max=result["max"],step=abs(definition["factor"]),mode="box")
+			payload.update(min=result["min"],max=result["max"],step=abs(definition["factor"]),mode=definition.get("mode","box"))
 			if definition["unit"]:
 				payload["unit_of_measurement"]=definition["unit"]
 		elif kind == "select":

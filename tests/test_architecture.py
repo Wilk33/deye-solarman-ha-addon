@@ -1,4 +1,5 @@
 import ast
+import hashlib
 import json
 import os
 import subprocess
@@ -28,14 +29,14 @@ class ArchitectureTests(unittest.TestCase):
 		requirements=(ROOT/"deye-solarman-diagnostics/rootfs/requirements.txt").read_text(encoding="utf-8").splitlines()
 
 		self.assertEqual(config["name"],"SolarMan Diagnostics")
-		self.assertEqual(config["version"],"2.0.5")
+		self.assertEqual(config["version"],"2.0.6")
 		self.assertTrue(config["uart"])
 		self.assertIn("solarman",config["options"])
 		self.assertIn("rs485",config["options"])
 		self.assertIn("solarman",config["schema"])
 		self.assertIn("rs485",config["schema"])
 		self.assertEqual(repository["name"],"SolarMan Diagnostics")
-		self.assertEqual(index["revision"],"2.0.5")
+		self.assertEqual(index["revision"],"2.0.6")
 		self.assertEqual(index["display_name"],"Deye SG04/SG05 3PH LV")
 		self.assertEqual(index["manufacturer"],"Deye")
 		self.assertEqual(index["model_families"],["SG04LP3","SG05LP3"])
@@ -64,7 +65,7 @@ class ArchitectureTests(unittest.TestCase):
 		all_lower=all_current.lower()
 
 		for relative,content in contents.items():
-			self.assertIn("2.0.5",content,relative)
+			self.assertIn("2.0.6",content,relative)
 			self.assertIn("SolarMan Diagnostics",content,relative)
 		for forbidden in ("entityownership","entity_owners.json","/source/solarman","/source/modbus"):
 			self.assertNotIn(forbidden,all_lower)
@@ -96,7 +97,7 @@ class ArchitectureTests(unittest.TestCase):
 		)
 		for relative in documents:
 			content=(ROOT/relative).read_text(encoding="utf-8").lower()
-			self.assertIn("2.0.5",content,relative)
+			self.assertIn("2.0.6",content,relative)
 			self.assertNotIn("future",content,relative)
 			self.assertNotIn("planned",content,relative)
 			self.assertNotIn("reserved",content,relative)
@@ -226,6 +227,27 @@ class ArchitectureTests(unittest.TestCase):
 
 			self.assertEqual(normalized_text_bytes(path),b"format: 1\nmap_id: telemetry\n")
 
+	def test_runtime_catalog_checksum_accepts_lf_and_crlf(self):
+		lf=(
+			b"format: 1\n"
+			b"map_id: control\n"
+			b"catalog_set: deye_sg04_sg05_3ph_lv\n"
+			b"transports: [solarman_tcp]\n"
+			b"writable: true\n"
+			b"commands: []\n"
+		)
+		checksum=hashlib.sha256(lf).hexdigest()
+		index={"format":1,"catalog_set":"deye_sg04_sg05_3ph_lv","maps":{"control":{"file":"control.yaml","sha256":checksum,"transports":["solarman_tcp"],"writable":True}}}
+		variants={"lf":lf,"crlf":lf.replace(b"\n",b"\r\n"),"cr":lf.replace(b"\n",b"\r")}
+		for line_endings,content in variants.items():
+			with self.subTest(line_endings=line_endings):
+				with tempfile.TemporaryDirectory() as directory:
+					path=Path(directory)
+					(path/"catalog-index.yaml").write_text(json.dumps(index),encoding="utf-8")
+					(path/"control.yaml").write_bytes(content)
+
+					self.assertEqual(load_map("control","solarman_tcp",path)["commands"],[])
+
 	def test_bundle_checks_transport_and_checksum(self):
 		controls=load_map("control","solarman_tcp")["commands"]
 		self.assertEqual(len(controls),115)
@@ -272,7 +294,7 @@ class ArchitectureTests(unittest.TestCase):
 
 	def test_packaged_runtime_imports_without_repository_sources(self):
 		app=str(ROOT/"deye-solarman-diagnostics/rootfs/usr/src/app")
-		code="import sys; sys.path.insert(0,sys.argv[1]); import deye_solarman_diagnostics.__main__; from deye_solarman_diagnostics.solarman import SolarmanClient; from deye_solarman_diagnostics.rs485 import ModbusRtuTransport; from deye_inverter_core.main import main; from deye_inverter_core.controls import CONTROLS; from deye_inverter_core.catalog import build_live_telemetry; assert len(CONTROLS)==115; assert len(build_live_telemetry())==94"
+		code="import sys; sys.path.insert(0,sys.argv[1]); import deye_solarman_diagnostics.__main__; from deye_solarman_diagnostics.solarman import SolarmanClient; from deye_solarman_diagnostics.rs485 import ModbusRtuTransport; from deye_inverter_core.main import main; from deye_inverter_core.controls import CONTROLS; from deye_inverter_core.catalog import build_live_telemetry; assert len(CONTROLS)==115; assert len(build_live_telemetry())==97"
 		with tempfile.TemporaryDirectory() as directory:
 			result=subprocess.run([sys.executable,"-I","-c",code,app],cwd=directory,capture_output=True,text=True)
 		self.assertEqual(result.returncode,0,result.stdout+result.stderr)

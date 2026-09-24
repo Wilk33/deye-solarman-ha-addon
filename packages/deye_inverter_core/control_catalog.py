@@ -93,5 +93,8 @@ def _validate_payload(payload: dict[str,Any]) -> None:
 			raise ValueError(f"control catalog commands[{index}].registers must contain Modbus addresses")
 		if entry.get("method") not in _METHODS:
 			raise ValueError(f"control catalog commands[{index}].method is unsupported")
+		mode=entry.get("mode")
+		if mode is not None and (entry["method"] != "NumberRWSensor" or mode not in {"box","slider"}):
+			raise ValueError(f"control catalog commands[{index}].mode is unsupported")
 		if not isinstance(entry.get("factor"),(int,float)) or not isinstance(entry.get("unit"),str) or type(entry.get("bitmask")) is not int:
 			raise ValueError(f"control catalog commands[{index}] has invalid decoding")

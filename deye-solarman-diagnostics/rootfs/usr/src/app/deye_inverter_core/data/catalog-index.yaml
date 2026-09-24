@@ -1,11 +1,11 @@
 {
   "format": 1,
   "catalog_set": "deye_sg04_sg05_3ph_lv",
-  "revision": "2.0.5",
+  "revision": "2.0.6",
   "maps": {
     "telemetry": {
       "file": "telemetry.yaml",
-      "sha256": "f5afce231c1d590374d23bba9d2409cbb145204bbf04e8369bc2c8a842d399c1",
+      "sha256": "41b15eca5c0093f3e0842e8783e39c8aa8b5d3d2db9cef8cd30437b1e3cb69ba",
       "transports": [
         "solarman_tcp",
         "modbus_rtu"
@@ -14,7 +14,7 @@
     },
     "control": {
       "file": "control.yaml",
-      "sha256": "634d3a0505bd739b82bfd013a264c8158603a53d297a40f7a038db87fafc66c8",
+      "sha256": "a346279bd4421b732c1cb2561e3f7bcd1644cbea8b9e9cb7c0212c2026c15f77",
       "transports": [
         "solarman_tcp",
         "modbus_rtu"

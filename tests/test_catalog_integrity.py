@@ -110,6 +110,23 @@ class CatalogIntegrityTests(unittest.TestCase):
 		with self.assertRaisesRegex(CatalogValidationError,"broken.*control.*checksum"):
 			load_catalog_model(model_dir)
 
+	def test_accepts_formula_telemetry_without_direct_registers(self):
+		model_dir=self.write_model(
+			"formula",
+			("telemetry",),
+			{"telemetry":[{
+				"key":"pv_power",
+				"name":"PV Power",
+				"registers":[],
+				"type":"auto",
+				"formula":"return sensor(R672,uint16,1)+sensor(R673,uint16,1)",
+			}]},
+		)
+
+		model=load_catalog_model(model_dir)
+
+		self.assertEqual(model.maps["telemetry"].definitions[0]["type"],"auto")
+
 
 if __name__ == "__main__":
 	unittest.main()

@@ -1,4 +1,4 @@
-# Register catalogs in SolarMan Diagnostics 2.0.5
+# Register catalogs in SolarMan Diagnostics 2.0.6
 
 - [Project site](https://wilk33.github.io/deye-solarman-ha-addon/)
 - [Register reference](https://wilk33.github.io/deye-solarman-ha-addon/reference/)

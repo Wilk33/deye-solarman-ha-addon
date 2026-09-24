@@ -1,6 +1,6 @@
 name: SolarMan Diagnostics
 description: Deye inverter diagnostics through SolarMan TCP and direct Modbus RTU (RS485)
-version: "2.0.5"
+version: "2.0.6"
 slug: deye-solarman-diagnostics
 url: "https://github.com/Wilk33/deye-solarman-ha-addon"
 services:

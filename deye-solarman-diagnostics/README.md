@@ -1,4 +1,4 @@
-# SolarMan Diagnostics 2.0.5
+# SolarMan Diagnostics 2.0.6
 
 - [Strona projektu / Project site](https://wilk33.github.io/deye-solarman-ha-addon/)
 - [Definicje rejestrów / Register reference](https://wilk33.github.io/deye-solarman-ha-addon/reference/)
@@ -42,6 +42,8 @@ Metadane zawierają `uart: true`. Wartości `/dev/ttyUSB0`, 9600 8N1 i Modbus ID
 5. Uruchom dodatek, wykonaj skan i wybierz encje MQTT.
 
 Wbudowany profil `deye_battery_packs` jest zawsze aktywny i nie jest wystawiany w konfiguracji. Telemetria i sterowanie są pobierane niezależnie z `catalog.url` i `catalog.control_url`, dzięki czemu mogą pochodzić od różnych dostawców. Puste pole wyłącza odpowiednią zdalną listę. Cache pozostaje wewnętrznym szczegółem aplikacji.
+
+Katalog telemetrii obsługuje typy proste, wielorejestrowe i statusowe oraz walidowane formuły `type: auto`. Liczbowe encje sterowania korzystają z trybu prezentacji MQTT Discovery określonego przez katalog, a wbudowana mapa Deye używa suwaka.
 
 `detailed_logs` jest domyślnie wyłączone. Normalny log ogranicza szczegóły połączeń i pojedynczych publikacji. Pełny debug należy włączać tylko podczas diagnozy.
 

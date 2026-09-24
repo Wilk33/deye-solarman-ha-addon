@@ -1,4 +1,4 @@
-# Model catalog sets in SolarMan Diagnostics 2.0.5
+# Model catalog sets in SolarMan Diagnostics 2.0.6
 
 Each supported inverter family has its own directory, for example:
 
