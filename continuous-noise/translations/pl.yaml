@@ -1,0 +1,9 @@
+configuration:
+  noises: {name: Dostępne szumy, description: Lista przełączników i rodzajów generowanego szumu.}
+  volume_percent: {name: Głośność, description: Głośność odtwarzanego szumu w procentach.}
+  alarm_coordination_topic: {name: Temat alarmu, description: MQTT używany do automatycznego wstrzymania szumu podczas alarmu.}
+  alarm_availability_topic: {name: Dostępność alarmu, description: Temat MQTT używany do wznowienia szumu po awarii dodatku Alarm.}
+  mqtt_base_topic: {name: Główny temat MQTT, description: Prefiks tematów odtwarzacza szumów.}
+  mqtt_discovery_prefix: {name: Prefiks Discovery, description: Zwykle homeassistant.}
+  device_name: {name: Nazwa urządzenia, description: Nazwa urządzenia widoczna w Home Assistant.}
+  log_level: {name: Poziom logowania, description: Szczegółowość dziennika dodatku.}

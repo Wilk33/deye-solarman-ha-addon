@@ -3,6 +3,18 @@
 [![Validate add-on](https://github.com/Wilk33/deye-solarman-ha-addon/actions/workflows/validate.yml/badge.svg)](https://github.com/Wilk33/deye-solarman-ha-addon/actions/workflows/validate.yml)
 
 SolarMan Diagnostics łączy lokalną diagnostykę falownika Deye, porównanie dwóch transportów i bezpieczne encje MQTT w jednym dodatku Home Assistant OS.
+## Dodatki w repozytorium
+
+Repozytorium udostępnia trzy niezależne dodatki Home Assistant OS:
+
+- `SolarMan Diagnostics` 2.0.6 - diagnostyka i sterowanie falownikiem Deye;
+- `Alarm` 1.0.0 - monitorowanie encji oraz wyjście audio albo GPIO Raspberry Pi 5;
+- `Continuous Noise` 1.0.0 - ciągłe odtwarzanie wybranego szumu z przełącznikami MQTT.
+
+Dokumentacja nowych dodatków:
+
+- [Alarm](haos-alarm/DOCS.md)
+- [Continuous Noise](continuous-noise/DOCS.md)
 
 SolarMan Diagnostics combines local Deye inverter diagnostics, dual-transport comparison, and controlled MQTT entities in one Home Assistant OS add-on.
 
@@ -138,10 +150,10 @@ Jest to 9600 8N1 z Modbus ID 1. Nazwę urządzenia, parametry portu i adres Modb
 
 1. W Home Assistant otwórz `Ustawienia -> Dodatki -> Sklep z dodatkami`.
 2. Dodaj repozytorium `https://github.com/Wilk33/deye-solarman-ha-addon`.
-3. Zainstaluj jeden dodatek `SolarMan Diagnostics`.
-4. Skonfiguruj co najmniej jeden transport i numer seryjny falownika.
-5. Pozostaw `mqtt.use_supervisor: true`, jeśli używasz usługi MQTT Home Assistant.
-6. Uruchom dodatek i otwórz panel Ingress.
+3. Wybierz i zainstaluj `SolarMan Diagnostics`, `Alarm` albo `Continuous Noise`. Każdy dodatek instaluje się niezależnie.
+4. Dla `SolarMan Diagnostics` skonfiguruj co najmniej jeden transport i numer seryjny falownika.
+5. Dla `Alarm` albo `Continuous Noise` skonfiguruj opcje według dokumentacji wybranego dodatku. Oba używają usługi MQTT Home Assistant.
+6. Uruchom wybrany dodatek. Panel Ingress dotyczy `SolarMan Diagnostics`.
 
 Pełny opis opcji, migracji i diagnostyki znajduje się w [DOCS.md](deye-solarman-diagnostics/DOCS.md).
 
@@ -188,9 +200,11 @@ Katalog telemetrii może zawierać typy proste i złożone: `uint16`, `int16`, `
 - `packages/deye_inverter_core/` - wspólny rdzeń, MQTT, skanowanie, panel i sterowanie;
 - `apps/deye-solarman/src/deye_solarman_diagnostics/` - adaptery SolarMan TCP i Modbus RTU;
 - `catalogs/models/deye_sg04_sg05_3ph_lv/` - mapy i indeks katalogu;
-- `deye-solarman-diagnostics/` - jedyny instalowalny katalog dodatku HAOS.
+- `deye-solarman-diagnostics/` - instalowalny katalog SolarMan Diagnostics;
+- `haos-alarm/` - instalowalny katalog Alarm;
+- `continuous-noise/` - instalowalny katalog Continuous Noise.
 
-Kopia w `deye-solarman-diagnostics/rootfs/usr/src/app` jest generowana. Po zmianie źródeł uruchom:
+Kopie runtime w katalogach `rootfs/usr/src/app` są generowane. Po zmianie źródeł uruchom:
 
 ```powershell
 .work/venv/Scripts/python.exe tools/package_addon.py

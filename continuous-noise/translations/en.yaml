@@ -1,0 +1,9 @@
+configuration:
+  noises: {name: Available noises, description: List of switches and generated noise types.}
+  volume_percent: {name: Volume, description: Noise playback volume in percent.}
+  alarm_coordination_topic: {name: Alarm topic, description: MQTT topic used to pause noise automatically during an alarm.}
+  alarm_availability_topic: {name: Alarm availability, description: MQTT topic used to resume noise after the Alarm app becomes unavailable.}
+  mqtt_base_topic: {name: MQTT base topic, description: Topic prefix for the noise player.}
+  mqtt_discovery_prefix: {name: Discovery prefix, description: Usually homeassistant.}
+  device_name: {name: Device name, description: Device name shown in Home Assistant.}
+  log_level: {name: Log level, description: Application log verbosity.}

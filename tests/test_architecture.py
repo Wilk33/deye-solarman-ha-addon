@@ -41,7 +41,10 @@ class ArchitectureTests(unittest.TestCase):
 		self.assertEqual(index["manufacturer"],"Deye")
 		self.assertEqual(index["model_families"],["SG04LP3","SG05LP3"])
 		self.assertIn("pymodbus==3.14.0",requirements)
-		self.assertEqual([path.parent.name for path in ROOT.glob("*/config.yaml")],["deye-solarman-diagnostics"])
+		self.assertEqual(
+			sorted(path.parent.name for path in ROOT.glob("*/config.yaml")),
+			["continuous-noise","deye-solarman-diagnostics","haos-alarm"],
+		)
 		for relative in (
 			"deye-solarman-diagnostics/rootfs/usr/src/app/deye_solarman_diagnostics/solarman.py",
 			"deye-solarman-diagnostics/rootfs/usr/src/app/deye_solarman_diagnostics/rs485.py",

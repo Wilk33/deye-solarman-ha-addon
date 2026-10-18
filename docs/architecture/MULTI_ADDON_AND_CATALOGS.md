@@ -1,5 +1,9 @@
 # SolarMan Diagnostics 2.0.6 - architektura jednego dodatku
 
+## Zakres dokumentu
+
+Opis jednego dodatku w tym dokumencie dotyczy wyłącznie SolarMan Diagnostics 2.0.6 i połączenia jego transportów SolarMan TCP oraz RS485. Repozytorium zawiera ponadto niezależne dodatki `Alarm` i `Continuous Noise`, które nie uczestniczą w transporcie Modbus ani katalogach rejestrów falownika.
+
 ## Stan bieżący
 
 Wersja 2.0.6 ma jeden instalowalny katalog `deye-solarman-diagnostics`, jeden proces runtime i jeden klient MQTT. Ten proces może obsługiwać SolarMan TCP, Modbus RTU przez USB-RS485 albo oba transporty równocześnie.

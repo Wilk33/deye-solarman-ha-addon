@@ -1,0 +1,15 @@
+configuration:
+  output_mode: {name: Tryb wyjścia, description: Wybierz dokładnie jedno wyjście alarmu - audio albo GPIO Raspberry Pi 5.}
+  monitored_entities: {name: Monitorowane encje, description: Lista encji i czterech opcjonalnych progów. Pusty próg jest wyłączony.}
+  notification_targets: {name: Odbiorcy powiadomień, description: Lista encji notify, na przykład notify.mobile_app_mateusz.}
+  notify_recovery: {name: Powiadomienie o powrocie, description: Powiadamiaj, gdy wartość wróci do prawidłowego zakresu.}
+  audio_file: {name: Plik alarmu, description: Opcjonalny plik WAV z katalogu /media. Puste pole używa wbudowanego alarmu.}
+  audio_volume_percent: {name: Głośność alarmu, description: Głośność wyjścia audio w procentach.}
+  gpio_pin: {name: GPIO BCM, description: Numer GPIO BCM Raspberry Pi 5 używany w trybie GPIO.}
+  gpio_active_high: {name: Aktywny stan wysoki, description: Włącz, aby alarm podawał stan wysoki. Wyłącz dla wyjścia aktywnego stanem niskim.}
+  poll_interval_seconds: {name: Odstęp kontroli, description: Czas między odczytami encji Home Assistant.}
+  alarm_coordination_topic: {name: Temat koordynacji audio, description: Retained MQTT używany do wstrzymywania szumu podczas alarmu.}
+  mqtt_base_topic: {name: Główny temat MQTT, description: Prefiks tematów dodatku Alarm.}
+  mqtt_discovery_prefix: {name: Prefiks Discovery, description: Zwykle homeassistant.}
+  device_name: {name: Nazwa urządzenia, description: Nazwa urządzenia widoczna w Home Assistant.}
+  log_level: {name: Poziom logowania, description: Szczegółowość dziennika dodatku.}

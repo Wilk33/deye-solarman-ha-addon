@@ -1,0 +1,62 @@
+name: Alarm
+version: "1.0.0"
+slug: haos-alarm
+description: Uniwersalny alarm encji Home Assistant z wyjściem audio albo GPIO Raspberry Pi 5
+url: "https://github.com/Wilk33/deye-solarman-ha-addon"
+stage: experimental
+init: false
+tmpfs: true
+audio: true
+gpio: true
+homeassistant_api: true
+services:
+  - mqtt:need
+arch:
+  - aarch64
+  - amd64
+map:
+  - type: media
+    read_only: true
+options:
+  output_mode: audio
+  monitored_entities:
+    - entity_id: sensor.deye_deye_10kw_battery_temperature
+      name: Temperatura baterii
+      alarm_low: ""
+      warning_low: ""
+      warning_high: "45"
+      alarm_high: "50"
+  notification_targets: []
+  notify_recovery: true
+  audio_file: ""
+  audio_volume_percent: 95
+  gpio_pin: 17
+  gpio_active_high: true
+  poll_interval_seconds: 5
+  alarm_coordination_topic: haos_alarm/active
+  mqtt_base_topic: haos_alarm
+  mqtt_discovery_prefix: homeassistant
+  device_name: Alarm
+  log_level: INFO
+schema:
+  output_mode: list(audio|gpio)
+  monitored_entities:
+    - entity_id: str
+      name: str?
+      alarm_low: str?
+      warning_low: str?
+      warning_high: str?
+      alarm_high: str?
+  notification_targets:
+    - str
+  notify_recovery: bool
+  audio_file: str?
+  audio_volume_percent: int(0,100)
+  gpio_pin: int(0,27)
+  gpio_active_high: bool
+  poll_interval_seconds: int(1,3600)
+  alarm_coordination_topic: str
+  mqtt_base_topic: str
+  mqtt_discovery_prefix: str
+  device_name: str
+  log_level: list(DEBUG|INFO|WARNING|ERROR)
