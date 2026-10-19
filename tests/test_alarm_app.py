@@ -121,6 +121,8 @@ class AlarmMqttTests(unittest.TestCase):
 
 		self.assertEqual([message.component for message in messages],["button","sensor"])
 		self.assertEqual([message.object_id for message in messages],["acknowledge","state"])
+		self.assertEqual(messages[0].payload["default_entity_id"],"button.haos_alarm_acknowledge")
+		self.assertEqual(messages[1].payload["default_entity_id"],"sensor.haos_alarm_state")
 		encoded="\n".join(json.dumps(message.payload) for message in messages)
 		self.assertNotIn("temperature",encoded)
 		self.assertIn("command/acknowledge",encoded)
