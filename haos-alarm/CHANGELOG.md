@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.1
+
+- Zastąpiono globalny przełącznik wyłączenia alarmu przyciskiem potwierdzenia aktywnego alarmu.
+- Potwierdzenie wycisza bieżący alarm oddzielnie dla każdego czujnika.
+- Dodano konfigurowalną histerezę ponownego uzbrojenia do każdego monitorowanego czujnika.
+- Inny czujnik może uruchomić alarm, gdy pierwszy pozostaje potwierdzony.
+- Dodano stan acknowledged i atrybuty cyklu alarmowego.
+
 ## 1.0.0
 
 - Dodano monitorowanie listy dowolnych encji Home Assistant.

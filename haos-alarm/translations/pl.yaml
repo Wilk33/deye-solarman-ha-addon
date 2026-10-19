@@ -1,8 +1,8 @@
 configuration:
   output_mode: {name: Tryb wyjścia, description: Wybierz dokładnie jedno wyjście alarmu - audio albo GPIO Raspberry Pi 5.}
-  monitored_entities: {name: Monitorowane encje, description: Lista encji i czterech opcjonalnych progów. Pusty próg jest wyłączony.}
+  monitored_entities: {name: Monitorowane encje, description: Lista encji z czterema opcjonalnymi progami i histerezą ponownego uzbrojenia. Pusty próg jest wyłączony.}
   notification_targets: {name: Odbiorcy powiadomień, description: Lista encji notify, na przykład notify.mobile_app_mateusz.}
-  notify_recovery: {name: Powiadomienie o powrocie, description: Powiadamiaj, gdy wartość wróci do prawidłowego zakresu.}
+  notify_recovery: {name: Powiadomienie o powrocie, description: Powiadamiaj, gdy wartość zakończy cykl alarmowy i czujnik zostanie ponownie uzbrojony.}
   audio_file: {name: Plik alarmu, description: Opcjonalny plik WAV z katalogu /media. Puste pole używa wbudowanego alarmu.}
   audio_volume_percent: {name: Głośność alarmu, description: Głośność wyjścia audio w procentach.}
   gpio_pin: {name: GPIO BCM, description: Numer GPIO BCM Raspberry Pi 5 używany w trybie GPIO.}

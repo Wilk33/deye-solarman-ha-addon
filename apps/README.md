@@ -3,7 +3,7 @@
 Repozytorium zawiera trzy kanoniczne źródła aplikacji:
 
 - `apps/deye-solarman/src/deye_solarman_diagnostics` - SolarMan Diagnostics 2.0.6 i oba adaptery transportu;
-- `apps/haos-alarm/src/haos_alarm` - Alarm 1.0.0;
+- `apps/haos-alarm/src/haos_alarm` - Alarm 1.0.1;
 - `apps/continuous-noise/src/continuous_noise` - Continuous Noise 1.0.0.
 
 Wspólny kod audio, MQTT i Supervisor nowych dodatków znajduje się w `packages/ha_audio_common`.

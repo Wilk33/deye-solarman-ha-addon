@@ -28,33 +28,42 @@ class AlarmApp:
 		self.monitors=[MonitorDefinition.from_dict(item) for item in options.get("monitored_entities",[])]
 		self.levels={monitor.entity_id:AlarmLevel.DISABLED for monitor in self.monitors}
 		self.values: dict[str,float | None]={monitor.entity_id:None for monitor in self.monitors}
-		self.enabled=True
+		self.acknowledged_levels: dict[str,AlarmLevel | None]={monitor.entity_id:None for monitor in self.monitors}
 		self.state="initializing"
 		self._output_active=False
 		self._lock=threading.RLock()
 
-	def set_enabled(self,enabled: bool) -> None:
+	def acknowledge_active_alarms(self) -> int:
 		with self._lock:
-			self.enabled=bool(enabled)
-			if not self.enabled:
-				self._set_output(False)
-				self.state="disabled"
-			else:
-				self._apply_global_level()
+			acknowledged=0
+			for monitor in self.monitors:
+				level=self.levels[monitor.entity_id]
+				if level not in ACTIVE_LEVELS:
+					continue
+				if self.acknowledged_levels[monitor.entity_id] == level:
+					continue
+				self.acknowledged_levels[monitor.entity_id]=level
+				acknowledged+=1
+				LOGGER.warning(
+					"Potwierdzono alarm %s dla %s, ponowne uzbrojenie przy wartości %s",
+					level.value,
+					monitor.entity_id,
+					monitor.rearm_threshold(level),
+				)
+			self._apply_global_level()
 			self._publish_state()
-		LOGGER.info("Alarm %s", "włączony" if self.enabled else "wyłączony")
+		if acknowledged == 0:
+			LOGGER.info("Polecenie potwierdzenia nie znalazło aktywnego alarmu")
+		return acknowledged
 
 	def poll_once(self) -> None:
 		with self._lock:
-			if not self.enabled:
-				self.state="disabled"
-				self._publish_state()
-				return
 			for monitor in self.monitors:
 				if not monitor.enabled:
 					self.levels[monitor.entity_id]=AlarmLevel.DISABLED
 					continue
 				previous=self.levels.get(monitor.entity_id,AlarmLevel.UNAVAILABLE)
+				previous_acknowledgement=self.acknowledged_levels[monitor.entity_id]
 				try:
 					payload=self.home_assistant.get_state(monitor.entity_id)
 					value=float(str(payload.get("state","")).replace(",","."))
@@ -67,8 +76,18 @@ class AlarmApp:
 					level=AlarmLevel.UNAVAILABLE
 				self.values[monitor.entity_id]=value
 				self.levels[monitor.entity_id]=level
+				rearmed=self._update_acknowledgement(monitor,level,value)
+				current_acknowledgement=self.acknowledged_levels[monitor.entity_id]
 				if level != previous:
 					LOGGER.info("Zmiana %s: %s -> %s, wartość=%s",monitor.entity_id,previous.value,level.value,value)
+				if rearmed:
+					self._notify_transition(
+						monitor,
+						previous_acknowledgement or previous,
+						level,
+						value,
+					)
+				elif level != previous and current_acknowledgement is None:
 					self._notify_transition(monitor,previous,level,value)
 			self._apply_global_level()
 			self._publish_state()
@@ -78,14 +97,54 @@ class AlarmApp:
 			self._set_output(False)
 			self.output.close()
 
+	def _update_acknowledgement(
+		self,
+		monitor: MonitorDefinition,
+		level: AlarmLevel,
+		value: float | None,
+	) -> bool:
+		acknowledged=self.acknowledged_levels[monitor.entity_id]
+		if acknowledged is None:
+			return False
+		opposite=(
+			acknowledged == AlarmLevel.ALARM_HIGH and level == AlarmLevel.ALARM_LOW
+		) or (
+			acknowledged == AlarmLevel.ALARM_LOW and level == AlarmLevel.ALARM_HIGH
+		)
+		if opposite:
+			self.acknowledged_levels[monitor.entity_id]=None
+			LOGGER.warning(
+				"Nowy alarm w przeciwnym kierunku dla %s: %s",
+				monitor.entity_id,
+				level.value,
+			)
+			return False
+		if value is None or not monitor.should_rearm(acknowledged,value):
+			return False
+		self.acknowledged_levels[monitor.entity_id]=None
+		LOGGER.info(
+			"Ponownie uzbrojono %s po alarmie %s przy wartości %s",
+			monitor.entity_id,
+			acknowledged.value,
+			value,
+		)
+		return True
+
 	def _apply_global_level(self) -> None:
-		level=aggregate_level(list(self.levels.values()))
-		active=level in ACTIVE_LEVELS
+		active=any(
+			self.levels[monitor.entity_id] in ACTIVE_LEVELS
+			and self.acknowledged_levels[monitor.entity_id] != self.levels[monitor.entity_id]
+			for monitor in self.monitors
+		)
 		self._set_output(active)
-		if level == AlarmLevel.DISABLED:
-			self.state="ok"
-		else:
-			self.state=level.state
+		if active:
+			self.state="alarm"
+			return
+		if any(level is not None for level in self.acknowledged_levels.values()):
+			self.state="acknowledged"
+			return
+		level=aggregate_level(list(self.levels.values()))
+		self.state="ok" if level == AlarmLevel.DISABLED else level.state
 
 	def _set_output(self,active: bool) -> None:
 		if self._output_active == active:
@@ -125,7 +184,6 @@ class AlarmApp:
 				LOGGER.exception("Nie udało się wysłać powiadomienia do %s",target)
 
 	def _publish_state(self) -> None:
-		self.publisher.publish(f"{self.base_topic}/state/enabled","ON" if self.enabled else "OFF")
 		self.publisher.publish(f"{self.base_topic}/state/state",self.state)
 		self.publisher.publish(f"{self.base_topic}/state/attributes",{
 			"output_active":self._output_active,
@@ -137,6 +195,10 @@ class AlarmApp:
 					"level":self.levels[monitor.entity_id].value,
 					"value":self.values[monitor.entity_id],
 					"configured":monitor.enabled,
+					"acknowledged":self.acknowledged_levels[monitor.entity_id] is not None,
+					"armed":self.acknowledged_levels[monitor.entity_id] is None,
+					"hysteresis":monitor.hysteresis,
+					"rearm_threshold":monitor.rearm_threshold(self.acknowledged_levels[monitor.entity_id]) if self.acknowledged_levels[monitor.entity_id] is not None else None,
 				}
 				for monitor in self.monitors
 			],

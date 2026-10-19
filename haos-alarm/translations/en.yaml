@@ -1,8 +1,8 @@
 configuration:
   output_mode: {name: Output mode, description: Select exactly one alarm output - audio or Raspberry Pi 5 GPIO.}
-  monitored_entities: {name: Monitored entities, description: List of entities and four optional thresholds. An empty threshold is disabled.}
+  monitored_entities: {name: Monitored entities, description: List of entities with four optional thresholds and a rearming hysteresis. An empty threshold is disabled.}
   notification_targets: {name: Notification targets, description: List of notify entities such as notify.mobile_app_phone.}
-  notify_recovery: {name: Recovery notification, description: Notify when a value returns to its normal range.}
+  notify_recovery: {name: Recovery notification, description: Notify when a value completes its alarm cycle and the sensor is rearmed.}
   audio_file: {name: Alarm file, description: Optional WAV file from /media. Empty uses the built-in alarm.}
   audio_volume_percent: {name: Alarm volume, description: Audio output volume in percent.}
   gpio_pin: {name: BCM GPIO, description: Raspberry Pi 5 BCM GPIO number used in GPIO mode.}

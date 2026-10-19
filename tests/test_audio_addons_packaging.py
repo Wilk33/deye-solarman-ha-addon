@@ -30,7 +30,7 @@ class AudioAddonPackagingTests(unittest.TestCase):
 		self.assertEqual(config["schema"]["output_mode"],"list(audio|gpio)")
 		monitor_schema=config["schema"]["monitored_entities"][0]
 		self.assertEqual(set(monitor_schema),{
-			"entity_id","name","alarm_low","warning_low","warning_high","alarm_high",
+			"entity_id","name","alarm_low","warning_low","warning_high","alarm_high","hysteresis",
 		})
 		self.assertEqual(config["schema"]["notification_targets"],["str"])
 		self.assertFalse((ROOT/"haos-alarm/build.yaml").exists())

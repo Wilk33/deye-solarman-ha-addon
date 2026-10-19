@@ -49,12 +49,12 @@ def main() -> None:
 	holder: dict[str,AlarmApp]={}
 
 	def handle_message(topic: str,payload: str,retained: bool) -> None:
-		if retained or topic != f"{base_topic}/command/enabled":
+		if retained or topic != f"{base_topic}/command/acknowledge":
 			return
-		if payload.upper() not in {"ON","OFF"}:
+		if payload.upper() != "PRESS":
 			LOGGER.warning("Odrzucono komendę MQTT: %s",payload)
 			return
-		holder["app"].set_enabled(payload.upper() == "ON")
+		holder["app"].acknowledge_active_alarms()
 
 	token=os.environ.get("SUPERVISOR_TOKEN","")
 	ha=HomeAssistantClient(token)
@@ -73,11 +73,11 @@ def main() -> None:
 
 	try:
 		mqtt.connect()
-		mqtt.subscribe(f"{base_topic}/command/enabled")
+		mqtt.subscribe(f"{base_topic}/command/acknowledge")
+		mqtt.publish(f"{discovery_prefix}/switch/haos_alarm/enabled/config","")
 		for message in discovery_messages(discovery_prefix,base_topic,device_name):
 			mqtt.publish(message.topic,message.payload)
 		mqtt.publish(f"{base_topic}/availability","online")
-		mqtt.publish(f"{base_topic}/state/enabled","ON")
 		LOGGER.info(
 			"Alarm uruchomiony: tryb=%s, encje=%s, aktywne reguły=%s, cele powiadomień=%s",
 			options.get("output_mode","audio"),

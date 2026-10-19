@@ -19,22 +19,20 @@ def discovery_messages(discovery_prefix: str,base_topic: str,device_name: str) -
 		"name":device_name,
 		"manufacturer":"Wilk33",
 		"model":"HAOS Alarm",
-		"sw_version":"1.0.0",
+		"sw_version":"1.0.1",
 	}
-	switch=DiscoveryMessage(
-		"switch",
-		"enabled",
-		f"{discovery_prefix}/switch/haos_alarm/enabled/config",
+	button=DiscoveryMessage(
+		"button",
+		"acknowledge",
+		f"{discovery_prefix}/button/haos_alarm/acknowledge/config",
 		{
-			"name":"Alarm włączony",
-			"unique_id":"haos_alarm_enabled",
-			"object_id":"haos_alarm_enabled",
-			"state_topic":f"{base_topic}/state/enabled",
-			"command_topic":f"{base_topic}/command/enabled",
+			"name":"Potwierdź alarm",
+			"unique_id":"haos_alarm_acknowledge",
+			"object_id":"haos_alarm_acknowledge",
+			"command_topic":f"{base_topic}/command/acknowledge",
+			"payload_press":"PRESS",
 			"availability_topic":availability,
-			"payload_on":"ON",
-			"payload_off":"OFF",
-			"icon":"mdi:alarm-light",
+			"icon":"mdi:alarm-light-off",
 			"device":device,
 		},
 	)
@@ -53,4 +51,4 @@ def discovery_messages(discovery_prefix: str,base_topic: str,device_name: str) -
 			"device":device,
 		},
 	)
-	return [switch,sensor]
+	return [button,sensor]

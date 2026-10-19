@@ -82,15 +82,50 @@ class AlarmModelTests(unittest.TestCase):
 			})
 
 
+	def test_acknowledged_high_alarm_rearms_below_warning_hysteresis(self) -> None:
+		monitor=MonitorDefinition.from_dict({
+			"entity_id":"sensor.temperature",
+			"warning_high":"50",
+			"alarm_high":"60",
+			"hysteresis":"5",
+		})
+
+		self.assertEqual(monitor.rearm_threshold(AlarmLevel.ALARM_HIGH),45)
+		self.assertFalse(monitor.should_rearm(AlarmLevel.ALARM_HIGH,46))
+		self.assertTrue(monitor.should_rearm(AlarmLevel.ALARM_HIGH,45))
+
+	def test_acknowledged_low_alarm_rearms_above_warning_hysteresis(self) -> None:
+		monitor=MonitorDefinition.from_dict({
+			"entity_id":"sensor.temperature",
+			"alarm_low":"10",
+			"warning_low":"20",
+			"hysteresis":"3",
+		})
+
+		self.assertEqual(monitor.rearm_threshold(AlarmLevel.ALARM_LOW),23)
+		self.assertFalse(monitor.should_rearm(AlarmLevel.ALARM_LOW,22))
+		self.assertTrue(monitor.should_rearm(AlarmLevel.ALARM_LOW,23))
+
+	def test_negative_hysteresis_is_rejected(self) -> None:
+		with self.assertRaisesRegex(ValueError,"Histereza"):
+			MonitorDefinition.from_dict({
+				"entity_id":"sensor.temperature",
+				"warning_high":"50",
+				"alarm_high":"60",
+				"hysteresis":"-1",
+			})
+
 class AlarmMqttTests(unittest.TestCase):
-	def test_discovery_contains_only_enable_switch_and_state_sensor(self) -> None:
+	def test_discovery_contains_only_acknowledge_button_and_state_sensor(self) -> None:
 		messages=discovery_messages("homeassistant","haos_alarm","Alarm")
 
-		self.assertEqual([message.component for message in messages],["switch","sensor"])
-		self.assertEqual([message.object_id for message in messages],["enabled","state"])
+		self.assertEqual([message.component for message in messages],["button","sensor"])
+		self.assertEqual([message.object_id for message in messages],["acknowledge","state"])
 		encoded="\n".join(json.dumps(message.payload) for message in messages)
 		self.assertNotIn("temperature",encoded)
-		self.assertIn("command/enabled",encoded)
+		self.assertIn("command/acknowledge",encoded)
+		self.assertNotIn("command/enabled",encoded)
+		self.assertNotIn("state/enabled",encoded)
 		self.assertIn("state/state",encoded)
 
 
@@ -198,22 +233,111 @@ class AlarmRuntimeTests(unittest.TestCase):
 
 		self.assertEqual(app.state,"unavailable")
 
-	def test_disabling_alarm_immediately_deactivates_output(self) -> None:
+	def test_acknowledged_sensor_stays_silent_until_rearm_threshold(self) -> None:
 		from haos_alarm.runtime import AlarmApp
 
 		options={
-			"monitored_entities":[{"entity_id":"sensor.hot","alarm_high":"85"}],
+			"monitored_entities":[{
+				"entity_id":"sensor.hot",
+				"warning_high":"50",
+				"alarm_high":"60",
+				"hysteresis":"5",
+			}],
+			"notification_targets":[],
+			"mqtt_base_topic":"haos_alarm",
+		}
+		ha=FakeHomeAssistant({"sensor.hot":"30"})
+		output=FakeOutput()
+		app=AlarmApp(options,ha,FakePublisher(),output)
+		app.poll_once()
+
+		ha.states["sensor.hot"]="63"
+		app.poll_once()
+		self.assertEqual(output.active,[True])
+		self.assertEqual(app.state,"alarm")
+
+		app.acknowledge_active_alarms()
+		self.assertEqual(output.active,[True,False])
+		self.assertEqual(app.state,"acknowledged")
+
+		app.poll_once()
+		self.assertEqual(output.active,[True,False])
+		self.assertEqual(app.state,"acknowledged")
+
+		ha.states["sensor.hot"]="46"
+		app.poll_once()
+		self.assertEqual(output.active,[True,False])
+		self.assertEqual(app.state,"acknowledged")
+
+		ha.states["sensor.hot"]="45"
+		app.poll_once()
+		self.assertEqual(app.state,"ok")
+
+		ha.states["sensor.hot"]="63"
+		app.poll_once()
+		self.assertEqual(output.active,[True,False,True])
+		self.assertEqual(app.state,"alarm")
+
+	def test_other_sensor_can_activate_alarm_while_first_is_acknowledged(self) -> None:
+		from haos_alarm.runtime import AlarmApp
+
+		options={
+			"monitored_entities":[
+				{
+					"entity_id":"sensor.first",
+					"warning_high":"50",
+					"alarm_high":"60",
+					"hysteresis":"5",
+				},
+				{
+					"entity_id":"sensor.second",
+					"warning_high":"50",
+					"alarm_high":"60",
+					"hysteresis":"5",
+				},
+			],
+			"notification_targets":[],
+			"mqtt_base_topic":"haos_alarm",
+		}
+		ha=FakeHomeAssistant({"sensor.first":"63","sensor.second":"30"})
+		output=FakeOutput()
+		app=AlarmApp(options,ha,FakePublisher(),output)
+		app.poll_once()
+		app.acknowledge_active_alarms()
+
+		ha.states["sensor.second"]="63"
+		app.poll_once()
+
+		self.assertEqual(output.active,[True,False,True])
+		self.assertEqual(app.state,"alarm")
+		self.assertEqual(app.acknowledged_levels["sensor.first"],AlarmLevel.ALARM_HIGH)
+		self.assertIsNone(app.acknowledged_levels["sensor.second"])
+
+	def test_one_acknowledgement_silences_all_current_alarm_sensors(self) -> None:
+		from haos_alarm.runtime import AlarmApp
+
+		options={
+			"monitored_entities":[
+				{"entity_id":"sensor.first","warning_high":"50","alarm_high":"60","hysteresis":"5"},
+				{"entity_id":"sensor.second","warning_high":"50","alarm_high":"60","hysteresis":"5"},
+			],
 			"notification_targets":[],
 			"mqtt_base_topic":"haos_alarm",
 		}
 		output=FakeOutput()
-		app=AlarmApp(options,FakeHomeAssistant({"sensor.hot":"90"}),FakePublisher(),output)
+		app=AlarmApp(
+			options,
+			FakeHomeAssistant({"sensor.first":"63","sensor.second":"70"}),
+			FakePublisher(),
+			output,
+		)
 		app.poll_once()
 
-		app.set_enabled(False)
+		acknowledged=app.acknowledge_active_alarms()
 
+		self.assertEqual(acknowledged,2)
 		self.assertEqual(output.active,[True,False])
-		self.assertEqual(app.state,"disabled")
+		self.assertEqual(app.state,"acknowledged")
 
 if __name__ == "__main__":
 	unittest.main()

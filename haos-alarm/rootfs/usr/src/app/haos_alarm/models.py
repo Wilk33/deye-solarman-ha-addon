@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
@@ -39,9 +40,12 @@ def optional_number(value: Any) -> float | None:
 	if value is None or str(value).strip() == "":
 		return None
 	try:
-		return float(str(value).replace(",","."))
+		number=float(str(value).replace(",","."))
 	except ValueError as error:
 		raise ValueError(f"Nieprawidłowa wartość progu: {value}") from error
+	if not math.isfinite(number):
+		raise ValueError(f"Nieprawidłowa wartość progu: {value}")
+	return number
 
 
 @dataclass(frozen=True)
@@ -52,12 +56,14 @@ class MonitorDefinition:
 	warning_low: float | None=None
 	warning_high: float | None=None
 	alarm_high: float | None=None
+	hysteresis: float=0.0
 
 	@classmethod
 	def from_dict(cls,data: dict[str,Any]) -> "MonitorDefinition":
 		entity_id=str(data.get("entity_id","")).strip()
 		if not entity_id or "." not in entity_id:
 			raise ValueError(f"Nieprawidłowy entity_id: {entity_id}")
+		hysteresis=optional_number(data.get("hysteresis"))
 		monitor=cls(
 			entity_id=entity_id,
 			name=str(data.get("name") or entity_id).strip(),
@@ -65,6 +71,7 @@ class MonitorDefinition:
 			warning_low=optional_number(data.get("warning_low")),
 			warning_high=optional_number(data.get("warning_high")),
 			alarm_high=optional_number(data.get("alarm_high")),
+			hysteresis=0.0 if hysteresis is None else hysteresis,
 		)
 		monitor.validate()
 		return monitor
@@ -76,6 +83,8 @@ class MonitorDefinition:
 		))
 
 	def validate(self) -> None:
+		if self.hysteresis < 0:
+			raise ValueError(f"Histereza nie może być ujemna dla {self.entity_id}")
 		if self.alarm_low is not None and self.warning_low is not None and self.alarm_low > self.warning_low:
 			raise ValueError(f"alarm_low musi być mniejszy lub równy warning_low dla {self.entity_id}")
 		if self.warning_high is not None and self.alarm_high is not None and self.warning_high > self.alarm_high:
@@ -105,6 +114,25 @@ class MonitorDefinition:
 			AlarmLevel.WARNING_HIGH:self.warning_high,
 			AlarmLevel.ALARM_HIGH:self.alarm_high,
 		}.get(level)
+
+	def rearm_threshold(self,level: AlarmLevel) -> float | None:
+		if level == AlarmLevel.ALARM_HIGH:
+			threshold=self.warning_high if self.warning_high is not None else self.alarm_high
+			return None if threshold is None else threshold-self.hysteresis
+		if level == AlarmLevel.ALARM_LOW:
+			threshold=self.warning_low if self.warning_low is not None else self.alarm_low
+			return None if threshold is None else threshold+self.hysteresis
+		return None
+
+	def should_rearm(self,level: AlarmLevel,value: float) -> bool:
+		threshold=self.rearm_threshold(level)
+		if threshold is None:
+			return True
+		if level == AlarmLevel.ALARM_HIGH:
+			return value <= threshold
+		if level == AlarmLevel.ALARM_LOW:
+			return value >= threshold
+		return True
 
 
 def aggregate_level(levels: list[AlarmLevel]) -> AlarmLevel:
