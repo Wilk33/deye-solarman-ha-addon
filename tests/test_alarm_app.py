@@ -116,13 +116,19 @@ class AlarmModelTests(unittest.TestCase):
 			})
 
 class AlarmMqttTests(unittest.TestCase):
-	def test_discovery_contains_only_acknowledge_button_and_state_sensor(self) -> None:
+	def test_discovery_contains_test_number_with_fixed_range_and_topics(self) -> None:
 		messages=discovery_messages("homeassistant","haos_alarm","Alarm")
 
-		self.assertEqual([message.component for message in messages],["button","sensor"])
-		self.assertEqual([message.object_id for message in messages],["acknowledge","state"])
+		self.assertEqual([message.component for message in messages],["button","sensor","number"])
+		self.assertEqual([message.object_id for message in messages],["acknowledge","state","test_value"])
 		self.assertEqual(messages[0].payload["default_entity_id"],"button.haos_alarm_acknowledge")
 		self.assertEqual(messages[1].payload["default_entity_id"],"sensor.haos_alarm_state")
+		self.assertEqual(messages[2].payload["default_entity_id"],"number.haos_alarm_test_value")
+		self.assertEqual(messages[2].payload["min"],-30)
+		self.assertEqual(messages[2].payload["max"],30)
+		self.assertEqual(messages[2].payload["step"],1)
+		self.assertEqual(messages[2].payload["command_topic"],"haos_alarm/command/test_value")
+		self.assertEqual(messages[2].payload["state_topic"],"haos_alarm/state/test_value")
 		encoded="\n".join(json.dumps(message.payload) for message in messages)
 		self.assertNotIn("temperature",encoded)
 		self.assertIn("command/acknowledge",encoded)
@@ -220,6 +226,71 @@ class AlarmRuntimeTests(unittest.TestCase):
 		self.assertEqual(len(ha.notifications),1)
 		self.assertEqual(output.active,[True])
 		self.assertEqual(app.state,"alarm")
+
+	def test_notification_targets_are_checked_as_home_assistant_entities(self) -> None:
+		from haos_alarm.runtime import AlarmApp
+
+		options={
+			"monitored_entities":[],
+			"notification_targets":["notify.phone","notify.mobile_app_missing"],
+			"mqtt_base_topic":"haos_alarm",
+		}
+		ha=FakeHomeAssistant({"notify.phone":"2026-10-19T12:00:00+00:00"})
+		app=AlarmApp(options,ha,FakePublisher(),FakeOutput())
+
+		with self.assertLogs("haos_alarm.runtime",level="ERROR") as logs:
+			invalid=app.validate_notification_targets()
+
+		self.assertEqual(invalid,["notify.mobile_app_missing"])
+		self.assertEqual(ha.reads,["notify.phone","notify.mobile_app_missing"])
+		self.assertIn("notify.mobile_app_missing",logs.output[0])
+
+	def test_test_value_uses_fixed_thresholds_and_alarm_path(self) -> None:
+		from haos_alarm.runtime import AlarmApp
+
+		options={
+			"monitored_entities":[],
+			"notification_targets":["notify.phone"],
+			"mqtt_base_topic":"haos_alarm",
+			"notify_recovery":True,
+		}
+		ha=FakeHomeAssistant({})
+		mqtt=FakePublisher()
+		output=FakeOutput()
+		app=AlarmApp(options,ha,mqtt,output)
+
+		app.set_test_value(10)
+		self.assertEqual(app.state,"warning")
+		self.assertEqual(len(ha.notifications),1)
+		self.assertEqual(output.active,[])
+
+		app.set_test_value(20)
+		self.assertEqual(app.state,"alarm")
+		self.assertEqual(len(ha.notifications),2)
+		self.assertEqual(output.active,[True])
+
+		app.acknowledge_active_alarms()
+		app.set_test_value(6)
+		self.assertEqual(app.state,"acknowledged")
+		self.assertEqual(output.active,[True,False])
+
+		app.set_test_value(5)
+		self.assertEqual(app.state,"ok")
+		self.assertEqual(len(ha.notifications),3)
+		self.assertIn(("haos_alarm/state/test_value",5,True),mqtt.messages)
+
+		app.set_test_value(-10)
+		self.assertEqual(app.state,"warning")
+		app.set_test_value(-20)
+		self.assertEqual(app.state,"alarm")
+		self.assertEqual(output.active,[True,False,True])
+
+		app.acknowledge_active_alarms()
+		app.set_test_value(-6)
+		self.assertEqual(app.state,"acknowledged")
+		app.set_test_value(-5)
+		self.assertEqual(app.state,"ok")
+		self.assertEqual(len(ha.notifications),6)
 
 	def test_non_finite_sensor_value_is_unavailable(self) -> None:
 		from haos_alarm.runtime import AlarmApp
@@ -340,6 +411,30 @@ class AlarmRuntimeTests(unittest.TestCase):
 		self.assertEqual(acknowledged,2)
 		self.assertEqual(output.active,[True,False])
 		self.assertEqual(app.state,"acknowledged")
+
+class AlarmCommandTests(unittest.TestCase):
+	def test_test_number_command_drives_alarm_and_rejects_retained_messages(self) -> None:
+		from haos_alarm.__main__ import handle_command
+		from haos_alarm.runtime import AlarmApp
+
+		app=AlarmApp(
+			{"monitored_entities":[],"notification_targets":[],"mqtt_base_topic":"haos_alarm"},
+			FakeHomeAssistant({}),
+			FakePublisher(),
+			FakeOutput(),
+		)
+
+		handle_command(app,"haos_alarm","haos_alarm/command/test_value","20",True)
+		self.assertEqual(app.state,"initializing")
+
+		handle_command(app,"haos_alarm","haos_alarm/command/test_value","20",False)
+		self.assertEqual(app.state,"alarm")
+		self.assertEqual(app.values["number.haos_alarm_test_value"],20)
+
+		with self.assertLogs("haos_alarm.__main__",level="WARNING") as logs:
+			handle_command(app,"haos_alarm","haos_alarm/command/test_value","31",False)
+		self.assertIn("od -30 do 30",logs.output[0])
+		self.assertEqual(app.values["number.haos_alarm_test_value"],20)
 
 if __name__ == "__main__":
 	unittest.main()

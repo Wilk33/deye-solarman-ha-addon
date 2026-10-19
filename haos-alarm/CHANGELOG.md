@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.2
+
+- Dodano encję `number.haos_alarm_test_value` do sprawdzania ostrzeżeń, alarmów, potwierdzenia i ponownego uzbrojenia.
+- Wartość testowa ma zakres od -30 do 30 oraz stałe progi -20, -10, 10 i 20 z histerezą 5.
+- Dodano kontrolę istnienia skonfigurowanych encji `notify` podczas uruchamiania dodatku.
+- Rozszerzono log o czytelny błąd dla nazw starszych akcji `notify.mobile_app_*` użytych zamiast encji `notify`.
+
 ## 1.0.1
 
 - Zastąpiono globalny przełącznik wyłączenia alarmu przyciskiem potwierdzenia aktywnego alarmu.

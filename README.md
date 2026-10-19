@@ -8,7 +8,7 @@ SolarMan Diagnostics łączy lokalną diagnostykę falownika Deye, porównanie d
 Repozytorium udostępnia trzy niezależne dodatki Home Assistant OS:
 
 - `SolarMan Diagnostics` 2.0.6 - diagnostyka i sterowanie falownikiem Deye;
-- `Alarm` 1.0.1 - monitorowanie encji oraz wyjście audio albo GPIO Raspberry Pi 5;
+- `Alarm` 1.0.2 - monitorowanie encji oraz wyjście audio albo GPIO Raspberry Pi 5;
 - `Continuous Noise` 1.0.0 - ciągłe odtwarzanie wybranego szumu z przełącznikami MQTT.
 
 Dokumentacja nowych dodatków:

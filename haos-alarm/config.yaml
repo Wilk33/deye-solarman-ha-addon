@@ -1,5 +1,5 @@
 name: Alarm
-version: "1.0.1"
+version: "1.0.2"
 slug: haos-alarm
 description: Uniwersalny alarm encji Home Assistant z wyjściem audio albo GPIO Raspberry Pi 5
 url: "https://github.com/Wilk33/deye-solarman-ha-addon"

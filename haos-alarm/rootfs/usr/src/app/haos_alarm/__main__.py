@@ -39,6 +39,28 @@ def build_output(options: dict[str,Any]) -> Any:
 	raise ValueError(f"Nieobsługiwany output_mode: {mode}")
 
 
+def handle_command(
+	app: AlarmApp,
+	base_topic: str,
+	topic: str,
+	payload: str,
+	retained: bool,
+) -> None:
+	if retained:
+		return
+	if topic == f"{base_topic}/command/acknowledge":
+		if payload.upper() != "PRESS":
+			LOGGER.warning("Odrzucono komendę potwierdzenia MQTT: %s",payload)
+			return
+		app.acknowledge_active_alarms()
+		return
+	if topic == f"{base_topic}/command/test_value":
+		try:
+			app.set_test_value(payload)
+		except (TypeError,ValueError) as error:
+			LOGGER.warning("Odrzucono testową wartość MQTT: %s",error)
+
+
 def main() -> None:
 	options=load_options()
 	configure_logging(str(options.get("log_level","INFO")))
@@ -49,12 +71,7 @@ def main() -> None:
 	holder: dict[str,AlarmApp]={}
 
 	def handle_message(topic: str,payload: str,retained: bool) -> None:
-		if retained or topic != f"{base_topic}/command/acknowledge":
-			return
-		if payload.upper() != "PRESS":
-			LOGGER.warning("Odrzucono komendę MQTT: %s",payload)
-			return
-		holder["app"].acknowledge_active_alarms()
+		handle_command(holder["app"],base_topic,topic,payload,retained)
 
 	token=os.environ.get("SUPERVISOR_TOKEN","")
 	ha=HomeAssistantClient(token)
@@ -64,6 +81,7 @@ def main() -> None:
 	output=build_output(options)
 	app=AlarmApp(options,ha,mqtt,output)
 	holder["app"]=app
+	app.validate_notification_targets()
 
 	def stop_handler(_signum: int,_frame: Any) -> None:
 		stop.set()
@@ -74,6 +92,7 @@ def main() -> None:
 	try:
 		mqtt.connect()
 		mqtt.subscribe(f"{base_topic}/command/acknowledge")
+		mqtt.subscribe(f"{base_topic}/command/test_value")
 		mqtt.publish(f"{discovery_prefix}/switch/haos_alarm/enabled/config","")
 		for message in discovery_messages(discovery_prefix,base_topic,device_name):
 			mqtt.publish(message.topic,message.payload)

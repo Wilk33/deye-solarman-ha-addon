@@ -19,7 +19,7 @@ def discovery_messages(discovery_prefix: str,base_topic: str,device_name: str) -
 		"name":device_name,
 		"manufacturer":"Wilk33",
 		"model":"HAOS Alarm",
-		"sw_version":"1.0.1",
+		"sw_version":"1.0.2",
 	}
 	button=DiscoveryMessage(
 		"button",
@@ -53,4 +53,24 @@ def discovery_messages(discovery_prefix: str,base_topic: str,device_name: str) -
 			"device":device,
 		},
 	)
-	return [button,sensor]
+	test_number=DiscoveryMessage(
+		"number",
+		"test_value",
+		f"{discovery_prefix}/number/haos_alarm/test_value/config",
+		{
+			"name":"Test alarmu",
+			"unique_id":"haos_alarm_test_value",
+			"object_id":"haos_alarm_test_value",
+			"default_entity_id":"number.haos_alarm_test_value",
+			"command_topic":f"{base_topic}/command/test_value",
+			"state_topic":f"{base_topic}/state/test_value",
+			"availability_topic":availability,
+			"min":-30,
+			"max":30,
+			"step":1,
+			"mode":"slider",
+			"icon":"mdi:test-tube",
+			"device":device,
+		},
+	)
+	return [button,sensor,test_number]

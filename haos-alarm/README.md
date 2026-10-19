@@ -1,4 +1,4 @@
-# Alarm 1.0.1
+# Alarm 1.0.2
 
 Dodatek monitoruje dowolne liczbowe encje Home Assistant i uruchamia dokładnie jeden skonfigurowany rodzaj wyjścia alarmowego: audio albo GPIO Raspberry Pi 5.
 
@@ -58,10 +58,12 @@ Jeżeli w czasie wyciszenia pierwszy czujnik nadal ma 63, a drugi czujnik przekr
 
 ```yaml
 notification_targets:
-  - notify.mobile_app_mateusz
+  - notify.iphone
 ```
 
 Każde nowe ostrzeżenie lub alarm tworzy trwałe powiadomienie w Home Assistant oraz wysyła wiadomość do wszystkich skonfigurowanych odbiorców. `notify_recovery` włącza wiadomość po zakończeniu cyklu alarmowego i ponownym uzbrojeniu czujnika.
+
+Wpis musi być identyfikatorem encji widocznym w `Narzędzia -> Stany`, na przykład `notify.iphone`. Nazwa starszej akcji, taka jak `notify.mobile_app_iphone`, nie jest identyfikatorem encji. Dodatek sprawdza skonfigurowane cele podczas uruchamiania i zapisuje czytelny błąd w logu, jeżeli encja nie istnieje.
 
 ## Wyjście audio
 
@@ -89,14 +91,36 @@ gpio_active_high: true
 
 ## Encje MQTT
 
-Dodatek publikuje dokładnie dwie encje przez MQTT Discovery:
+Dodatek publikuje trzy encje przez MQTT Discovery:
 
 - `button.haos_alarm_acknowledge` - potwierdza i wycisza alarmy aktywne w chwili naciśnięcia;
-- `sensor.haos_alarm_state` - pokazuje `ok`, `warning`, `alarm`, `acknowledged` albo `unavailable`.
+- `sensor.haos_alarm_state` - pokazuje `ok`, `warning`, `alarm`, `acknowledged` albo `unavailable`;
+- `number.haos_alarm_test_value` - uruchamia kontrolowany test ostrzeżeń, alarmów, potwierdzenia i ponownego uzbrojenia.
 
-Szczegóły monitorowanych encji są atrybutami sensora stanu. Dla każdego wpisu zawierają bieżący poziom, wartość, informację o potwierdzeniu, stan uzbrojenia, histerezę i próg ponownego uzbrojenia. Nie tworzą dodatkowych encji MQTT.
+Szczegóły monitorowanych encji są atrybutami sensora stanu. Dla każdego wpisu zawierają bieżący poziom, wartość, informację o potwierdzeniu, stan uzbrojenia, histerezę i próg ponownego uzbrojenia. Rzeczywiste czujniki z `monitored_entities` nie tworzą dodatkowych encji MQTT.
 
 Podczas pierwszego uruchomienia wersji 1.0.1 dodatek usuwa z MQTT Discovery starą encję `switch.haos_alarm_enabled`.
+
+## Test alarmu
+
+Suwak `number.haos_alarm_test_value` ma zakres od -30 do 30, krok 1 i wartość neutralną 0. Korzysta z tej samej logiki powiadomień i wyjścia alarmowego co rzeczywiste czujniki. Jego stałe progi to:
+
+- alarm dolny: -20;
+- ostrzeżenie dolne: -10;
+- ostrzeżenie górne: 10;
+- alarm górny: 20;
+- histereza: 5.
+
+Przykładowa pełna próba strony górnej:
+
+1. Ustaw 10, aby wysłać ostrzeżenie.
+2. Ustaw 20, aby wysłać alarm i uruchomić wyjście audio albo GPIO.
+3. Naciśnij `button.haos_alarm_acknowledge`, aby wyciszyć aktywny alarm.
+4. Ustaw 6 - test pozostanie potwierdzony.
+5. Ustaw 5 - test zostanie ponownie uzbrojony i wyśle powiadomienie o powrocie, jeżeli `notify_recovery` jest włączone.
+6. Ustaw 0, aby pozostawić suwak w stanie neutralnym.
+
+Dla strony dolnej użyj kolejno -10, -20, przycisku potwierdzenia, -6 i -5. Po uruchomieniu dodatku test zaczyna od wartości 0, dzięki czemu restart nie uruchamia alarmu testowego.
 
 ## Współpraca z Continuous Noise
 
@@ -104,13 +128,14 @@ Retained temat `haos_alarm/active` ma wartość `ON` tylko wtedy, gdy wyjście a
 
 ## Granice weryfikacji
 
-Testy automatyczne sprawdzają progi, histerezę, potwierdzenie i ponowne uzbrojenie per czujnik, niezależność czujników, MQTT Discovery, bezpieczny stan GPIO, manifest i zgodność pakietu. Nie potwierdzają fizycznego dźwięku, mapowania konkretnej karty audio, konkretnego obwodu GPIO ani dostarczenia powiadomienia przez zewnętrzną usługę telefonu. Te elementy wymagają testu na docelowym Home Assistant OS i Raspberry Pi 5.
+Testy automatyczne sprawdzają progi, histerezę, potwierdzenie i ponowne uzbrojenie per czujnik, niezależność czujników, suwak testowy, MQTT Discovery, kontrolę celów powiadomień, bezpieczny stan GPIO, manifest i zgodność pakietu. Nie potwierdzają fizycznego dźwięku, mapowania konkretnej karty audio, konkretnego obwodu GPIO ani dostarczenia powiadomienia przez zewnętrzną usługę telefonu. Te elementy wymagają testu na docelowym Home Assistant OS i Raspberry Pi 5.
 
 ## Źródła
 
 - [Home Assistant - konfiguracja aplikacji](https://developers.home-assistant.io/docs/add-ons/configuration/)
 - [Home Assistant - MQTT button](https://www.home-assistant.io/integrations/button.mqtt/)
 - [Home Assistant - MQTT Discovery](https://www.home-assistant.io/integrations/mqtt/#mqtt-discovery)
+- [Home Assistant - MQTT number](https://www.home-assistant.io/integrations/number.mqtt/)
 - [Home Assistant - powiadomienia](https://www.home-assistant.io/integrations/notify/)
 - [Home Assistant Companion - podstawowe powiadomienia](https://companion.home-assistant.io/docs/notifications/notifications-basic/)
 - [Linux kernel - GPIO sysfs](https://kernel.org/doc/html/v5.19/admin-guide/gpio/sysfs.html)
