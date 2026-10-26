@@ -17,12 +17,18 @@ from .logging_utils import success
 
 LOGGER=logging.getLogger(__name__)
 
+
+TRANSPORT_DIAGNOSTICS={
+	"solarman_tcp":"SolarMan TCP",
+	"modbus_rtu":"Modbus RTU (RS485)",
+}
+
 class MqttPublisher:
 	def __init__(self, config: MqttConfig, inverter: InverterConfig, detailed_logs: bool=False) -> None:
 		self._config=config
 		self._inverter=inverter
 		self.detailed_logs=detailed_logs
-		self.origin={"name":"SolarMan Diagnostics","sw_version":"2.0.6","support_url":"https://github.com/Wilk33/deye-solarman-ha-addon"}
+		self.origin={"name":"SolarMan Diagnostics","sw_version":"2.0.7","support_url":"https://github.com/Wilk33/deye-solarman-ha-addon"}
 		self._connected=threading.Event()
 		self._connection_error: str | None=None
 		self._session_lock=threading.RLock()
@@ -35,6 +41,8 @@ class MqttPublisher:
 		self._control_handler=None
 		self._control_topics={}
 		self._control_discovery={}
+		self._transport_diagnostic_discovery: set[str]=set()
+		self._transport_diagnostic_cleanup_done=False
 		self._client.on_message=self._on_control_message
 		self._client.will_set(self.availability_topic(),"offline",retain=True)
 		if config.tls:
@@ -106,11 +114,7 @@ class MqttPublisher:
 				"unique_id": f"deye_solarman_{self._inverter.serial_number}_{sensor.key}",
 				"object_id": f"deye_solarman_{self._inverter.serial_number}_{sensor.key}",
 				"json_attributes_topic": attributes_topic,
-				"availability":[
-					{"topic":self.availability_topic()},
-					{"topic":self.sensor_availability_topic(sensor)},
-				],
-				"availability_mode":"all",
+				"availability":[{"topic":self.availability_topic()}],
 				"device": {
 					"identifiers": [f"deye_solarman_{self._inverter.serial_number}"],
 					"name": self._inverter.name,
@@ -171,6 +175,87 @@ class MqttPublisher:
 			True,
 			"sensor availability",
 		)
+
+	def publish_transport_diagnostics(self,status: dict[str,Any]) -> None:
+		transports={str(item["id"]):item for item in status.get("transports",[]) if item.get("id") in TRANSPORT_DIAGNOSTICS}
+		with self._discovery_lock:
+			if not self._transport_diagnostic_cleanup_done:
+				for transport_id in TRANSPORT_DIAGNOSTICS.keys()-transports.keys():
+					for metric in ("latency","errors"):
+						self._publish_confirmed(self.transport_diagnostic_discovery_topic(transport_id,metric),"",True,"transport diagnostic removal")
+				self._transport_diagnostic_cleanup_done=True
+			for transport_id,transport_status in transports.items():
+				for metric in ("latency","errors"):
+					key=f"{transport_id}:{metric}"
+					if key not in self._transport_diagnostic_discovery:
+						self._publish_confirmed(
+							self.transport_diagnostic_discovery_topic(transport_id,metric),
+							json.dumps(self._transport_diagnostic_payload(transport_id,metric)),
+							True,
+							"transport diagnostic discovery",
+						)
+						self._transport_diagnostic_discovery.add(key)
+				attributes={
+					"transport":transport_id,
+					"online":bool(transport_status.get("online",False)),
+					"last_error":transport_status.get("last_error"),
+					"reconnect_in_seconds":transport_status.get("reconnect_in_seconds",0.0),
+				}
+				values={
+					"latency":transport_status.get("latency_ms",0.0),
+					"errors":transport_status.get("error_count",0),
+				}
+				for metric,value in values.items():
+					state_topic=self.transport_diagnostic_state_topic(transport_id,metric)
+					self._publish_confirmed(state_topic,value,self._config.retain,"transport diagnostic state")
+					self._publish_confirmed(
+						f"{state_topic}/attributes",
+						json.dumps(attributes),
+						self._config.retain,
+						"transport diagnostic attributes",
+					)
+
+	def transport_diagnostic_discovery_topic(self,transport_id: str,metric: str) -> str:
+		return (
+			f"{self._config.discovery_prefix}/sensor/"
+			f"deye_solarman_{self._inverter.serial_number}_transport_{transport_id}_{metric}/config"
+		)
+
+	def transport_diagnostic_state_topic(self,transport_id: str,metric: str) -> str:
+		suffix="latency_ms" if metric == "latency" else "errors"
+		return f"{self._config.base_topic}/{self._inverter.serial_number}/diagnostics/{transport_id}/{suffix}"
+
+	def _transport_diagnostic_payload(self,transport_id: str,metric: str) -> dict[str,Any]:
+		label=TRANSPORT_DIAGNOSTICS[transport_id]
+		state_topic=self.transport_diagnostic_state_topic(transport_id,metric)
+		metric_label="Latency" if metric == "latency" else "Errors"
+		payload={
+			"origin":self.origin,
+			"name":f"{label} {metric_label}",
+			"state_topic":state_topic,
+			"unique_id":f"deye_solarman_{self._inverter.serial_number}_transport_{transport_id}_{metric}",
+			"object_id":f"deye_solarman_{self._inverter.serial_number}_transport_{transport_id}_{metric}",
+			"json_attributes_topic":f"{state_topic}/attributes",
+			"availability":[{"topic":self.availability_topic()}],
+			"entity_category":"diagnostic",
+			"device":{
+				"identifiers":[f"deye_solarman_{self._inverter.serial_number}"],
+				"name":self._inverter.name,
+				"manufacturer":self._inverter.manufacturer,
+				"model":self._inverter.model,
+				"serial_number":self._inverter.serial_number,
+			},
+		}
+		if metric == "latency":
+			payload.update({
+				"device_class":"duration",
+				"state_class":"measurement",
+				"unit_of_measurement":"ms",
+				"icon":"mdi:timer-outline",
+			})
+		else:
+			payload["icon"]="mdi:alert-circle-outline"
+		return payload
 
 	def _on_connect(
 		self,

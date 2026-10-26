@@ -467,7 +467,7 @@ class DualTransportConfigTests(unittest.TestCase):
 	def test_addon_uses_version_2_sections_and_disables_rs485_by_default(self) -> None:
 		addon=yaml.safe_load((ROOT/"deye-solarman-diagnostics/config.yaml").read_text(encoding="utf-8"))
 
-		self.assertEqual(addon["version"],"2.0.6")
+		self.assertEqual(addon["version"],"2.0.7")
 		self.assertNotIn("logger",addon["options"])
 		self.assertNotIn("polling",addon["options"])
 		self.assertTrue(addon["options"]["solarman"]["enabled"])
@@ -628,6 +628,15 @@ class ModbusRtuTransportTests(unittest.TestCase):
 
 
 class SolarmanConnectionTests(unittest.TestCase):
+	def test_read_connection_reset_is_normalized_without_library_traceback_contract(self) -> None:
+		client=SolarmanClient(make_solarman_config())
+		library_client=FakeSolarmanLibraryClient()
+		library_client.read_holding_registers=lambda _register,_count:(_ for _ in ()).throw(ConnectionResetError(104,"Connection reset by peer"))
+		client._client=library_client
+
+		with self.assertRaisesRegex(TransportConnectionClosedError,"Connection reset by peer"):
+			client.read_holding_registers(10040,1)
+
 	def test_first_connect_failure_is_normalized_and_rate_limited_by_manager(self) -> None:
 		clock=ManualClock(100.0)
 		client=SolarmanClient(make_solarman_config())

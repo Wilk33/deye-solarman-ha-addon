@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.7
+
+- Preserve the last valid telemetry state when SolarMan TCP or Modbus RTU is disconnected. A failed read no longer publishes a replacement value or per-sensor unavailability.
+- Publish latency and consecutive-error diagnostic entities for every enabled transport. The Ingress panel and MQTT diagnostics now use the same transport runtime state.
+- Report expected transport disconnects as concise warnings without tracebacks, including in detailed logging mode. Suppress raw protocol-library debug frames and internal socket tracebacks while retaining application debug information.
+
 ## 2.0.6
 
 - Publish numeric control entities with the MQTT Discovery mode selected by the control catalog. The bundled Deye number controls now use `mode: slider`.
@@ -53,7 +59,7 @@
 - Bundle both transport adapters, the shared core, PL/EN i18n, and checksummed catalogs in the self-contained HAOS build context. Pin `pymodbus==3.14.0`.
 - Document that automated validation does not prove a physical USB adapter, RS485 timing, firmware-specific register maps, or a real inverter FC16 write.
 
-Entries below describe historical releases and do not define the current 2.0.6 architecture.
+Entries below describe historical releases and do not define the current 2.0.7 architecture.
 
 ## 1.4.0
 

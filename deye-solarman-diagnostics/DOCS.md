@@ -1,4 +1,4 @@
-# SolarMan Diagnostics 2.0.6 - instrukcja użytkownika
+# SolarMan Diagnostics 2.0.7 - instrukcja użytkownika
 
 - [Strona projektu / Project site](https://wilk33.github.io/deye-solarman-ha-addon/)
 - [Definicje rejestrów / Register reference](https://wilk33.github.io/deye-solarman-ha-addon/reference/)
@@ -154,7 +154,7 @@ Zmiana interwału jednego transportu nie zmienia interwału drugiego.
 
 ## Migracja z wersji 1.x
 
-Wersja 2.0.6 zachowuje slug oraz katalog instalacyjny, więc Home Assistant aktualizuje istniejący dodatek.
+Wersja 2.0.7 zachowuje slug oraz katalog instalacyjny, więc Home Assistant aktualizuje istniejący dodatek.
 
 Starsza konfiguracja używała sekcji:
 
@@ -207,11 +207,19 @@ Dodatkowe tematy to:
 ```text
 solarman_diagnostics/<serial_falownika>/<topic_suffix>/attributes
 solarman_diagnostics/<serial_falownika>/<topic_suffix>/raw
-solarman_diagnostics/<serial_falownika>/<topic_suffix>/availability
 solarman_diagnostics/<serial_falownika>/availability
 ```
 
-`attributes` zawiera pole `transport`. Dostępność sensora jest wyliczana ze wspólnej dostępności sesji/procesu oraz dostępności konkretnej encji. Last Will i kontrolowane zatrzymanie publikują wspólne `offline`.
+`attributes` zawiera pole `transport`. Discovery sensora korzysta wyłącznie ze wspólnej dostępności procesu. Utrata połączenia z loggerem albo RS485 nie publikuje nowej wartości, `unknown` ani `offline` dla sensora. Ostatni poprawny retained stan pozostaje bez zmian do kolejnego udanego odczytu. Last Will i kontrolowane zatrzymanie procesu publikują wspólne `offline`.
+
+Dla każdego włączonego transportu dodatek publikuje dwie encje kategorii `diagnostic`:
+
+```text
+solarman_diagnostics/<serial_falownika>/diagnostics/<transport>/latency_ms
+solarman_diagnostics/<serial_falownika>/diagnostics/<transport>/errors
+```
+
+Pole `<transport>` ma wartość `solarman_tcp` albo `modbus_rtu`. Encje pozostają dostępne podczas awarii samego transportu, ponieważ opisują jej stan. Ich atrybuty zawierają `online`, `last_error` i `reconnect_in_seconds`. Panel aplikacji i MQTT korzystają z tego samego snapshotu runtime.
 
 Tematy sterowania mają postać:
 
@@ -308,7 +316,7 @@ Zmiana transportu lub wyłączenie encji zachowuje jej tożsamość MQTT. Usuni�
 - pełne tracebacki oczekiwanych rozłączeń;
 - powtarzające się szczegóły połączenia.
 
-Ustaw `detailed_logs: true` tylko na czas diagnozy. Hasło MQTT nie jest wypisywane w logu.
+Ustaw `detailed_logs: true` tylko na czas diagnozy. Tryb szczegółowy dodaje zakresy i czasy operacji aplikacji, ale nadal filtruje wewnętrzne ramki `pymodbus`, debug `pysolarmanv5` oraz tracebacki oczekiwanych rozłączeń. Nieoczekiwany błąd programistyczny może nadal zawierać traceback. Hasło MQTT nie jest wypisywane w logu.
 
 Jeśli jeden transport ma status `unavailable`, sprawdź jego konfigurację i log. Drugi worker powinien nadal publikować swoje encje. Jeśli wspólna dostępność MQTT jest `offline`, sprawdź broker i cały proces dodatku.
 

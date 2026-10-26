@@ -65,7 +65,7 @@ class SolarmanClient:
 				socket_timeout=self._config.timeout,
 				auto_reconnect=False,
 			)
-		except (NoSocketAvailableError,OSError) as error:
+		except (NoSocketAvailableError,ConnectionError,OSError) as error:
 			self._client=None
 			raise TransportConnectionClosedError(str(error)) from error
 
@@ -74,8 +74,8 @@ class SolarmanClient:
 			return
 		try:
 			self._client.disconnect()
-		except Exception:
-			LOGGER.debug("Disconnect failed", exc_info=True)
+		except Exception as error:
+			LOGGER.debug("Solarman disconnect cleanup ignored error=%s",error)
 		finally:
 			self._client=None
 
@@ -94,6 +94,8 @@ class SolarmanClient:
 		start=time.perf_counter()
 		try:
 			return self._client.read_holding_registers(register, count)
+		except (NoSocketAvailableError,ConnectionError,OSError) as error:
+			raise SolarmanConnectionClosedError(str(error)) from error
 		except Exception as error:
 			if is_connection_closed_error(error):
 				raise SolarmanConnectionClosedError(str(error)) from error

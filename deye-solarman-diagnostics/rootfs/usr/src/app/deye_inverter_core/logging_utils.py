@@ -50,3 +50,5 @@ def configure_logging(detailed: bool=False) -> None:
 	handler=logging.StreamHandler()
 	handler.setFormatter(AddonLogFormatter(color))
 	logging.basicConfig(level=logging.DEBUG if detailed else logging.INFO,handlers=[handler],force=True)
+	for dependency in ("pymodbus","pysolarmanv5"):
+		logging.getLogger(dependency).setLevel(logging.WARNING)

@@ -1,12 +1,12 @@
-# SolarMan Diagnostics 2.0.6 - architektura jednego dodatku
+# SolarMan Diagnostics 2.0.7 - architektura jednego dodatku
 
 ## Zakres dokumentu
 
-Opis jednego dodatku w tym dokumencie dotyczy wyłącznie SolarMan Diagnostics 2.0.6 i połączenia jego transportów SolarMan TCP oraz RS485. Repozytorium zawiera ponadto niezależne dodatki `Alarm` i `Continuous Noise`, które nie uczestniczą w transporcie Modbus ani katalogach rejestrów falownika.
+Opis jednego dodatku w tym dokumencie dotyczy wyłącznie SolarMan Diagnostics 2.0.7 i połączenia jego transportów SolarMan TCP oraz RS485. Repozytorium zawiera ponadto niezależne dodatki `Alarm` i `Continuous Noise`, które nie uczestniczą w transporcie Modbus ani katalogach rejestrów falownika.
 
 ## Stan bieżący
 
-Wersja 2.0.6 ma jeden instalowalny katalog `deye-solarman-diagnostics`, jeden proces runtime i jeden klient MQTT. Ten proces może obsługiwać SolarMan TCP, Modbus RTU przez USB-RS485 albo oba transporty równocześnie.
+Wersja 2.0.7 ma jeden instalowalny katalog `deye-solarman-diagnostics`, jeden proces runtime i jeden klient MQTT. Ten proces może obsługiwać SolarMan TCP, Modbus RTU przez USB-RS485 albo oba transporty równocześnie.
 
 Obsługiwane tryby to:
 
@@ -36,7 +36,7 @@ deye-solarman-diagnostics/
 
 Przed obliczeniem SHA-256 oraz zapisaniem katalogu `tools/package_addon.py` normalizuje zakończenia linii CRLF i CR do LF. Manifest i plik w obrazie zawierają dzięki temu tę samą reprezentację bajtową niezależnie od systemu, na którym zbudowano pakiet.
 
-Indeks katalogu ma revision `2.0.6`. Obraz przypina `pymodbus==3.14.0` dla adaptera RTU.
+Indeks katalogu ma revision `2.0.7`. Obraz przypina `pymodbus==3.14.0` dla adaptera RTU.
 
 ## Granica transportu
 
@@ -63,7 +63,7 @@ Adapter SolarMan opakowuje `pysolarmanv5`, a adapter RTU klienta `pymodbus`. Rdz
 - własną blokadę operacji;
 - własne ustawienia odpytywania;
 - własny limit czasu i opóźnienie ponownego łączenia;
-- status oraz ostatnie opóźnienie.
+- status, ostatnie opóźnienie i licznik kolejnych błędów.
 
 Równoległe workery monitorowania korzystają z osobnych slotów. Awaria jednego slotu nie zatrzymuje zdrowego transportu. Zamknięcie procesu najpierw zatrzymuje i łączy workery, skany i aktywne testy HTTP, a następnie zamyka klientów pod właściwymi blokadami.
 
@@ -103,7 +103,9 @@ Sterowanie używa:
 solarman_diagnostics/<serial_falownika>/controls/<klucz>/set
 ```
 
-Atrybut stanu zawiera wybrany transport. Discovery sensora odwołuje się do wspólnej dostępności procesu i dostępności per-entity w trybie `all`. Last Will oraz kontrolowane wyłączenie ustawiają wspólną dostępność na `offline`.
+Atrybut stanu zawiera wybrany transport. Discovery sensora odwołuje się wyłącznie do wspólnej dostępności procesu. Błąd SolarMan TCP albo RS485 nie publikuje wartości zastępczej ani dostępności per-entity, dlatego ostatni poprawny stan pozostaje bez zmian. Last Will oraz kontrolowane wyłączenie ustawiają wspólną dostępność procesu na `offline`.
+
+`TransportStatus` jest jednym źródłem dla nagłówka panelu i MQTT. Każdy aktywny slot publikuje encję opóźnienia oraz encję liczby kolejnych błędów w kategorii `diagnostic`; nieaktywne sloty mają usuwane retained Discovery.
 
 ## Transakcje konfiguracji i Discovery
 
@@ -144,7 +146,7 @@ Błąd przed rozpoczęciem FC16 jest rozróżniany od niepewnego wyniku po rozpo
 
 ## Konfiguracja i migracja
 
-`config.yaml` ma `version: "2.0.6"`, `uart: true`, sekcje `solarman` i `rs485` oraz kompletne tłumaczenia PL/EN. Pola tożsamości falownika, profili, diagnostyki i skanowania są na najwyższym poziomie, dzięki czemu Home Assistant pokazuje je stale i zapisuje przełączniki jako bezpośrednie wartości konfiguracji.
+`config.yaml` ma `version: "2.0.7"`, `uart: true`, sekcje `solarman` i `rs485` oraz kompletne tłumaczenia PL/EN. Pola tożsamości falownika, profili, diagnostyki i skanowania są na najwyższym poziomie, dzięki czemu Home Assistant pokazuje je stale i zapisuje przełączniki jako bezpośrednie wartości konfiguracji.
 
 Parser zachowuje zgodność z konfiguracją 1.x. `logger` wraz ze wspólną sekcją `polling` jest interpretowany jako włączony `solarman`, a RS485 pozostaje wyłączone. Istniejące pliki wyboru są ładowane z domyślnym transportem SolarMan TCP, jeśli starszy wpis nie zawiera pola `transport`.
 

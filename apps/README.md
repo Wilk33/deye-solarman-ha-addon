@@ -1,8 +1,8 @@
-# Applications in SolarMan Diagnostics 2.0.6
+# Applications in SolarMan Diagnostics 2.0.7
 
 Repozytorium zawiera trzy kanoniczne źródła aplikacji:
 
-- `apps/deye-solarman/src/deye_solarman_diagnostics` - SolarMan Diagnostics 2.0.6 i oba adaptery transportu;
+- `apps/deye-solarman/src/deye_solarman_diagnostics` - SolarMan Diagnostics 2.0.7 i oba adaptery transportu;
 - `apps/haos-alarm/src/haos_alarm` - Alarm 1.0.2;
 - `apps/continuous-noise/src/continuous_noise` - Continuous Noise 1.0.0.
 

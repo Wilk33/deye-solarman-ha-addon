@@ -173,21 +173,19 @@ class SensorRuntime:
 					now=self.clock(),
 				)
 			error=failure.error
-			for sensor in self._sensors.get(transport_id,()):
-				self._safe_sensor_availability(sensor,False)
-			if self.detailed_logs:
-				LOGGER.exception("Transport worker failed transport=%s",transport_id)
-			else:
-				LOGGER.warning("Transport worker failed transport=%s error=%s",transport_id,error)
+			LOGGER.warning("Transport worker failed transport=%s error=%s",transport_id,error)
+			return None
+		except TransportConnectionClosedError as error:
+			LOGGER.warning("Transport worker failed transport=%s error=%s",transport_id,error)
 			return None
 		except Exception as error:
-			for sensor in self._sensors.get(transport_id,()):
-				self._safe_sensor_availability(sensor,False)
 			if self.detailed_logs:
 				LOGGER.exception("Transport worker failed transport=%s",transport_id)
 			else:
 				LOGGER.warning("Transport worker failed transport=%s error=%s",transport_id,error)
 			return None
+		finally:
+			self._safe_transport_diagnostics()
 		if batch is None:
 			return None
 		if not self._commit_batch(transport_id,batch):
@@ -242,13 +240,14 @@ class SensorRuntime:
 			wait=self._workers[transport_id].wait_time()
 			wake.wait(wait)
 
-	def _safe_sensor_availability(self,sensor: SensorDefinition,available: bool) -> None:
-		callback=getattr(self.mqtt,"sensor_availability",None)
-		if callback is not None:
-			try:
-				callback(sensor,available)
-			except Exception as error:
-				LOGGER.warning("MQTT sensor availability failed sensor=%s error=%s",sensor.key,error)
+	def _safe_transport_diagnostics(self) -> None:
+		callback=getattr(self.mqtt,"publish_transport_diagnostics",None)
+		if callback is None:
+			return
+		try:
+			callback(_transport_runtime_status(self.manager))
+		except Exception as error:
+			LOGGER.warning("MQTT transport diagnostics failed error=%s",error)
 
 	def _publish_if_current(self,generation: int,sensor: SensorDefinition,action: Any) -> bool:
 		with self._configuration_lock:
@@ -419,6 +418,7 @@ def _run_addon(
 	sensor_runtime=None
 	try:
 		mqtt.connect()
+		mqtt.publish_transport_diagnostics(_transport_runtime_status(manager))
 		sensor_runtime=SensorRuntime(
 			manager,
 			mqtt,
@@ -574,7 +574,6 @@ def _publish_sensor_configuration(
 			success(LOGGER,"Removed MQTT Discovery entities=%s",len(pending))
 		for sensor in (item for item in sensors if item.enabled):
 			mqtt.publish_discovery(sensor)
-			mqtt.sensor_availability(sensor,False)
 			if reset_state:
 				state[sensor.key].last_read_at=0
 				state[sensor.key].last_published_value=None
@@ -743,16 +742,16 @@ def run_iteration(
 				values=solarman.read_holding_registers(group_start, count)
 			latency_ms=(time.perf_counter()-start)*1000
 		except TransportConnectionClosedError as error:
+			transport_id=getattr(solarman,"transport_id","solarman_tcp")
 			if detailed_logs:
-				LOGGER.warning("Solarman TCP session closed start=%s count=%s; reconnecting",group_start,count)
+				LOGGER.warning("Transport connection lost transport=%s start=%s count=%s; reconnecting",transport_id,group_start,count)
 			else:
-				LOGGER.warning("Solarman TCP session closed; reconnecting")
+				LOGGER.warning("Transport connection lost transport=%s; reconnecting",transport_id)
 			raise error
 		except Exception as exc:
 			LOGGER.warning("Read failed start=%s count=%s error=%s", group_start, count, exc)
 			failed_groups+=1
 			for sensor in group:
-				_publish_sensor_availability(mqtt,sensor,False)
 				current_state=state[sensor.key]
 				current_state.last_status="timeout"
 				current_state.timeout_count+=1
@@ -780,13 +779,12 @@ def run_iteration(
 					polling.publish_unchanged_every,
 				)
 			)
-			_publish_sensor_availability(mqtt,sensor,True)
 
 		if index < len(groups)-1 and polling.read_message_spacing > 0:
 			time.sleep(polling.read_message_spacing)
 
 	if groups and failed_groups == len(groups):
-		raise ConnectionError("All due Solarman register groups failed; reconnecting")
+		raise ConnectionError("All due register groups failed; reconnecting")
 
 	for sensor in formula_sensors:
 		if should_stop is not None and should_stop():
@@ -809,15 +807,14 @@ def run_iteration(
 					polling.publish_unchanged_every,
 				)
 			)
-			_publish_sensor_availability(mqtt,sensor,formula_result.value is not None)
 		except TransportConnectionClosedError as error:
+			transport_id=getattr(solarman,"transport_id","solarman_tcp")
 			if detailed_logs:
-				LOGGER.warning("Solarman TCP session closed for formula sensor=%s; reconnecting",sensor.key)
+				LOGGER.warning("Transport connection lost transport=%s formula_sensor=%s; reconnecting",transport_id,sensor.key)
 			else:
-				LOGGER.warning("Solarman TCP session closed; reconnecting")
+				LOGGER.warning("Transport connection lost transport=%s; reconnecting",transport_id)
 			raise error
 		except Exception as error:
-			_publish_sensor_availability(mqtt,sensor,False)
 			LOGGER.warning("Formula read failed sensor=%s error=%s",sensor.key,error)
 			current_state=state[sensor.key]
 			current_state.last_status="formula_error"
@@ -825,12 +822,6 @@ def run_iteration(
 			report.append({"sensor": sensor.key,"status": "formula_error","error": str(error)})
 
 	return report
-
-
-def _publish_sensor_availability(mqtt: Any,sensor: SensorDefinition,available: bool) -> None:
-	callback=getattr(mqtt,"sensor_availability",None)
-	if callback is not None:
-		callback(sensor,available)
 
 
 def _is_due(sensor: SensorDefinition, sensor_state: SensorState, polling: PollingConfig) -> bool:

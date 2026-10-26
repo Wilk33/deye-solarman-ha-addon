@@ -32,10 +32,12 @@ from deye_inverter_core.formula import FormulaError
 from deye_inverter_core.formula import FormulaExecutor
 from deye_inverter_core.main import _handle_sensor
 from deye_inverter_core.main import _is_due
+from deye_inverter_core.main import _transport_runtime_status
 from deye_inverter_core.main import SensorRuntime
 from deye_inverter_core.main import _test_custom_sensor
 from deye_inverter_core.main import run_iteration
 from deye_inverter_core.logging_utils import AddonLogFormatter
+from deye_inverter_core.logging_utils import configure_logging
 from deye_inverter_core.logging_utils import SUCCESS
 from deye_inverter_core.models import InverterConfig
 from deye_inverter_core.models import CatalogConfig
@@ -72,6 +74,7 @@ class FakeMqtt:
 		self.states: list[tuple[str, int | float | str, dict[str, object]]]=[]
 		self.raw: list[tuple[str, list[int]]]=[]
 		self.availability: list[tuple[str,bool]]=[]
+		self.transport_diagnostics: list[dict[str,object]]=[]
 
 	def publish_state(self, sensor: SensorDefinition, value: int | float | str, attributes: dict[str, object]) -> None:
 		self.states.append((sensor.key, value, attributes))
@@ -81,6 +84,9 @@ class FakeMqtt:
 
 	def sensor_availability(self,sensor: SensorDefinition,available: bool) -> None:
 		self.availability.append((sensor.key,available))
+
+	def publish_transport_diagnostics(self,status: dict[str,object]) -> None:
+		self.transport_diagnostics.append(status)
 
 
 class FakePahoClient:
@@ -386,7 +392,7 @@ class RuntimeTests(unittest.TestCase):
 			self.assertIsInstance(errors[0],ConnectionError)
 			self.assertEqual(load_pending_discovery_removals(str(detected)),["new_sensor","old_sensor"])
 
-	def test_runtime_configuration_retries_and_orders_offline_before_reload_and_handler_activation(self) -> None:
+	def test_runtime_configuration_retries_without_invalidating_retained_sensor_states(self) -> None:
 		from deye_inverter_core import main as runtime_main
 		from deye_inverter_core.controls import ControlService
 
@@ -455,10 +461,9 @@ class RuntimeTests(unittest.TestCase):
 			self.assertIsNotNone(control_runtime)
 			self.assertIsNotNone(mqtt.handler)
 			self.assertGreaterEqual(events.count("disable"),2)
-			last_offline=max(index for index,event in enumerate(events) if event == "offline")
 			last_activate=max(index for index,event in enumerate(events) if event == "activate")
 			last_reload=max(index for index,event in enumerate(events) if event == "reload")
-			self.assertLess(last_offline,last_activate)
+			self.assertNotIn("offline",events)
 			self.assertLess(last_activate,last_reload)
 
 	def test_confirmed_control_discovery_survives_failed_next_publish_and_can_be_removed(self) -> None:
@@ -633,8 +638,28 @@ class RuntimeTests(unittest.TestCase):
 		self.assertEqual(runtime.worker_ids,("solarman_tcp","modbus_rtu"))
 		self.assertEqual(rs485.reads,[(100,1),(100,1)])
 		self.assertEqual([state[0] for state in mqtt.states],["serial","serial"])
-		self.assertIn(("logger",False),mqtt.availability)
+		self.assertNotIn(("logger",False),mqtt.availability)
 		self.assertNotIn(("serial",False),mqtt.availability)
+		self.assertEqual(mqtt.transport_diagnostics[-1],_transport_runtime_status(manager))
+
+	def test_transport_failure_preserves_last_mqtt_state_without_availability_update(self) -> None:
+		clock=RuntimeClock()
+		transport=RuntimeTransport("solarman_tcp",{100:7})
+		manager=TransportManager([TransportSlot(transport,make_polling(),10)],clock=clock)
+		sensor=SensorDefinition("value","Value",[100],"uint16",read_every=1,transport="solarman_tcp")
+		mqtt=FakeMqtt()
+		runtime=SensorRuntime(manager,mqtt,[sensor],{"value":SensorState()},clock=clock)
+
+		runtime.run_once("solarman_tcp",clock())
+		transport.connect_error=SolarmanConnectionClosedError("logger offline")
+		manager.get("solarman_tcp").status.online=False
+		clock.value=1.0
+		runtime.run_once("solarman_tcp",clock())
+
+		self.assertEqual([(key,value) for key,value,_ in mqtt.states],[("value",7)])
+		self.assertNotIn(("value",False),mqtt.availability)
+		self.assertFalse(mqtt.transport_diagnostics[-1]["transports"][0]["online"])
+		self.assertEqual(mqtt.transport_diagnostics[-1]["transports"][0]["error_count"],1)
 
 	def test_sensor_runtime_discards_stale_read_after_definition_reload(self) -> None:
 		started=threading.Event()
@@ -2092,13 +2117,10 @@ class RuntimeTests(unittest.TestCase):
 		publisher.publish_discovery(sensor)
 		discovery=json.loads(publisher._publish_confirmed.call_args.args[1])
 		self.assertEqual(discovery["state_topic"],"base/123/voltage")
-		self.assertEqual(discovery["availability"],[
-			{"topic":"base/123/availability"},
-			{"topic":"base/123/voltage/availability"},
-		])
-		self.assertEqual(discovery["availability_mode"],"all")
+		self.assertEqual(discovery["availability"],[{"topic":"base/123/availability"}])
+		self.assertNotIn("availability_mode",discovery)
 		self.assertEqual(discovery["origin"]["name"],"SolarMan Diagnostics")
-		self.assertEqual(discovery["origin"]["sw_version"],"2.0.6")
+		self.assertEqual(discovery["origin"]["sw_version"],"2.0.7")
 
 		publisher._publish_confirmed.reset_mock()
 		publisher.publish_state(sensor,52,{"raw_registers":[52]})
@@ -2106,6 +2128,65 @@ class RuntimeTests(unittest.TestCase):
 		self.assertEqual(attributes["transport"],"modbus_rtu")
 		publisher.sensor_availability(sensor,False)
 		self.assertEqual(publisher._publish_confirmed.call_args.args[:2],("base/123/voltage/availability","offline"))
+
+	def test_transport_diagnostics_publish_two_entities_for_one_transport_and_remove_stale_rs485(self) -> None:
+		publisher=MqttPublisher(
+			MqttConfig("host",1883,"","","test","base","homeassistant",True),
+			InverterConfig("123","Deye","Deye","SG05LP3"),
+		)
+		publisher._publish_confirmed=Mock()
+		status={"transports":[{
+			"id":"solarman_tcp",
+			"online":False,
+			"latency_ms":152.36,
+			"last_error":"Connection closed on read",
+			"error_count":1,
+			"next_reconnect_at":20.0,
+			"reconnect_in_seconds":7.5,
+		}]}
+
+		publisher.publish_transport_diagnostics(status)
+
+		calls=[call.args for call in publisher._publish_confirmed.call_args_list]
+		discovery={topic:payload for topic,payload,*_ in calls if topic.endswith("/config")}
+		self.assertEqual(len([payload for payload in discovery.values() if payload]),2)
+		self.assertEqual(len([payload for payload in discovery.values() if not payload]),2)
+		self.assertIn("homeassistant/sensor/deye_solarman_123_transport_solarman_tcp_latency/config",discovery)
+		self.assertEqual(discovery["homeassistant/sensor/deye_solarman_123_transport_modbus_rtu_latency/config"],"")
+		latency=json.loads(discovery["homeassistant/sensor/deye_solarman_123_transport_solarman_tcp_latency/config"])
+		self.assertEqual(latency["state_topic"],"base/123/diagnostics/solarman_tcp/latency_ms")
+		self.assertEqual(latency["availability"],[{"topic":"base/123/availability"}])
+		self.assertEqual(latency["entity_category"],"diagnostic")
+		self.assertEqual(latency["device_class"],"duration")
+		self.assertEqual(latency["unit_of_measurement"],"ms")
+		states={topic:payload for topic,payload,*_ in calls if "/diagnostics/" in topic and not topic.endswith("/attributes")}
+		self.assertEqual(states,{
+			"base/123/diagnostics/solarman_tcp/latency_ms":152.36,
+			"base/123/diagnostics/solarman_tcp/errors":1,
+		})
+		attributes=[json.loads(payload) for topic,payload,*_ in calls if topic.endswith("/attributes")]
+		self.assertEqual(len(attributes),2)
+		self.assertTrue(all(item["online"] is False for item in attributes))
+		self.assertTrue(all(item["last_error"] == "Connection closed on read" for item in attributes))
+
+	def test_transport_diagnostics_publish_four_entities_for_dual_transport(self) -> None:
+		publisher=MqttPublisher(
+			MqttConfig("host",1883,"","","test","base","homeassistant",True),
+			InverterConfig("123","Deye","Deye","SG05LP3"),
+		)
+		publisher._publish_confirmed=Mock()
+		status={"transports":[
+			{"id":"solarman_tcp","online":True,"latency_ms":152.36,"last_error":None,"error_count":0,"next_reconnect_at":0.0,"reconnect_in_seconds":0.0},
+			{"id":"modbus_rtu","online":True,"latency_ms":50.42,"last_error":None,"error_count":0,"next_reconnect_at":0.0,"reconnect_in_seconds":0.0},
+		]}
+
+		publisher.publish_transport_diagnostics(status)
+
+		calls=[call.args for call in publisher._publish_confirmed.call_args_list]
+		discovery=[payload for topic,payload,*_ in calls if topic.endswith("/config") and payload]
+		states=[topic for topic,_payload,*_ in calls if "/diagnostics/" in topic and not topic.endswith("/attributes")]
+		self.assertEqual(len(discovery),4)
+		self.assertEqual(len(states),4)
 
 	def test_control_topics_and_payloads_never_include_source_segment(self) -> None:
 		from deye_inverter_core.controls import ControlService
@@ -2239,7 +2320,7 @@ class RuntimeTests(unittest.TestCase):
 			with self.assertRaises(SolarmanConnectionClosedError):
 				run_iteration([sensor],{"voltage":SensorState()},ClosedSolarman(),FakeMqtt(),make_polling(),False)
 
-		self.assertEqual(logs.output,["WARNING:deye_inverter_core.main:Solarman TCP session closed; reconnecting"])
+		self.assertEqual(logs.output,["WARNING:deye_inverter_core.main:Transport connection lost transport=solarman_tcp; reconnecting"])
 
 	def test_closed_tcp_session_includes_register_range_in_detailed_logs(self) -> None:
 		sensor=SensorDefinition("voltage","Voltage",[10040],"uint16")
@@ -2247,7 +2328,17 @@ class RuntimeTests(unittest.TestCase):
 			with self.assertRaises(SolarmanConnectionClosedError):
 				run_iteration([sensor],{"voltage":SensorState()},ClosedSolarman(),FakeMqtt(),make_polling(),False,detailed_logs=True)
 
-		self.assertEqual(logs.output,["WARNING:deye_inverter_core.main:Solarman TCP session closed start=10040 count=1; reconnecting"])
+		self.assertEqual(logs.output,["WARNING:deye_inverter_core.main:Transport connection lost transport=solarman_tcp start=10040 count=1; reconnecting"])
+
+	def test_closed_rs485_session_names_the_actual_transport(self) -> None:
+		sensor=SensorDefinition("voltage","Voltage",[10040],"uint16",transport="modbus_rtu")
+		transport=ClosedSolarman()
+		transport.transport_id="modbus_rtu"
+		with self.assertLogs("deye_inverter_core.main",logging.WARNING) as logs:
+			with self.assertRaises(SolarmanConnectionClosedError):
+				run_iteration([sensor],{"voltage":SensorState()},transport,FakeMqtt(),make_polling(),False)
+
+		self.assertEqual(logs.output,["WARNING:deye_inverter_core.main:Transport connection lost transport=modbus_rtu; reconnecting"])
 
 	def test_failed_transport_worker_omits_traceback_in_normal_logs(self) -> None:
 		transport=RuntimeTransport("solarman_tcp")
@@ -2261,6 +2352,37 @@ class RuntimeTests(unittest.TestCase):
 			runtime.run_once("solarman_tcp")
 
 		self.assertEqual(logs.output,["WARNING:deye_inverter_core.main:Transport worker failed transport=solarman_tcp error=Connection closed on read"])
+
+	def test_failed_transport_worker_omits_traceback_in_detailed_logs(self) -> None:
+		transport=RuntimeTransport("solarman_tcp")
+		transport.connect_error=SolarmanConnectionClosedError("Connection closed on read")
+		manager=TransportManager([TransportSlot(transport,make_polling(),10)])
+		sensor=SensorDefinition("voltage","Voltage",[10040],"uint16")
+		runtime=SensorRuntime(manager,FakeMqtt(),[sensor],{"voltage":SensorState()},detailed_logs=True)
+		records=[]
+		class Capture(logging.Handler):
+			def emit(self,record: logging.LogRecord) -> None:
+				records.append(record)
+		logger=logging.getLogger("deye_inverter_core.main")
+		handler=Capture()
+		logger.addHandler(handler)
+		try:
+			runtime.run_once("solarman_tcp")
+		finally:
+			logger.removeHandler(handler)
+
+		self.assertEqual(records[-1].levelno,logging.WARNING)
+		self.assertEqual(records[-1].getMessage(),"Transport worker failed transport=solarman_tcp error=Connection closed on read")
+		self.assertIsNone(records[-1].exc_info)
+
+	def test_detailed_logging_keeps_application_debug_and_filters_protocol_library_noise(self) -> None:
+		configure_logging(True)
+		try:
+			self.assertEqual(logging.getLogger("deye_inverter_core.main").getEffectiveLevel(),logging.DEBUG)
+			self.assertEqual(logging.getLogger("pysolarmanv5.pysolarmanv5").getEffectiveLevel(),logging.WARNING)
+			self.assertEqual(logging.getLogger("pymodbus.logging").getEffectiveLevel(),logging.WARNING)
+		finally:
+			configure_logging(False)
 
 	def test_invalid_state_file_is_ignored_and_replaced_safely(self) -> None:
 		with tempfile.TemporaryDirectory() as directory:

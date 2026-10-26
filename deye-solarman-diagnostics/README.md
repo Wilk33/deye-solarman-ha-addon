@@ -1,4 +1,4 @@
-# SolarMan Diagnostics 2.0.6
+# SolarMan Diagnostics 2.0.7
 
 - [Strona projektu / Project site](https://wilk33.github.io/deye-solarman-ha-addon/)
 - [Definicje rejestrów / Register reference](https://wilk33.github.io/deye-solarman-ha-addon/reference/)
@@ -15,13 +15,15 @@ W trybie `dual` transporty mają niezależne workery i interwały. Skan jest sek
 
 ## Panel i MQTT
 
-Panel Ingress ma pełne tłumaczenia PL/EN oraz zakładki `Sensory`, `Sterowanie` i `Własne sensory`. Pokazuje status oraz opóźnienie obu transportów. Selektor transportu pojawia się tylko dla definicji obsługiwanych przez oba transporty.
+Panel Ingress ma pełne tłumaczenia PL/EN oraz zakładki `Sensory`, `Sterowanie` i `Własne sensory`. Pokazuje status, opóźnienie oraz licznik kolejnych błędów obu transportów. Selektor transportu pojawia się tylko dla definicji obsługiwanych przez oba transporty.
 
 Dodatek używa jednego klienta MQTT. Domyślne wartości to `client_id: solarman` i `base_topic: solarman_diagnostics`. Istniejące `unique_id` i tematy stanu pozostają wspólne niezależnie od transportu. Wspólny command topic ma postać:
 
 ```text
 solarman_diagnostics/<serial_falownika>/controls/<klucz>/set
 ```
+
+Każdy włączony transport tworzy encje diagnostyczne opóźnienia i błędów. Przy utracie SolarMan TCP albo RS485 sensor telemetryczny nie publikuje wartości zastępczej ani niedostępności, lecz zachowuje ostatni poprawny stan do następnego udanego odczytu.
 
 ## Operacje diagnostyczne i zapis
 
@@ -45,7 +47,7 @@ Wbudowany profil `deye_battery_packs` jest zawsze aktywny i nie jest wystawiany 
 
 Katalog telemetrii obsługuje typy proste, wielorejestrowe i statusowe oraz walidowane formuły `type: auto`. Liczbowe encje sterowania korzystają z trybu prezentacji MQTT Discovery określonego przez katalog, a wbudowana mapa Deye używa suwaka.
 
-`detailed_logs` jest domyślnie wyłączone. Normalny log ogranicza szczegóły połączeń i pojedynczych publikacji. Pełny debug należy włączać tylko podczas diagnozy.
+`detailed_logs` jest domyślnie wyłączone. Normalny log ogranicza szczegóły połączeń i pojedynczych publikacji. Tryb szczegółowy pozostawia dane diagnostyczne aplikacji, ale filtruje wewnętrzne zrzuty protokołu i tracebacki oczekiwanych rozłączeń bibliotek transportowych.
 
 ## Aktualizacja z 1.x
 

@@ -1,4 +1,4 @@
-# SolarMan Diagnostics 2.0.6
+# SolarMan Diagnostics 2.0.7
 
 [![Validate add-on](https://github.com/Wilk33/deye-solarman-ha-addon/actions/workflows/validate.yml/badge.svg)](https://github.com/Wilk33/deye-solarman-ha-addon/actions/workflows/validate.yml)
 
@@ -7,7 +7,7 @@ SolarMan Diagnostics łączy lokalną diagnostykę falownika Deye, porównanie d
 
 Repozytorium udostępnia trzy niezależne dodatki Home Assistant OS:
 
-- `SolarMan Diagnostics` 2.0.6 - diagnostyka i sterowanie falownikiem Deye;
+- `SolarMan Diagnostics` 2.0.7 - diagnostyka i sterowanie falownikiem Deye;
 - `Alarm` 1.0.2 - monitorowanie encji oraz wyjście audio albo GPIO Raspberry Pi 5;
 - `Continuous Noise` 1.0.0 - ciągłe odtwarzanie wybranego szumu z przełącznikami MQTT.
 
@@ -52,7 +52,7 @@ Co najmniej jeden transport musi być włączony. W trybie `dual` każdy transpo
 - niezależne monitorowanie i interwały obu transportów;
 - panel Ingress z zakładkami `Sensory`, `Sterowanie` i `Własne sensory`;
 - pełne tłumaczenia panelu i konfiguracji dodatku po polsku i angielsku;
-- status oraz opóźnienie każdego transportu;
+- status, opóźnienie i licznik kolejnych błędów każdego transportu;
 - wybór transportu tylko wtedy, gdy mapa rejestru i skan potwierdzają jego obsługę;
 - MQTT Discovery dla wybranych sensorów i encji sterowania;
 - zewnętrzne, walidowane katalogi sensorów i sterowania z lokalnym cache;
@@ -101,7 +101,9 @@ Komenda encji sterowania używa wspólnego tematu:
 solarman_diagnostics/<serial_falownika>/controls/<klucz>/set
 ```
 
-Atrybut `transport` pokazuje źródło ostatniej wartości. Discovery sensora wymaga jednocześnie wspólnej dostępności procesu i dostępności konkretnej encji. Zatrzymanie procesu lub Last Will ustawia wspólną dostępność na `offline`.
+Atrybut `transport` pokazuje źródło ostatniej wartości. Discovery sensora korzysta wyłącznie ze wspólnej dostępności procesu. Utrata SolarMan TCP albo RS485 nie publikuje wartości zastępczej ani `offline` dla sensorów - Home Assistant zachowuje ostatni poprawny stan do następnego udanego odczytu. Zatrzymanie procesu lub Last Will nadal ustawia wspólną dostępność na `offline`.
+
+Każdy włączony transport tworzy dwie encje kategorii `diagnostic`: opóźnienie w milisekundach oraz licznik kolejnych błędów. Panel Ingress i te encje korzystają z tego samego snapshotu runtime.
 
 ## Panel Ingress
 
@@ -161,7 +163,7 @@ Interaktywny opis katalogów znajduje się w [publicznej przeglądarce definicji
 
 ## Migracja z 1.x
 
-Wersja 2.0.6 zachowuje katalog instalacyjny i slug `deye-solarman-diagnostics`, dlatego aktualizacja odbywa się w miejscu.
+Wersja 2.0.7 zachowuje katalog instalacyjny i slug `deye-solarman-diagnostics`, dlatego aktualizacja odbywa się w miejscu.
 
 Starszy układ:
 
@@ -193,7 +195,7 @@ Każdy adres można pozostawić pusty. Pozwala to używać wyłącznie jednej li
 
 Katalog telemetrii może zawierać typy proste i złożone: `uint16`, `int16`, `uint32`, `int32`, `hex`, `ascii`, `enum`, wielorejestrowy `bitmask` oraz formuły `type: auto`. Formuły są walidowane przez ograniczony interpreter, skanowane tylko przez odczyt i nie mają dostępu do systemu ani sieci poza odczytem wskazanych rejestrów przez wybrany transport.
 
-`detailed_logs` jest domyślnie wyłączone. W tym trybie log zachowuje informacje operacyjne, ale ogranicza wpisy o pojedynczych publikacjach, zakresach połączeń i tracebackach. Tryb szczegółowy należy włączać tylko na czas diagnostyki.
+`detailed_logs` jest domyślnie wyłączone. W tym trybie log zachowuje informacje operacyjne, ale ogranicza wpisy o pojedynczych publikacjach i zakresach odczytów. Tryb szczegółowy dodaje dane aplikacji potrzebne do diagnozy, lecz oczekiwane rozłączenia oraz wewnętrzne logi ramek `pysolarmanv5` i `pymodbus` nie emitują surowych tracebacków ani zrzutów protokołu.
 
 ## Źródła kodu i pakowanie
 
@@ -212,7 +214,7 @@ Kopie runtime w katalogach `rootfs/usr/src/app` są generowane. Po zmianie źró
 .work/venv/Scripts/python.exe -m unittest discover -s tests -v
 ```
 
-Pakiet 2.0.6 zawiera wspólny rdzeń, oba adaptery, i18n PL/EN oraz katalogi z sumami kontrolnymi. Zależność RTU jest przypięta jako `pymodbus==3.14.0`. Repozytorium nie zawiera drugiego instalowalnego folderu RS485.
+Pakiet 2.0.7 zawiera wspólny rdzeń, oba adaptery, i18n PL/EN oraz katalogi z sumami kontrolnymi. Zależność RTU jest przypięta jako `pymodbus==3.14.0`. Repozytorium nie zawiera drugiego instalowalnego folderu RS485.
 
 ## Granice weryfikacji
 
