@@ -467,7 +467,7 @@ class DualTransportConfigTests(unittest.TestCase):
 	def test_addon_uses_version_2_sections_and_disables_rs485_by_default(self) -> None:
 		addon=yaml.safe_load((ROOT/"deye-solarman-diagnostics/config.yaml").read_text(encoding="utf-8"))
 
-		self.assertEqual(addon["version"],"2.0.7")
+		self.assertEqual(addon["version"],"2.0.8")
 		self.assertNotIn("logger",addon["options"])
 		self.assertNotIn("polling",addon["options"])
 		self.assertTrue(addon["options"]["solarman"]["enabled"])
@@ -1181,7 +1181,7 @@ class PerEntitySchedulerTests(unittest.TestCase):
 
 
 class TransportWorkerTests(unittest.TestCase):
-	def test_worker_marks_only_groups_reported_as_attempted_before_connection_error(self) -> None:
+	def test_worker_retries_due_groups_after_connection_error_and_respects_cooldown(self) -> None:
 		clock=ManualClock(30.0)
 		slot=make_transport_slot("solarman_tcp",reconnect_delay=7)
 		manager=RecordingTransportManager([slot],clock=clock)
@@ -1200,9 +1200,9 @@ class TransportWorkerTests(unittest.TestCase):
 		with self.assertRaisesRegex(TransportConnectionClosedError,"connection lost after first group"):
 			worker.run_due(clock())
 
-		self.assertEqual([sensor.key for sensor in scheduler.due(30.0)],["second"])
-		self.assertEqual([sensor.key for sensor in scheduler.due(34.9)],["second"])
-		self.assertEqual([sensor.key for sensor in scheduler.due(35.0)],["second","first"])
+		self.assertEqual([sensor.key for sensor in scheduler.due(30.0)],["first","second"])
+		self.assertEqual(worker.wait_time(30.0),7)
+		self.assertEqual(worker.wait_time(34.9),37-34.9)
 
 	def test_worker_wait_time_ignores_due_sensor_from_another_transport(self) -> None:
 		clock=ManualClock()

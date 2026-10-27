@@ -1,12 +1,12 @@
-# SolarMan Diagnostics 2.0.7 - architektura jednego dodatku
+# SolarMan Diagnostics 2.0.8 - architektura jednego dodatku
 
 ## Zakres dokumentu
 
-Opis jednego dodatku w tym dokumencie dotyczy wyłącznie SolarMan Diagnostics 2.0.7 i połączenia jego transportów SolarMan TCP oraz RS485. Repozytorium zawiera ponadto niezależne dodatki `Alarm` i `Continuous Noise`, które nie uczestniczą w transporcie Modbus ani katalogach rejestrów falownika.
+Opis jednego dodatku w tym dokumencie dotyczy wyłącznie SolarMan Diagnostics 2.0.8 i połączenia jego transportów SolarMan TCP oraz RS485. Repozytorium zawiera ponadto niezależne dodatki `Alarm` i `Continuous Noise`, które nie uczestniczą w transporcie Modbus ani katalogach rejestrów falownika.
 
 ## Stan bieżący
 
-Wersja 2.0.7 ma jeden instalowalny katalog `deye-solarman-diagnostics`, jeden proces runtime i jeden klient MQTT. Ten proces może obsługiwać SolarMan TCP, Modbus RTU przez USB-RS485 albo oba transporty równocześnie.
+Wersja 2.0.8 ma jeden instalowalny katalog `deye-solarman-diagnostics`, jeden proces runtime i jeden klient MQTT. Ten proces może obsługiwać SolarMan TCP, Modbus RTU przez USB-RS485 albo oba transporty równocześnie.
 
 Obsługiwane tryby to:
 
@@ -36,7 +36,7 @@ deye-solarman-diagnostics/
 
 Przed obliczeniem SHA-256 oraz zapisaniem katalogu `tools/package_addon.py` normalizuje zakończenia linii CRLF i CR do LF. Manifest i plik w obrazie zawierają dzięki temu tę samą reprezentację bajtową niezależnie od systemu, na którym zbudowano pakiet.
 
-Indeks katalogu ma revision `2.0.7`. Obraz przypina `pymodbus==3.14.0` dla adaptera RTU.
+Indeks katalogu ma revision `2.0.8`. Obraz przypina `pymodbus==3.14.0` dla adaptera RTU.
 
 ## Granica transportu
 
@@ -146,7 +146,7 @@ Błąd przed rozpoczęciem FC16 jest rozróżniany od niepewnego wyniku po rozpo
 
 ## Konfiguracja i migracja
 
-`config.yaml` ma `version: "2.0.7"`, `uart: true`, sekcje `solarman` i `rs485` oraz kompletne tłumaczenia PL/EN. Pola tożsamości falownika, profili, diagnostyki i skanowania są na najwyższym poziomie, dzięki czemu Home Assistant pokazuje je stale i zapisuje przełączniki jako bezpośrednie wartości konfiguracji.
+`config.yaml` ma `version: "2.0.8"`, `uart: true`, sekcje `solarman` i `rs485` oraz kompletne tłumaczenia PL/EN. Pola tożsamości falownika, profili, diagnostyki i skanowania są na najwyższym poziomie, dzięki czemu Home Assistant pokazuje je stale i zapisuje przełączniki jako bezpośrednie wartości konfiguracji.
 
 Parser zachowuje zgodność z konfiguracją 1.x. `logger` wraz ze wspólną sekcją `polling` jest interpretowany jako włączony `solarman`, a RS485 pozostaje wyłączone. Istniejące pliki wyboru są ładowane z domyślnym transportem SolarMan TCP, jeśli starszy wpis nie zawiera pola `transport`.
 

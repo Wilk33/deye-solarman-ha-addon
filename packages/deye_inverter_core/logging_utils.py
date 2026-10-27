@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import logging
 import os
+import time
+from contextlib import contextmanager,nullcontext
 
 
 SUCCESS=25
@@ -43,6 +45,26 @@ class AddonLogFormatter(logging.Formatter):
 
 def success(logger: logging.Logger, message: str, *args: object) -> None:
 	logger.log(SUCCESS,message,*args)
+
+
+def mqtt_publication_batch(publisher: object,kind: str,transport: str="shared"):
+	factory=getattr(type(publisher),"publication_batch",None)
+	return nullcontext() if factory is None else factory(publisher,kind,transport=transport)
+
+
+@contextmanager
+def register_operation(logger: logging.Logger,transport: str,operation: str,start: int,count: int,modbus_id: int):
+	details={}
+	started_at=time.perf_counter()
+	logger.debug("Register request transport=%s operation=%s start=%s count=%s modbus_id=%s",transport,operation,start,count,modbus_id)
+	try:
+		yield details
+	except Exception as error:
+		logger.debug("Register response transport=%s operation=%s start=%s count=%s result=error latency_ms=%.2f error=%s",transport,operation,start,count,(time.perf_counter()-started_at)*1000,error)
+		raise
+	else:
+		words=" ".join(f"0x{word:04X}" for word in details.get("registers",[]))
+		logger.debug("Register response transport=%s operation=%s start=%s count=%s result=ok latency_ms=%.2f registers=[%s]",transport,operation,start,count,(time.perf_counter()-started_at)*1000,words)
 
 
 def configure_logging(detailed: bool=False) -> None:

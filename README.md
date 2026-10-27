@@ -1,4 +1,4 @@
-# SolarMan Diagnostics 2.0.7
+# SolarMan Diagnostics 2.0.8
 
 [![Validate add-on](https://github.com/Wilk33/deye-solarman-ha-addon/actions/workflows/validate.yml/badge.svg)](https://github.com/Wilk33/deye-solarman-ha-addon/actions/workflows/validate.yml)
 
@@ -7,7 +7,7 @@ SolarMan Diagnostics łączy lokalną diagnostykę falownika Deye, porównanie d
 
 Repozytorium udostępnia trzy niezależne dodatki Home Assistant OS:
 
-- `SolarMan Diagnostics` 2.0.7 - diagnostyka i sterowanie falownikiem Deye;
+- `SolarMan Diagnostics` 2.0.8 - diagnostyka i sterowanie falownikiem Deye;
 - `Alarm` 1.0.2 - monitorowanie encji oraz wyjście audio albo GPIO Raspberry Pi 5;
 - `Continuous Noise` 1.0.0 - ciągłe odtwarzanie wybranego szumu z przełącznikami MQTT.
 
@@ -163,7 +163,7 @@ Interaktywny opis katalogów znajduje się w [publicznej przeglądarce definicji
 
 ## Migracja z 1.x
 
-Wersja 2.0.7 zachowuje katalog instalacyjny i slug `deye-solarman-diagnostics`, dlatego aktualizacja odbywa się w miejscu.
+Wersja 2.0.8 zachowuje katalog instalacyjny i slug `deye-solarman-diagnostics`, dlatego aktualizacja odbywa się w miejscu.
 
 Starszy układ:
 
@@ -195,7 +195,9 @@ Każdy adres można pozostawić pusty. Pozwala to używać wyłącznie jednej li
 
 Katalog telemetrii może zawierać typy proste i złożone: `uint16`, `int16`, `uint32`, `int32`, `hex`, `ascii`, `enum`, wielorejestrowy `bitmask` oraz formuły `type: auto`. Formuły są walidowane przez ograniczony interpreter, skanowane tylko przez odczyt i nie mają dostępu do systemu ani sieci poza odczytem wskazanych rejestrów przez wybrany transport.
 
-`detailed_logs` jest domyślnie wyłączone. W tym trybie log zachowuje informacje operacyjne, ale ogranicza wpisy o pojedynczych publikacjach i zakresach odczytów. Tryb szczegółowy dodaje dane aplikacji potrzebne do diagnozy, lecz oczekiwane rozłączenia oraz wewnętrzne logi ramek `pysolarmanv5` i `pymodbus` nie emitują surowych tracebacków ani zrzutów protokołu.
+`detailed_logs` jest domyślnie wyłączone. Udane publikacje MQTT otrzymują zbiorcze podsumowanie cyklu tylko w trybie szczegółowym. Nieudane publikacje zawsze podają temat i przyczynę. Tryb szczegółowy pokazuje zapytania i odpowiedzi TCP/RS485 z adresem, liczbą rejestrów, wynikiem, słowami HEX i czasem pojedynczego zapytania; wewnętrzne tracebacki bibliotek pozostają wyciszone.
+
+Epizod niedostępności transportu ma wpis początku i potwierdzonego udanym odczytem powrotu, z długością przerwy i liczbą nieudanych prób. Po utracie połączenia ponowienie odczytu sensorów zależy od `reconnect_delay`, a nie od pełnego `read_every`. Kolejne przerwy TCP oddalone o około 3 godziny są oznaczane jako obserwowany wzorzec loggera. Aplikacja nie wymusza resetu i zachowuje ostatnie poprawne wartości MQTT.
 
 ## Źródła kodu i pakowanie
 
@@ -214,7 +216,7 @@ Kopie runtime w katalogach `rootfs/usr/src/app` są generowane. Po zmianie źró
 .work/venv/Scripts/python.exe -m unittest discover -s tests -v
 ```
 
-Pakiet 2.0.7 zawiera wspólny rdzeń, oba adaptery, i18n PL/EN oraz katalogi z sumami kontrolnymi. Zależność RTU jest przypięta jako `pymodbus==3.14.0`. Repozytorium nie zawiera drugiego instalowalnego folderu RS485.
+Pakiet 2.0.8 zawiera wspólny rdzeń, oba adaptery, i18n PL/EN oraz katalogi z sumami kontrolnymi. Zależność RTU jest przypięta jako `pymodbus==3.14.0`. Repozytorium nie zawiera drugiego instalowalnego folderu RS485.
 
 ## Granice weryfikacji
 

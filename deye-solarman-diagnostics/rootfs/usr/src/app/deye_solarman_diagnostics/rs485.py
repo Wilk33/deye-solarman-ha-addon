@@ -4,10 +4,15 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 from typing import Protocol
+import logging
 
 from deye_inverter_core.models import Rs485Config
 from deye_inverter_core.transport import TransportConnectionClosedError
 from deye_inverter_core.transport import TransportProtocolError
+from deye_inverter_core.logging_utils import register_operation
+
+
+LOGGER=logging.getLogger(__name__)
 
 
 class ModbusResponseProtocol(Protocol):
@@ -99,6 +104,12 @@ class ModbusRtuTransport:
 		self.connect()
 
 	def read_holding_registers(self, start: int, count: int) -> list[int]:
+		with register_operation(LOGGER,self.transport_id,"read_fc03",start,count,self._config.modbus_id) as details:
+			result=self._read_holding_registers(start,count)
+			details["registers"]=result
+			return result
+
+	def _read_holding_registers(self, start: int, count: int) -> list[int]:
 		client=self._connected_client()
 		try:
 			response=client.read_holding_registers(
@@ -117,6 +128,12 @@ class ModbusRtuTransport:
 		return list(registers)
 
 	def write_holding_registers(self, start: int, values: list[int]) -> Any:
+		with register_operation(LOGGER,self.transport_id,"write_fc16",start,len(values),self._config.modbus_id) as details:
+			result=self._write_holding_registers(start,values)
+			details["registers"]=values
+			return result
+
+	def _write_holding_registers(self, start: int, values: list[int]) -> Any:
 		client=self._connected_client()
 		try:
 			response=client.write_registers(

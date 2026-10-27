@@ -4,6 +4,7 @@ import json
 import logging
 import ssl
 import threading
+import time
 from contextlib import contextmanager
 from typing import Any
 
@@ -28,7 +29,7 @@ class MqttPublisher:
 		self._config=config
 		self._inverter=inverter
 		self.detailed_logs=detailed_logs
-		self.origin={"name":"SolarMan Diagnostics","sw_version":"2.0.7","support_url":"https://github.com/Wilk33/deye-solarman-ha-addon"}
+		self.origin={"name":"SolarMan Diagnostics","sw_version":"2.0.8","support_url":"https://github.com/Wilk33/deye-solarman-ha-addon"}
 		self._connected=threading.Event()
 		self._connection_error: str | None=None
 		self._session_lock=threading.RLock()
@@ -43,6 +44,7 @@ class MqttPublisher:
 		self._control_discovery={}
 		self._transport_diagnostic_discovery: set[str]=set()
 		self._transport_diagnostic_cleanup_done=False
+		self._publication_context=threading.local()
 		self._client.on_message=self._on_control_message
 		self._client.will_set(self.availability_topic(),"offline",retain=True)
 		if config.tls:
@@ -98,8 +100,24 @@ class MqttPublisher:
 			self._needs_reconnect=False
 
 	@contextmanager
+	def publication_batch(self,kind: str, *, transport: str="shared"):
+		if getattr(self._publication_context,"batch",None) is not None:
+			yield
+			return
+		batch={"confirmed":0,"failed":0,"kinds":{}}
+		self._publication_context.batch=batch
+		started_at=time.perf_counter()
+		try:
+			yield
+		finally:
+			self._publication_context.batch=None
+			if batch["failed"] or (self.detailed_logs and batch["confirmed"]):
+				level=logging.WARNING if batch["failed"] else logging.DEBUG
+				LOGGER.log(level,"MQTT batch kind=%s transport=%s confirmed=%s failed=%s duration_ms=%.2f messages=%s",kind,transport,batch["confirmed"],batch["failed"],(time.perf_counter()-started_at)*1000,dict(sorted(batch["kinds"].items())))
+
+	@contextmanager
 	def discovery_transaction(self):
-		with self._discovery_lock:
+		with self.publication_batch("discovery"),self._discovery_lock:
 			yield
 
 	def publish_discovery(self, sensor: SensorDefinition) -> None:
@@ -178,7 +196,7 @@ class MqttPublisher:
 
 	def publish_transport_diagnostics(self,status: dict[str,Any]) -> None:
 		transports={str(item["id"]):item for item in status.get("transports",[]) if item.get("id") in TRANSPORT_DIAGNOSTICS}
-		with self._discovery_lock:
+		with self.publication_batch("diagnostics"),self._discovery_lock:
 			if not self._transport_diagnostic_cleanup_done:
 				for transport_id in TRANSPORT_DIAGNOSTICS.keys()-transports.keys():
 					for metric in ("latency","errors"):
@@ -201,6 +219,8 @@ class MqttPublisher:
 					"last_error":transport_status.get("last_error"),
 					"reconnect_in_seconds":transport_status.get("reconnect_in_seconds",0.0),
 				}
+				for field in ("connection_losses","last_outage_seconds","last_disconnect_interval_seconds","periodic_reset_detected"):
+					attributes[field]=transport_status.get(field)
 				values={
 					"latency":transport_status.get("latency_ms",0.0),
 					"errors":transport_status.get("error_count",0),
@@ -385,14 +405,18 @@ class MqttPublisher:
 					info.wait_for_publish(timeout=10)
 					if not info.is_published():
 						raise ConnectionError(f"MQTT {kind} publish timed out topic={topic}")
-			except Exception:
+			except Exception as error:
+				batch=getattr(self._publication_context,"batch",None)
+				if batch is not None:
+					batch["failed"]+=1
+				LOGGER.warning("MQTT publish failed kind=%s topic=%s error=%s",kind,topic,error)
 				self._needs_reconnect=True
 				try:
 					self._client.disconnect()
 				finally:
 					self._client.loop_stop()
 				raise
-		if self.detailed_logs:
-			success(LOGGER,"MQTT %s published topic=%s retain=%s",kind,topic,retain)
-		else:
-			LOGGER.debug("MQTT %s published topic=%s retain=%s",kind,topic,retain)
+		batch=getattr(self._publication_context,"batch",None)
+		if batch is not None:
+			batch["confirmed"]+=1
+			batch["kinds"][kind]=batch["kinds"].get(kind,0)+1

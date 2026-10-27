@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.0.8
+
+- Replace per-topic MQTT success messages with one detailed summary per sensor, control or Discovery batch. Report failed publications with their topic and reason in both logging modes.
+- Trace SolarMan TCP and RS485 register requests with transport, function, address, count, Modbus ID, response words, result and request duration. Expected failures remain concise and omit library tracebacks.
+- Track connection outages as episodes, log their recovery only after successful register I/O, and report outage duration and failed attempts. Repeated failures are summarized once per minute in normal logs and remain visible in detailed logs.
+- Recognize successive SolarMan outages approximately three hours apart as an observed timing pattern. Do not predict a reset, suppress an error, close a healthy connection or repeat a control write.
+- Retry sensor reads after connection loss according to the configured reconnect delay instead of postponing them until the sensor's next polling interval. Preserve the last valid MQTT telemetry values during the outage.
+
 ## 2.0.7
 
 - Preserve the last valid telemetry state when SolarMan TCP or Modbus RTU is disconnected. A failed read no longer publishes a replacement value or per-sensor unavailability.
@@ -59,7 +67,7 @@
 - Bundle both transport adapters, the shared core, PL/EN i18n, and checksummed catalogs in the self-contained HAOS build context. Pin `pymodbus==3.14.0`.
 - Document that automated validation does not prove a physical USB adapter, RS485 timing, firmware-specific register maps, or a real inverter FC16 write.
 
-Entries below describe historical releases and do not define the current 2.0.7 architecture.
+Entries below describe historical releases and do not define the current 2.0.8 architecture.
 
 ## 1.4.0
 

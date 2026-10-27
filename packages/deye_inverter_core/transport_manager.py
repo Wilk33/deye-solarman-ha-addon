@@ -7,12 +7,17 @@ from dataclasses import dataclass
 from dataclasses import field
 import threading
 import time
+import logging
 from typing import Any
 from typing import TypeVar
 
 from .models import TransportPollingConfig
 from .transport import RegisterTransport
 from .transport import TransportConnectionClosedError
+from .logging_utils import success
+
+
+LOGGER=logging.getLogger(__name__)
 
 
 ResultT=TypeVar("ResultT")
@@ -30,6 +35,10 @@ class TransportStatus:
 	error_count: int=0
 	latency_ms: float=0.0
 	next_reconnect_at: float=0.0
+	connection_losses: int=0
+	last_outage_seconds: float=0.0
+	last_disconnect_interval_seconds: float | None=None
+	periodic_reset_detected: bool=False
 
 
 @dataclass(slots=True)
@@ -40,6 +49,10 @@ class TransportSlot:
 	lock: Any=field(default_factory=threading.RLock,repr=False)
 	status: TransportStatus=field(default_factory=TransportStatus)
 	_has_connected: bool=field(default=False,init=False,repr=False)
+	_outage_started_at: float | None=field(default=None,init=False,repr=False)
+	_last_loss_at: float | None=field(default=None,init=False,repr=False)
+	_outage_failures: int=field(default=0,init=False,repr=False)
+	_next_outage_warning_at: float=field(default=0.0,init=False,repr=False)
 
 	@property
 	def transport(self) -> RegisterTransport:
@@ -166,6 +179,26 @@ class TransportManager:
 		slot: TransportSlot,
 		error: TransportConnectionClosedError,
 	) -> None:
+		now=self._clock()
+		if slot._outage_started_at is None:
+			interval=None if slot._last_loss_at is None else now-slot._last_loss_at
+			slot._last_loss_at=now
+			slot._outage_started_at=now
+			slot._outage_failures=0
+			slot._next_outage_warning_at=now+60
+			slot.status.connection_losses+=1
+			slot.status.last_disconnect_interval_seconds=interval
+			slot.status.periodic_reset_detected=(
+				slot.transport_id == "solarman_tcp" and interval is not None and abs(interval-10800) <= 120
+			)
+			pattern="logger_3h_window" if slot.status.periodic_reset_detected else "unclassified"
+			LOGGER.warning("Transport connection unavailable transport=%s error=%s retry_in_seconds=%.2f interval_seconds=%s pattern=%s",slot.transport_id,error,slot.reconnect_delay,None if interval is None else round(interval,2),pattern)
+		else:
+			level=logging.WARNING if now >= slot._next_outage_warning_at else logging.DEBUG
+			LOGGER.log(level,"Transport reconnect failed transport=%s outage_seconds=%.2f failed_attempts=%s retry_in_seconds=%.2f error=%s",slot.transport_id,now-slot._outage_started_at,slot._outage_failures+1,slot.reconnect_delay,error)
+			if level == logging.WARNING:
+				slot._next_outage_warning_at=now+60
+		slot._outage_failures+=1
 		slot.status.online=False
 		slot.status.last_error=str(error)
 		slot.status.error_count+=1
@@ -176,8 +209,11 @@ class TransportManager:
 		slot.status.last_error=str(error)
 		slot.status.error_count+=1
 
-	@staticmethod
-	def _record_success(slot: TransportSlot) -> None:
+	def _record_success(self,slot: TransportSlot) -> None:
+		if slot._outage_started_at is not None:
+			slot.status.last_outage_seconds=max(0.0,self._clock()-slot._outage_started_at)
+			success(LOGGER,"Transport connection restored transport=%s outage_seconds=%.2f failed_attempts=%s",slot.transport_id,slot.status.last_outage_seconds,slot._outage_failures)
+			slot._outage_started_at=None
 		slot.status.online=True
 		slot.status.last_error=None
 		slot.status.error_count=0

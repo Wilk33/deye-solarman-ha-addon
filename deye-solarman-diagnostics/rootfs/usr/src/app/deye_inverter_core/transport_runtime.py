@@ -10,6 +10,7 @@ from .models import SensorDefinition
 from .scheduler import MonotonicClock
 from .scheduler import PerEntityScheduler
 from .transport import RegisterTransport
+from .transport import TransportConnectionClosedError
 from .transport_manager import TransportManager
 from .transport_manager import TransportSlot
 
@@ -62,10 +63,16 @@ class TransportWorker:
 		def operation(client: RegisterTransport) -> Any:
 			return self._read_callback(client,due,mark_attempted)
 
+		connection_failed=False
 		try:
 			return self._manager.run(self.transport_id,operation)
+		except TransportConnectionClosedError:
+			connection_failed=True
+			raise
 		finally:
-			if attempted_keys:
+			if connection_failed:
+				self._scheduler.make_due(due_keys,now=self._clock())
+			elif attempted_keys:
 				completed_at=max(started_at,self._clock())
 				for key in (sensor.key for sensor in due if sensor.key in attempted_keys):
 					try:

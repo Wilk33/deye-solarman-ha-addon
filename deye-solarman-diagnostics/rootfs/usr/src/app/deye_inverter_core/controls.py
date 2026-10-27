@@ -12,6 +12,7 @@ from contextlib import nullcontext
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from .logging_utils import mqtt_publication_batch
 
 from .transport import TransportFactory, TransportConnectionClosedError
 from .transport_manager import TransportManager
@@ -707,6 +708,10 @@ class ControlRuntime:
 			self.mqtt.control_availability(key,not self.blocked and result["write_allowed"])
 
 	def tick(self) -> None:
+		with mqtt_publication_batch(self.mqtt,"controls"):
+			self._tick()
+
+	def _tick(self) -> None:
 		now=self.clock()
 		if now-self.last_command >= 1:
 			try:

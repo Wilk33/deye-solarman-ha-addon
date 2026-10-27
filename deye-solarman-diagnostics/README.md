@@ -1,4 +1,4 @@
-# SolarMan Diagnostics 2.0.7
+# SolarMan Diagnostics 2.0.8
 
 - [Strona projektu / Project site](https://wilk33.github.io/deye-solarman-ha-addon/)
 - [Definicje rejestrów / Register reference](https://wilk33.github.io/deye-solarman-ha-addon/reference/)
@@ -47,7 +47,9 @@ Wbudowany profil `deye_battery_packs` jest zawsze aktywny i nie jest wystawiany 
 
 Katalog telemetrii obsługuje typy proste, wielorejestrowe i statusowe oraz walidowane formuły `type: auto`. Liczbowe encje sterowania korzystają z trybu prezentacji MQTT Discovery określonego przez katalog, a wbudowana mapa Deye używa suwaka.
 
-`detailed_logs` jest domyślnie wyłączone. Normalny log ogranicza szczegóły połączeń i pojedynczych publikacji. Tryb szczegółowy pozostawia dane diagnostyczne aplikacji, ale filtruje wewnętrzne zrzuty protokołu i tracebacki oczekiwanych rozłączeń bibliotek transportowych.
+`detailed_logs` jest domyślnie wyłączone. Udane publikacje MQTT są podsumowywane na poziomie cyklu w trybie szczegółowym, a nie pojedynczych tematów. Błędy publikacji pozostają widoczne w obu trybach. Szczegółowe zapytania TCP/RS485 pokazują adres, liczbę rejestrów, wynik, słowa HEX i czas odpowiedzi bez wewnętrznych tracebacków bibliotek.
+
+Dodatek rejestruje początek i koniec niedostępności transportu, długość przerwy oraz liczbę nieudanych prób. Po utracie połączenia ponawia odczyt sensorów zgodnie z `reconnect_delay`. Odstęp około 3 godzin pomiędzy kolejnymi przerwami TCP jest oznaczany jako zaobserwowany wzorzec loggera, bez planowego rozłączania działającego połączenia.
 
 ## Aktualizacja z 1.x
 

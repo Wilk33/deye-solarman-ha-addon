@@ -1,4 +1,4 @@
-# SolarMan Diagnostics 2.0.7 - instrukcja użytkownika
+# SolarMan Diagnostics 2.0.8 - instrukcja użytkownika
 
 - [Strona projektu / Project site](https://wilk33.github.io/deye-solarman-ha-addon/)
 - [Definicje rejestrów / Register reference](https://wilk33.github.io/deye-solarman-ha-addon/reference/)
@@ -154,7 +154,7 @@ Zmiana interwału jednego transportu nie zmienia interwału drugiego.
 
 ## Migracja z wersji 1.x
 
-Wersja 2.0.7 zachowuje slug oraz katalog instalacyjny, więc Home Assistant aktualizuje istniejący dodatek.
+Wersja 2.0.8 zachowuje slug oraz katalog instalacyjny, więc Home Assistant aktualizuje istniejący dodatek.
 
 Starsza konfiguracja używała sekcji:
 
@@ -309,14 +309,19 @@ Zmiana transportu lub wyłączenie encji zachowuje jej tożsamość MQTT. Usuni�
 
 ## Logowanie i diagnostyka
 
-`detailed_logs` jest domyślnie `false`. W normalnym trybie dodatek rejestruje start, utratę połączenia, ponowne łączenie i błędy, ale ogranicza:
+`detailed_logs` jest domyślnie `false`. Normalny log pokazuje start, początek niedostępności transportu, błędy publikacji MQTT oraz powrót połączenia. Podczas dłuższej przerwy ostrzeżenie zbiorcze pojawia się najwyżej raz na minutę. Pojedyncze udane publikacje MQTT nie są wypisywane w żadnym trybie.
 
-- pojedyncze potwierdzenia każdej publikacji MQTT;
-- zakresy każdego odczytu;
-- pełne tracebacki oczekiwanych rozłączeń;
-- powtarzające się szczegóły połączenia.
+Po włączeniu `detailed_logs: true` każdy cykl sensorów lub sterowania otrzymuje jedno podsumowanie `MQTT batch`: liczba potwierdzonych i nieudanych komunikatów, podział na stan, atrybuty i RAW oraz czas publikowania cyklu. Zagnieżdżona publikacja diagnostyki wchodzi do tego samego podsumowania. Czas podsumowania obejmuje również inne prace wykonywane w danym cyklu i nie jest czasem pojedynczego potwierdzenia MQTT.
 
-Ustaw `detailed_logs: true` tylko na czas diagnozy. Tryb szczegółowy dodaje zakresy i czasy operacji aplikacji, ale nadal filtruje wewnętrzne ramki `pymodbus`, debug `pysolarmanv5` oraz tracebacki oczekiwanych rozłączeń. Nieoczekiwany błąd programistyczny może nadal zawierać traceback. Hasło MQTT nie jest wypisywane w logu.
+Każde fizyczne zapytanie TCP i RS485 ma wpis `Register request` z transportem, funkcją FC03/FC16, początkiem i liczbą rejestrów oraz Modbus ID. Wpis `Register response` podaje wynik, czas zapytania w milisekundach i odebrane lub potwierdzone słowa HEX. Przy błędzie zawiera przyczynę bez tracebacku. Ten czas dotyczy pojedynczego zapytania; encja diagnostyczna `Latency` nadal opisuje ostatnią operację menedżera transportu.
+
+Utrata połączenia rozpoczyna jeden epizod niedostępności. Ponowny odczyt sensorów jest podejmowany po `reconnect_delay`, nawet gdy `read_every` jest dłuższe. Powrót jest potwierdzany udaną operacją na rejestrach, a log podaje czas od wykrycia przerwy i liczbę nieudanych prób. Czasy są obserwacjami aplikacji, a nie dokładnym czasem fizycznego resetu urządzenia.
+
+Dwa kolejne początki przerwy SolarMan TCP oddalone o 3 godziny z tolerancją 2 minut otrzymują `pattern=logger_3h_window`. Jest to dopasowanie czasowe do znanej cechy niektórych loggerów, nie dowód restartu urządzenia ani prognoza kolejnego resetu. RS485 nie jest tak klasyfikowany. Dopasowanie nie ukrywa błędów i nie zmienia opóźnienia ponawiania połączenia.
+
+Atrybuty obu encji diagnostycznych transportu zawierają dodatkowo `connection_losses`, `last_outage_seconds`, `last_disconnect_interval_seconds` i `periodic_reset_detected`. Historia epizodów jest liczona od uruchomienia dodatku. `connection_losses` obejmuje epizody wykrytej niedostępności, także przy pierwszej próbie połączenia. `errors` nadal jest licznikiem kolejnych nieudanych operacji zerowanym po sukcesie.
+
+Tryb szczegółowy nadal filtruje wewnętrzne ramki `pymodbus`, debug `pysolarmanv5` oraz tracebacki oczekiwanych rozłączeń. Nieoczekiwany błąd programistyczny może zawierać traceback. Hasło MQTT nie jest wypisywane w logu.
 
 Jeśli jeden transport ma status `unavailable`, sprawdź jego konfigurację i log. Drugi worker powinien nadal publikować swoje encje. Jeśli wspólna dostępność MQTT jest `offline`, sprawdź broker i cały proces dodatku.
 

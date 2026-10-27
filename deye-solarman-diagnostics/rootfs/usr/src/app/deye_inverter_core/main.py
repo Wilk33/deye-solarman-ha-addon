@@ -22,6 +22,7 @@ from .formula import FormulaExecutor
 from .formula import FormulaResult
 from .logging_utils import configure_logging
 from .logging_utils import success
+from .logging_utils import mqtt_publication_batch
 from .models import SensorDefinition
 from .models import SensorState
 from .models import PollingConfig
@@ -164,6 +165,10 @@ class SensorRuntime:
 		self._threads=[]
 
 	def run_once(self,transport_id: str,now: float | None=None) -> list[dict[str,Any]] | None:
+		with mqtt_publication_batch(self.mqtt,"sensors",transport_id):
+			return self._run_once(transport_id,now)
+
+	def _run_once(self,transport_id: str,now: float | None=None) -> list[dict[str,Any]] | None:
 		try:
 			batch=self._workers[transport_id].run_due(now)
 		except (_SensorBatchFailure,_SensorBatchConnectionFailure) as failure:
@@ -173,10 +178,10 @@ class SensorRuntime:
 					now=self.clock(),
 				)
 			error=failure.error
-			LOGGER.warning("Transport worker failed transport=%s error=%s",transport_id,error)
+			if not isinstance(failure,_SensorBatchConnectionFailure):
+				LOGGER.warning("Transport worker failed transport=%s error=%s",transport_id,error)
 			return None
 		except TransportConnectionClosedError as error:
-			LOGGER.warning("Transport worker failed transport=%s error=%s",transport_id,error)
 			return None
 		except Exception as error:
 			if self.detailed_logs:
@@ -683,6 +688,10 @@ def _transport_runtime_status(manager: TransportManager) -> dict[str,Any]:
 				"error_count":status.error_count,
 				"next_reconnect_at":status.next_reconnect_at,
 				"reconnect_in_seconds":round(max(0.0,status.next_reconnect_at-now),2),
+				"connection_losses":status.connection_losses,
+				"last_outage_seconds":status.last_outage_seconds,
+				"last_disconnect_interval_seconds":status.last_disconnect_interval_seconds,
+				"periodic_reset_detected":status.periodic_reset_detected,
 			})
 	return {"transports":transports}
 
@@ -744,9 +753,9 @@ def run_iteration(
 		except TransportConnectionClosedError as error:
 			transport_id=getattr(solarman,"transport_id","solarman_tcp")
 			if detailed_logs:
-				LOGGER.warning("Transport connection lost transport=%s start=%s count=%s; reconnecting",transport_id,group_start,count)
+				LOGGER.debug("Transport connection lost transport=%s start=%s count=%s; reconnecting",transport_id,group_start,count)
 			else:
-				LOGGER.warning("Transport connection lost transport=%s; reconnecting",transport_id)
+				LOGGER.debug("Transport connection lost transport=%s; reconnecting",transport_id)
 			raise error
 		except Exception as exc:
 			LOGGER.warning("Read failed start=%s count=%s error=%s", group_start, count, exc)
@@ -810,9 +819,9 @@ def run_iteration(
 		except TransportConnectionClosedError as error:
 			transport_id=getattr(solarman,"transport_id","solarman_tcp")
 			if detailed_logs:
-				LOGGER.warning("Transport connection lost transport=%s formula_sensor=%s; reconnecting",transport_id,sensor.key)
+				LOGGER.debug("Transport connection lost transport=%s formula_sensor=%s; reconnecting",transport_id,sensor.key)
 			else:
-				LOGGER.warning("Transport connection lost transport=%s; reconnecting",transport_id)
+				LOGGER.debug("Transport connection lost transport=%s; reconnecting",transport_id)
 			raise error
 		except Exception as error:
 			LOGGER.warning("Formula read failed sensor=%s error=%s",sensor.key,error)

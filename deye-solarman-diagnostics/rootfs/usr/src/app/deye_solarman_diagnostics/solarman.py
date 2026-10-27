@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import time
 from typing import Protocol
 from typing import Any
 
@@ -10,6 +9,7 @@ from pysolarmanv5 import PySolarmanV5
 
 from deye_inverter_core.models import LoggerConfig
 from deye_inverter_core.transport import TransportConnectionClosedError
+from deye_inverter_core.logging_utils import register_operation
 
 
 LOGGER=logging.getLogger(__name__)
@@ -85,21 +85,23 @@ class SolarmanClient:
 	def write_multiple_holding_registers(self, register: int, values: list[int]) -> Any:
 		if self._client is None:
 			raise ConnectionError("Control requires an established connection")
-		return self._client.write_multiple_holding_registers(register,values)
+		with register_operation(LOGGER,self.transport_id,"write_fc16",register,len(values),self._config.modbus_id) as details:
+			result=self._client.write_multiple_holding_registers(register,values)
+			details["registers"]=values
+			return result
 
 	def read_holding_registers(self, register: int, count: int) -> list[int]:
 		if self._client is None:
 			self.connect()
 		assert self._client is not None
-		start=time.perf_counter()
-		try:
-			return self._client.read_holding_registers(register, count)
-		except (NoSocketAvailableError,ConnectionError,OSError) as error:
-			raise SolarmanConnectionClosedError(str(error)) from error
-		except Exception as error:
-			if is_connection_closed_error(error):
+		with register_operation(LOGGER,self.transport_id,"read_fc03",register,count,self._config.modbus_id) as details:
+			try:
+				result=self._client.read_holding_registers(register,count)
+				details["registers"]=result
+				return result
+			except (NoSocketAvailableError,ConnectionError,OSError) as error:
 				raise SolarmanConnectionClosedError(str(error)) from error
-			raise
-		finally:
-			latency_ms=(time.perf_counter()-start)*1000
-			LOGGER.debug("Read register=%s count=%s latency_ms=%.2f", register, count, latency_ms)
+			except Exception as error:
+				if is_connection_closed_error(error):
+					raise SolarmanConnectionClosedError(str(error)) from error
+				raise

@@ -2120,7 +2120,7 @@ class RuntimeTests(unittest.TestCase):
 		self.assertEqual(discovery["availability"],[{"topic":"base/123/availability"}])
 		self.assertNotIn("availability_mode",discovery)
 		self.assertEqual(discovery["origin"]["name"],"SolarMan Diagnostics")
-		self.assertEqual(discovery["origin"]["sw_version"],"2.0.7")
+		self.assertEqual(discovery["origin"]["sw_version"],"2.0.8")
 
 		publisher._publish_confirmed.reset_mock()
 		publisher.publish_state(sensor,52,{"raw_registers":[52]})
@@ -2316,29 +2316,29 @@ class RuntimeTests(unittest.TestCase):
 
 	def test_closed_tcp_session_omits_register_range_in_normal_logs(self) -> None:
 		sensor=SensorDefinition("voltage","Voltage",[10040],"uint16")
-		with self.assertLogs("deye_inverter_core.main",logging.WARNING) as logs:
+		with self.assertLogs("deye_inverter_core.main",logging.DEBUG) as logs:
 			with self.assertRaises(SolarmanConnectionClosedError):
 				run_iteration([sensor],{"voltage":SensorState()},ClosedSolarman(),FakeMqtt(),make_polling(),False)
 
-		self.assertEqual(logs.output,["WARNING:deye_inverter_core.main:Transport connection lost transport=solarman_tcp; reconnecting"])
+		self.assertEqual(logs.output,["DEBUG:deye_inverter_core.main:Transport connection lost transport=solarman_tcp; reconnecting"])
 
 	def test_closed_tcp_session_includes_register_range_in_detailed_logs(self) -> None:
 		sensor=SensorDefinition("voltage","Voltage",[10040],"uint16")
-		with self.assertLogs("deye_inverter_core.main",logging.WARNING) as logs:
+		with self.assertLogs("deye_inverter_core.main",logging.DEBUG) as logs:
 			with self.assertRaises(SolarmanConnectionClosedError):
 				run_iteration([sensor],{"voltage":SensorState()},ClosedSolarman(),FakeMqtt(),make_polling(),False,detailed_logs=True)
 
-		self.assertEqual(logs.output,["WARNING:deye_inverter_core.main:Transport connection lost transport=solarman_tcp start=10040 count=1; reconnecting"])
+		self.assertEqual(logs.output,["DEBUG:deye_inverter_core.main:Transport connection lost transport=solarman_tcp start=10040 count=1; reconnecting"])
 
 	def test_closed_rs485_session_names_the_actual_transport(self) -> None:
 		sensor=SensorDefinition("voltage","Voltage",[10040],"uint16",transport="modbus_rtu")
 		transport=ClosedSolarman()
 		transport.transport_id="modbus_rtu"
-		with self.assertLogs("deye_inverter_core.main",logging.WARNING) as logs:
+		with self.assertLogs("deye_inverter_core.main",logging.DEBUG) as logs:
 			with self.assertRaises(SolarmanConnectionClosedError):
 				run_iteration([sensor],{"voltage":SensorState()},transport,FakeMqtt(),make_polling(),False)
 
-		self.assertEqual(logs.output,["WARNING:deye_inverter_core.main:Transport connection lost transport=modbus_rtu; reconnecting"])
+		self.assertEqual(logs.output,["DEBUG:deye_inverter_core.main:Transport connection lost transport=modbus_rtu; reconnecting"])
 
 	def test_failed_transport_worker_omits_traceback_in_normal_logs(self) -> None:
 		transport=RuntimeTransport("solarman_tcp")
@@ -2348,10 +2348,12 @@ class RuntimeTests(unittest.TestCase):
 		sensor=SensorDefinition("voltage","Voltage",[10040],"uint16")
 		runtime=SensorRuntime(manager,FakeMqtt(),[sensor],{"voltage":SensorState()})
 
-		with self.assertLogs("deye_inverter_core.main",logging.WARNING) as logs:
+		with self.assertLogs("deye_inverter_core.transport_manager",logging.WARNING) as logs:
 			runtime.run_once("solarman_tcp")
 
-		self.assertEqual(logs.output,["WARNING:deye_inverter_core.main:Transport worker failed transport=solarman_tcp error=Connection closed on read"])
+		self.assertEqual(len(logs.records),1)
+		self.assertIn("connection unavailable transport=solarman_tcp",logs.output[0])
+		self.assertIsNone(logs.records[0].exc_info)
 
 	def test_failed_transport_worker_omits_traceback_in_detailed_logs(self) -> None:
 		transport=RuntimeTransport("solarman_tcp")
@@ -2363,7 +2365,7 @@ class RuntimeTests(unittest.TestCase):
 		class Capture(logging.Handler):
 			def emit(self,record: logging.LogRecord) -> None:
 				records.append(record)
-		logger=logging.getLogger("deye_inverter_core.main")
+		logger=logging.getLogger("deye_inverter_core.transport_manager")
 		handler=Capture()
 		logger.addHandler(handler)
 		try:
@@ -2372,7 +2374,7 @@ class RuntimeTests(unittest.TestCase):
 			logger.removeHandler(handler)
 
 		self.assertEqual(records[-1].levelno,logging.WARNING)
-		self.assertEqual(records[-1].getMessage(),"Transport worker failed transport=solarman_tcp error=Connection closed on read")
+		self.assertIn("connection unavailable transport=solarman_tcp",records[-1].getMessage())
 		self.assertIsNone(records[-1].exc_info)
 
 	def test_detailed_logging_keeps_application_debug_and_filters_protocol_library_noise(self) -> None:
